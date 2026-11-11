@@ -4,9 +4,10 @@
 #include <array>
 #include <cstddef>
 #include <cstdlib>
+#include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <string_view>
+#include <system_error>
 
 namespace orrery::render {
 
@@ -332,8 +333,14 @@ core::Result<ImageRgba8, std::string> read_png(const std::filesystem::path& path
     if (!file) {
         return fail("cannot open '" + path.string() + "'");
     }
-    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
-                                          std::istreambuf_iterator<char>());
+    std::error_code size_error;
+    const auto file_size = std::filesystem::file_size(path, size_error);
+    if (size_error) {
+        return fail("cannot read '" + path.string() + "'");
+    }
+    std::vector<std::uint8_t> bytes(static_cast<std::size_t>(file_size));
+    file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    bytes.resize(static_cast<std::size_t>(file.gcount()));
     auto decoded = decode_png(bytes);
     if (!decoded) {
         return core::failure("'" + path.string() + "': " + decoded.error());

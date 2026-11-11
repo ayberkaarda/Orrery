@@ -4,9 +4,9 @@
 #include <cstddef>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 // Generated at build time by tests/render/make_embed_fixtures.cmake and the
@@ -30,7 +30,14 @@ constexpr std::string_view kClose = ")orrery_glsl\"";
 // literal as LF.
 std::string read_bytes(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
-    const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    std::string text;
+    if (file && !ec) {
+        text.assign(static_cast<std::size_t>(size), '\0');
+        file.read(text.data(), static_cast<std::streamsize>(text.size()));
+        text.resize(static_cast<std::size_t>(file.gcount()));
+    }
     std::string normalized;
     normalized.reserve(text.size());
     for (std::size_t i = 0; i < text.size(); ++i) {

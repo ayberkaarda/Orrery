@@ -4,12 +4,19 @@ include(Catch)
 # One test executable per library so each links only what it exercises.
 function(orrery_add_module_test module)
     set(target orrery_test_${module})
+    set(discover_props)
+    # The render tests call glfwInit, which leaks a few libX11/libxcb
+    # allocations when no display exists; hide only that (see lsan.supp).
+    if(ORRERY_SANITIZE AND NOT MSVC AND module STREQUAL "render")
+        set(discover_props PROPERTIES ENVIRONMENT
+            "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+    endif()
     add_executable(${target} smoke/test_${module}.cpp)
     target_link_libraries(${target} PRIVATE orrery_${module} Catch2::Catch2WithMain)
     target_compile_definitions(${target} PRIVATE
         ORRERY_EXPECTED_VERSION="${PROJECT_VERSION}")
     orrery_configure_target(${target})
-    catch_discover_tests(${target} DISCOVERY_MODE PRE_TEST)
+    catch_discover_tests(${target} DISCOVERY_MODE PRE_TEST ${discover_props})
 endfunction()
 
 foreach(module IN ITEMS geom atmo aero render)

@@ -1,0 +1,14 @@
+# LeakSanitizer suppressions for the sanitizer (ASan) build on Linux.
+#
+# When no X display is available, glfwInit() fails inside GLFW's X11 connect
+# path (_glfwConnectX11 -> XOpenDisplay) and libX11/libxcb leave a few small
+# allocations behind (4096 + 64 + ... bytes). Those frames inside libX11/libxcb
+# show up as <unknown module> because the system libraries are not
+# instrumented, so the only reliable anchor is GLFW's own connect frame.
+# This is a third-party leak, not an Orrery one.
+#
+# Deliberately narrow: LeakSanitizer matches a suppression against every frame
+# of a leak's stack, so this hides only leaks allocated beneath
+# _glfwConnectX11. Leaks from Orrery code (even ones passing through glfwInit
+# elsewhere) are still reported.
+leak:_glfwConnectX11

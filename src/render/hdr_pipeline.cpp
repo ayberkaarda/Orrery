@@ -46,8 +46,9 @@ core::Result<HdrPipeline, std::string> HdrPipeline::create(int width, int height
     }
     // The scene pass needs multisample colour and depth textures.
     GLint max_samples = 1;
-    for (const GLenum limit :
-         {GL_MAX_SAMPLES, GL_MAX_COLOR_TEXTURE_SAMPLES, GL_MAX_DEPTH_TEXTURE_SAMPLES}) {
+    constexpr std::array<GLenum, 3> kLimits{GL_MAX_SAMPLES, GL_MAX_COLOR_TEXTURE_SAMPLES,
+                                            GL_MAX_DEPTH_TEXTURE_SAMPLES};
+    for (const GLenum limit : kLimits) {
         GLint value = 1;
         glGetIntegerv(limit, &value);
         max_samples = limit == GL_MAX_SAMPLES ? value : std::min(max_samples, value);

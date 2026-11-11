@@ -112,8 +112,11 @@ ErrorStats relative_errors(std::span<const Vec3<space::Acceleration>> a,
     for (std::size_t i = 0; i < a.size(); ++i) {
         e[i] = norm(a[i] - ref[i]).value() / norm(ref[i]).value();
     }
-    std::sort(e.begin(), e.end());
     ErrorStats s;
+    if (e.empty()) {
+        return s;
+    }
+    std::sort(e.begin(), e.end());
     s.median = e[e.size() / 2];
     s.p99 = e[(e.size() * 99) / 100];
     s.max = e.back();
