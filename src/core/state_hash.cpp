@@ -44,6 +44,7 @@ std::uint64_t state_hash(const SimState& state) noexcept {
         hash = fnv1a_append(hash, bits(bodies.velocity_x()[i].value()));
         hash = fnv1a_append(hash, bits(bodies.velocity_y()[i].value()));
         hash = fnv1a_append(hash, bits(bodies.velocity_z()[i].value()));
+        hash = fnv1a_append(hash, bits(bodies.radii()[i].value()));
     }
     return hash;
 }
