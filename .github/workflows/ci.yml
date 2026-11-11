@@ -243,10 +243,40 @@ jobs:
       - name: Dependency boundaries (configured build tree)
         run: python tools/check_deps.py --build-dir build/linux-ci-headless
       - name: clang-tidy
+        timeout-minutes: 25
         run: |
           test -f build/linux-ci-headless/compile_commands.json
-          git ls-files 'src/*.cpp' | xargs -r clang-tidy-17 -p build/linux-ci-headless --quiet
+          python3 - <<'PY'
+          import json, os, sys
+          ws = os.path.realpath(os.environ["GITHUB_WORKSPACE"])
+          roots = [os.path.join(ws, "src") + os.sep, os.path.join(ws, "tests") + os.sep]
+          files = set()
+          for e in json.load(open("build/linux-ci-headless/compile_commands.json")):
+              p = e["file"]
+              if not os.path.isabs(p):
+                  p = os.path.join(e["directory"], p)
+              p = os.path.realpath(p)
+              if p.endswith(".cpp") and p.startswith(tuple(roots)):
+                  if "vcpkg_installed" in p or "/build/" in p[len(ws):]:
+                      continue
+                  files.add(p)
+          open("tidy-files.txt", "w").write("\n".join(sorted(files)) + "\n")
+          print("clang-tidy files:", len(files))
+          if not files:
+              sys.exit("no translation units selected for clang-tidy")
+          PY
+          start=$(date +%s)
+          rc=0
+          xargs -a tidy-files.txt -P "$(nproc)" -n 2 clang-tidy-17 -p build/linux-ci-headless --quiet "--header-filter=^${GITHUB_WORKSPACE}/(src|tests)/.*" || rc=$?
+          echo "clang-tidy elapsed: $(( $(date +%s) - start ))s (exit $rc)"
+          exit $rc
       - name: cppcheck
+        timeout-minutes: 10
         run: |
+          start=$(date +%s)
+          rc=0
           cppcheck --std=c++20 --enable=warning,performance,portability --error-exitcode=1 \
-            --inline-suppr --suppress=missingIncludeSystem -I src -q src
+            -j "$(nproc)" --inline-suppr --suppress=missingIncludeSystem \
+            --suppress='*:*vcpkg*' --suppress='*:*build/*' -I src -q src tests || rc=$?
+          echo "cppcheck elapsed: $(( $(date +%s) - start ))s (exit $rc)"
+          exit $rc
