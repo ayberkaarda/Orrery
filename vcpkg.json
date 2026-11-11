@@ -5,6 +5,7 @@
   "description": "Physics laboratory: space dynamics, aerodynamics and atmospheric entry.",
   "builtin-baseline": "2ec0f1747d8186a5c9babe276e2ad57cd2b12d2a",
   "dependencies": [
-    "catch2"
+    "catch2",
+    "nlohmann-json"
   ]
 }
