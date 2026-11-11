@@ -301,6 +301,10 @@ void make_native_context_current(void* context) noexcept {
     }
 }
 
+void* native_window(const GlContext& context) noexcept {
+    return context.impl_ ? context.impl_->window.get() : nullptr;
+}
+
 std::uint64_t current_context_serial() noexcept {
     auto* window = static_cast<GLFWwindow*>(current_native_context());
     if (window == nullptr) {
