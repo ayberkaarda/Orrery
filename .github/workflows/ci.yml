@@ -29,6 +29,7 @@ jobs:
   build:
     name: build (${{ matrix.name }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix:
@@ -54,28 +55,28 @@ jobs:
       - name: Install Linux toolchain
         if: runner.os == 'Linux'
         run: |
-          retry() { for i in 1 2 3; do "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
-          retry sudo apt-get update
-          retry sudo apt-get install -y $LINUX_DEPS
+          APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
+          retry $APT update
+          retry $APT install -y $LINUX_DEPS
           if [ "${{ matrix.cc }}" = "gcc-13" ]; then
             if command -v g++-13 >/dev/null 2>&1 && command -v gcc-13 >/dev/null 2>&1; then
               echo "gcc-13/g++-13 already installed"
             else
-              retry sudo apt-get install -y gcc-13 g++-13
+              retry $APT install -y gcc-13 g++-13
             fi
           else
             if command -v clang-17 >/dev/null 2>&1 && command -v clang++-17 >/dev/null 2>&1; then
               echo "clang-17 already installed; skipping apt.llvm.org"
             else
-              retry sudo apt-get install -y ca-certificates curl gnupg
+              retry $APT install -y ca-certificates curl gnupg
               # LLVM archive key: https://apt.llvm.org/ (Install section).
               # Scope trust to this repository through a dedicated signed-by keyring.
-              retry curl -fsSLo /tmp/llvm-key.asc https://apt.llvm.org/llvm-snapshot.gpg.key
+              retry curl --connect-timeout 20 --max-time 120 -fsSLo /tmp/llvm-key.asc https://apt.llvm.org/llvm-snapshot.gpg.key
               gpg --batch --yes --dearmor -o /tmp/llvm-key.gpg /tmp/llvm-key.asc
               sudo install -m 644 /tmp/llvm-key.gpg /usr/share/keyrings/llvm-archive-keyring.gpg
               echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
-              retry sudo apt-get update
-              retry sudo apt-get install -y clang-17
+              retry $APT update
+              retry $APT install -y clang-17
             fi
           fi
       - name: Set up MSVC
@@ -148,6 +149,7 @@ jobs:
   asan:
     name: asan (ubuntu-24.04-gcc-13)
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       CC: gcc-13
@@ -156,14 +158,14 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install toolchain
         run: |
-          retry() { for i in 1 2 3; do "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
+          APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
           if command -v g++-13 >/dev/null 2>&1 && command -v gcc-13 >/dev/null 2>&1; then
             echo "gcc-13/g++-13 already installed"
-            retry sudo apt-get update
-            retry sudo apt-get install -y $LINUX_DEPS
+            retry $APT update
+            retry $APT install -y $LINUX_DEPS
           else
-            retry sudo apt-get update
-            retry sudo apt-get install -y $LINUX_DEPS gcc-13 g++-13
+            retry $APT update
+            retry $APT install -y $LINUX_DEPS gcc-13 g++-13
           fi
       - uses: actions/setup-python@v5
         with:
@@ -191,6 +193,7 @@ jobs:
   lint:
     name: lint (format, tidy, cppcheck, deps)
     runs-on: ubuntu-22.04
+    timeout-minutes: 30
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       CC: clang-17
@@ -199,21 +202,21 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install tools
         run: |
-          retry() { for i in 1 2 3; do "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
-          retry sudo apt-get update
-          retry sudo apt-get install -y $LINUX_DEPS cppcheck
+          APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
+          retry $APT update
+          retry $APT install -y $LINUX_DEPS cppcheck
           if command -v clang-17 >/dev/null 2>&1 && command -v clang-tidy-17 >/dev/null 2>&1; then
             echo "clang-17 and clang-tidy-17 already installed; skipping apt.llvm.org"
           else
-            retry sudo apt-get install -y ca-certificates curl gnupg
+            retry $APT install -y ca-certificates curl gnupg
             # LLVM archive key: https://apt.llvm.org/ (Install section).
             # Scope trust to this repository through a dedicated signed-by keyring.
-            retry curl -fsSLo /tmp/llvm-key.asc https://apt.llvm.org/llvm-snapshot.gpg.key
+            retry curl --connect-timeout 20 --max-time 120 -fsSLo /tmp/llvm-key.asc https://apt.llvm.org/llvm-snapshot.gpg.key
             gpg --batch --yes --dearmor -o /tmp/llvm-key.gpg /tmp/llvm-key.asc
             sudo install -m 644 /tmp/llvm-key.gpg /usr/share/keyrings/llvm-archive-keyring.gpg
             echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
-            retry sudo apt-get update
-            retry sudo apt-get install -y clang-17 clang-tidy-17
+            retry $APT update
+            retry $APT install -y clang-17 clang-tidy-17
           fi
       - uses: actions/setup-python@v5
         with:
