@@ -1,12 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <cstddef>
-#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <ios>
 #include <istream>
-#include <new>
 #include <optional>
 #include <sstream>
 #include <stdexcept>
@@ -16,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "../core/allocation_failure_injection.h"
 #include "orrery/scene/error.h"
 #include "orrery/scene/experiment.h"
 #include "orrery/scene/limits.h"
@@ -28,37 +27,6 @@ using scene::SceneErrorCode;
 using scene::test::document_with_bodies;
 using scene::test::scenario_path;
 using scene::test::sun_json;
-
-namespace {
-
-// Allocation fault injection for this test executable: while non-negative,
-// this counts down the global allocations still allowed to succeed; the
-// allocation that finds it at zero throws std::bad_alloc and disarms it.
-long long allocations_before_failure = -1;
-
-} // namespace
-
-void* operator new(std::size_t size) {
-    if (allocations_before_failure == 0) {
-        allocations_before_failure = -1;
-        throw std::bad_alloc();
-    }
-    if (allocations_before_failure > 0) {
-        --allocations_before_failure;
-    }
-    if (void* memory = std::malloc(size == 0 ? 1 : size)) {
-        return memory;
-    }
-    throw std::bad_alloc();
-}
-
-void operator delete(void* memory) noexcept {
-    std::free(memory);
-}
-
-void operator delete(void* memory, std::size_t) noexcept {
-    std::free(memory);
-}
 
 namespace {
 
@@ -130,18 +98,19 @@ template <typename F> std::size_t inject_allocation_failures(F&& call) {
         bool escaped = false;
         bool fired = false;
         std::optional<scene::SceneError> error;
-        allocations_before_failure = failure_at;
-        try {
-            auto result = call();
-            fired = allocations_before_failure == -1;
-            allocations_before_failure = -1;
-            if (!result.has_value()) {
-                error = result.error();
+        {
+            orrery::test::AllocationFailureScope inject(failure_at);
+            try {
+                auto result = call();
+                inject.disarm();
+                if (!result.has_value()) {
+                    error = result.error();
+                }
+            } catch (...) {
+                inject.disarm();
+                escaped = true;
             }
-        } catch (...) {
-            fired = allocations_before_failure == -1;
-            allocations_before_failure = -1;
-            escaped = true;
+            fired = inject.fired();
         }
         CAPTURE(failure_at);
         CHECK_FALSE(escaped);
@@ -360,15 +329,18 @@ TEST_CASE("allocation failures become out_of_memory errors", "[scene][limits][al
         std::size_t injected = 0;
         for (long long failure_at = 0;; ++failure_at) {
             bool escaped = false;
+            bool fired = false;
             std::optional<scene::SceneError> error;
-            allocations_before_failure = failure_at;
-            try {
-                error = scene::validate(scenario);
-            } catch (...) {
-                escaped = true;
+            {
+                orrery::test::AllocationFailureScope inject(failure_at);
+                try {
+                    error = scene::validate(scenario);
+                } catch (...) {
+                    escaped = true;
+                }
+                inject.disarm();
+                fired = inject.fired();
             }
-            const bool fired = allocations_before_failure == -1;
-            allocations_before_failure = -1;
             CAPTURE(failure_at);
             CHECK_FALSE(escaped);
             if (!fired) {

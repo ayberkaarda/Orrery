@@ -2,7 +2,6 @@
 
 #include <cmath>
 #include <cstddef>
-#include <cstdlib>
 #include <limits>
 #include <new>
 #include <stdexcept>
@@ -12,40 +11,10 @@
 #include <variant>
 #include <vector>
 
+#include "allocation_failure_injection.h"
 #include "orrery/core/body_store.h"
 
 using namespace orrery::core;
-
-namespace {
-
-// Allocation fault injection for this test executable: while non-negative,
-// this counts down the global allocations still allowed to succeed; the
-// allocation that finds it at zero throws std::bad_alloc and disarms it.
-long long allocations_before_failure = -1;
-
-} // namespace
-
-void* operator new(std::size_t size) {
-    if (allocations_before_failure == 0) {
-        allocations_before_failure = -1;
-        throw std::bad_alloc();
-    }
-    if (allocations_before_failure > 0) {
-        --allocations_before_failure;
-    }
-    if (void* memory = std::malloc(size == 0 ? 1 : size)) {
-        return memory;
-    }
-    throw std::bad_alloc();
-}
-
-void operator delete(void* memory) noexcept {
-    std::free(memory);
-}
-
-void operator delete(void* memory, std::size_t) noexcept {
-    std::free(memory);
-}
 
 namespace {
 
@@ -249,13 +218,19 @@ TEST_CASE("copy assignment is all-or-nothing under allocation failure", "[core][
         BodyStore destination = original;
         REQUIRE(destination.position_x().size() == 1);
         bool threw = false;
-        allocations_before_failure = failure_at;
-        try {
-            destination = source;
-        } catch (const std::bad_alloc&) {
-            threw = true;
+        bool fired = false;
+        {
+            orrery::test::AllocationFailureScope inject(failure_at);
+            try {
+                destination = source;
+            } catch (const std::bad_alloc&) {
+                threw = true;
+            }
+            inject.disarm();
+            fired = inject.fired();
         }
-        allocations_before_failure = -1;
+        // Only the injected failure can make the assignment throw.
+        REQUIRE((fired || !threw));
 
         INFO("allocation failure injected at " << failure_at);
         REQUIRE(columns_consistent(destination));

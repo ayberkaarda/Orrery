@@ -17,10 +17,14 @@ foreach(module IN ITEMS geom atmo aero render)
 endforeach()
 
 # Core: unit and property tests (including the former smoke test).
+# allocation_failure_injection.cpp replaces the global operator new/delete
+# family of each executable that lists it (allocation-failure tests).
 add_executable(orrery_test_core
     core/test_module_info.cpp
     core/test_quantity.cpp
     core/test_units.cpp
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp
     core/test_body_store.cpp
     core/test_sim_state.cpp
     core/test_kepler.cpp)
@@ -34,6 +38,8 @@ catch_discover_tests(orrery_test_core DISCOVERY_MODE PRE_TEST)
 # Fixtures and bundled scenarios are located through compile-time paths.
 add_executable(orrery_test_scene
     smoke/test_scene.cpp
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp
     scene/scene_test_support.h
     scene/test_scenario_load.cpp
     scene/test_scenario_validation.cpp
