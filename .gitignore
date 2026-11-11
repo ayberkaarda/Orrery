@@ -1,0 +1,32 @@
+# Build output
+build/
+out/
+cmake-build-*/
+CMakeFiles/
+CMakeCache.txt
+compile_commands.json
+
+# Local presets and package manager state
+CMakeUserPresets.json
+vcpkg_installed/
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+
+# Runtime / profiling
+*.log
+*.tracy
+imgui.ini
+
+# OS
+.DS_Store
+Thumbs.db
