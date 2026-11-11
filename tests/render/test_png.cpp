@@ -7,9 +7,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <span>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "orrery/render/png.h"
@@ -87,8 +87,9 @@ TEST_CASE("Written PNG parses back: signature, IHDR, CRCs, zlib and pixels", "[r
 
     std::ifstream file(path, std::ios::binary);
     REQUIRE(file);
-    const std::vector<std::uint8_t> bytes((std::istreambuf_iterator<char>(file)),
-                                          std::istreambuf_iterator<char>());
+    std::vector<std::uint8_t> bytes(std::filesystem::file_size(path));
+    file.read(reinterpret_cast<char*>(bytes.data()), static_cast<std::streamsize>(bytes.size()));
+    bytes.resize(static_cast<std::size_t>(file.gcount()));
     file.close();
     std::filesystem::remove(path);
 
@@ -248,6 +249,7 @@ TEST_CASE("PNG reader rejects corrupt input with a clear error", "[render][png]"
 
     SECTION("bad signature") {
         std::vector<std::uint8_t> bad = good;
+        REQUIRE(bad.size() > 1);
         bad[1] = 'Q';
         auto result = decode_png(bad);
         REQUIRE_FALSE(result.has_value());

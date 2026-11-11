@@ -4,10 +4,10 @@
 #include <array>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <set>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <vector>
 
 #include "orrery/render/embedded_shaders.h"
@@ -19,7 +19,14 @@ namespace {
 
 std::string read_normalized(const std::filesystem::path& path) {
     std::ifstream file(path, std::ios::binary);
-    std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+    std::error_code ec;
+    const auto size = std::filesystem::file_size(path, ec);
+    std::string text;
+    if (file && !ec) {
+        text.assign(static_cast<std::size_t>(size), '\0');
+        file.read(text.data(), static_cast<std::streamsize>(text.size()));
+        text.resize(static_cast<std::size_t>(file.gcount()));
+    }
     std::string out;
     out.reserve(text.size());
     for (std::size_t i = 0; i < text.size(); ++i) {
