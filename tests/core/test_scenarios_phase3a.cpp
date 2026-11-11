@@ -217,7 +217,7 @@ TEST_CASE("figure-eight with Yoshida4 for comparison", "[scene][phase3a]") {
     Yoshida4 yoshida;
     const double delta = figure_eight_period / 2000.0;
     const FigureEightRun run = run_figure_eight(100, [&](SimState& s, double dt) {
-        const auto steps = static_cast<long long>(std::llround(dt / delta));
+        const auto steps = std::llround(dt / delta);
         const double h = dt / static_cast<double>(steps);
         advance(yoshida, s, space::Time(h), steps, gravity);
         return 4 * steps;
