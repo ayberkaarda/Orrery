@@ -75,6 +75,11 @@ OffscreenRenderer::create(GlContext context, int width, int height, const HdrSet
 }
 
 core::Result<ImageRgba8, std::string> OffscreenRenderer::render(const SceneCallback& scene) {
+    return render(scene, OverlayCallback{});
+}
+
+core::Result<ImageRgba8, std::string> OffscreenRenderer::render(const SceneCallback& scene,
+                                                                const OverlayCallback& overlay) {
     context_.make_current();
     context_.reset_debug_error_count();
     pipeline_->begin_scene();
@@ -83,6 +88,12 @@ core::Result<ImageRgba8, std::string> OffscreenRenderer::render(const SceneCallb
         context_.make_current();
     }
     pipeline_->resolve();
+    if (overlay) {
+        pipeline_->begin_overlay();
+        overlay(pipeline_->frame());
+        context_.make_current();
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
     ImageRgba8 image = pipeline_->read_srgb();
     glFinish();
     if (const std::size_t errors = context_.debug_error_count(); errors > 0) {

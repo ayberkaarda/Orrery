@@ -21,6 +21,11 @@ namespace orrery::render {
 // alongside the OffscreenRenderer.
 using SceneCallback = std::function<void(const FrameInfo&)>;
 
+// Called after tone mapping with the 8-bit sRGB target bound (see
+// HdrPipeline::begin_overlay); draws display-referred content such as the
+// user interface on top of the image.
+using OverlayCallback = std::function<void(const FrameInfo&)>;
+
 // Owns one hidden-window context and the pipeline built in it. Contexts are
 // not shared, so the renderer releases its GL objects with its own context
 // current: destruction and move assignment make that context current, delete
@@ -54,6 +59,9 @@ public:
     // if the driver reported a KHR_debug error (type ERROR or severity HIGH)
     // during the frame.
     [[nodiscard]] core::Result<ImageRgba8, std::string> render(const SceneCallback& scene);
+    // Same, with `overlay` drawn into the sRGB target after tone mapping.
+    [[nodiscard]] core::Result<ImageRgba8, std::string> render(const SceneCallback& scene,
+                                                               const OverlayCallback& overlay);
 
     [[nodiscard]] GlContext& context() noexcept { return context_; }
     [[nodiscard]] HdrPipeline& pipeline() noexcept { return *pipeline_; }

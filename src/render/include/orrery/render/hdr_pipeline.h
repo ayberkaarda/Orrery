@@ -56,6 +56,10 @@ public:
     void begin_scene() const;
     // Resolves MSAA and tone maps into the sRGB target.
     void resolve() const;
+    // Binds the sRGB target (valid after resolve()) for display-referred
+    // overlays such as the user interface: colours are written as stored
+    // sRGB-encoded values (GL_FRAMEBUFFER_SRGB off), without depth.
+    void begin_overlay() const;
     // Reads the sRGB target, rows top to bottom.
     [[nodiscard]] ImageRgba8 read_srgb() const;
 
