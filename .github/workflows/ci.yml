@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -196,13 +197,15 @@ jobs:
   lint:
     name: lint (format, tidy, cppcheck, deps)
     runs-on: ubuntu-22.04
-    timeout-minutes: 30
+    timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 75 || 30 }}
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       CC: clang-17
       CXX: clang++-17
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - name: Install tools
         run: |
           APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
@@ -243,13 +246,44 @@ jobs:
       - name: Dependency boundaries (configured build tree)
         run: python tools/check_deps.py --build-dir build/linux-ci-headless
       - name: clang-tidy
-        timeout-minutes: 25
+        # Full-project runs (manual/scheduled) get a longer budget; PR and push
+        # runs only analyse the changed first-party translation units.
+        timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 60 || 25 }}
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_SHA: ${{ github.sha }}
         run: |
           test -f build/linux-ci-headless/compile_commands.json
+          case "$EVENT_NAME" in
+            pull_request)
+              git fetch --no-tags origin "$BASE_REF"
+              git diff --name-only --diff-filter=ACMR "origin/$BASE_REF...HEAD" > changed-files.txt
+              export TIDY_MODE=changed
+              ;;
+            push)
+              if [ -z "$PUSH_BEFORE" ] || echo "$PUSH_BEFORE" | grep -Eq '^0+$' || ! git cat-file -e "$PUSH_BEFORE^{commit}" 2>/dev/null; then
+                git diff --name-only --diff-filter=ACMR HEAD~1 HEAD > changed-files.txt || : > changed-files.txt
+              else
+                git diff --name-only --diff-filter=ACMR "$PUSH_BEFORE" "$PUSH_SHA" > changed-files.txt
+              fi
+              export TIDY_MODE=changed
+              ;;
+            *)
+              : > changed-files.txt
+              export TIDY_MODE=all
+              ;;
+          esac
+          echo "mode: $TIDY_MODE"
           python3 - <<'PY'
-          import json, os, sys
+          import json, os
           ws = os.path.realpath(os.environ["GITHUB_WORKSPACE"])
           roots = [os.path.join(ws, "src") + os.sep, os.path.join(ws, "tests") + os.sep]
+          changed = None
+          if os.environ["TIDY_MODE"] == "changed":
+              changed = {os.path.realpath(os.path.join(ws, l.strip()))
+                         for l in open("changed-files.txt") if l.strip()}
           files = set()
           for e in json.load(open("build/linux-ci-headless/compile_commands.json")):
               p = e["file"]
@@ -259,12 +293,16 @@ jobs:
               if p.endswith(".cpp") and p.startswith(tuple(roots)):
                   if "vcpkg_installed" in p or "/build/" in p[len(ws):]:
                       continue
+                  if changed is not None and p not in changed:
+                      continue
                   files.add(p)
-          open("tidy-files.txt", "w").write("\n".join(sorted(files)) + "\n")
+          open("tidy-files.txt", "w").write("".join(f + chr(10) for f in sorted(files)))
           print("clang-tidy files:", len(files))
-          if not files:
-              sys.exit("no translation units selected for clang-tidy")
           PY
+          if [ ! -s tidy-files.txt ]; then
+            echo "No first-party translation units to analyse with clang-tidy; skipping."
+            exit 0
+          fi
           start=$(date +%s)
           rc=0
           xargs -a tidy-files.txt -P "$(nproc)" -n 2 clang-tidy-17 -p build/linux-ci-headless --quiet "--header-filter=^${GITHUB_WORKSPACE}/(src|tests)/.*" || rc=$?
