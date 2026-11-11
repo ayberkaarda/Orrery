@@ -41,6 +41,8 @@ public:
     }
     TempFile(const TempFile&) = delete;
     TempFile& operator=(const TempFile&) = delete;
+    TempFile(TempFile&&) = delete;
+    TempFile& operator=(TempFile&&) = delete;
     ~TempFile() {
         std::error_code ignored;
         std::filesystem::remove(path_, ignored);

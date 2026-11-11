@@ -10,6 +10,8 @@
 #include <ios>
 #include <istream>
 #include <map>
+#include <optional>
+#include <ranges>
 #include <set>
 #include <streambuf>
 #include <string_view>
@@ -463,8 +465,7 @@ Scene build_or_throw(const Scenario& scenario) {
         for (std::optional<std::size_t> i = start; i && !absolute[*i]; i = parents[*i]) {
             chain.push_back(*i);
         }
-        for (auto it = chain.rbegin(); it != chain.rend(); ++it) {
-            const std::size_t i = *it;
+        for (const std::size_t i : std::views::reverse(chain)) {
             const BodySpec& body = scenario.bodies[i];
             if (const auto* cartesian = std::get_if<CartesianSpec>(&body.orbit)) {
                 absolute[i] = core::CartesianState{cartesian->position, cartesian->velocity};
@@ -508,9 +509,13 @@ Scene build_or_throw(const Scenario& scenario) {
             }
             aero.value = it->second;
         }
-        const auto added =
-            scene.state.bodies().add(core::BodyInit{body.name, make_kind(body, aero), body.mass,
-                                                    absolute[i]->position, absolute[i]->velocity});
+        const std::optional<core::CartesianState>& resolved = absolute[i];
+        if (!resolved.has_value()) {
+            throw SceneFailure{
+                SceneError{SceneErrorCode::internal_error, {}, "body state unresolved", {}, {}}};
+        }
+        const auto added = scene.state.bodies().add(core::BodyInit{
+            body.name, make_kind(body, aero), body.mass, resolved->position, resolved->velocity});
         if (!added) {
             throw SceneFailure{
                 SceneError{SceneErrorCode::body_error,
@@ -597,8 +602,11 @@ public:
     }
     CheckedFileBuffer(const CheckedFileBuffer&) = delete;
     CheckedFileBuffer& operator=(const CheckedFileBuffer&) = delete;
+    CheckedFileBuffer(CheckedFileBuffer&&) = delete;
+    CheckedFileBuffer& operator=(CheckedFileBuffer&&) = delete;
     ~CheckedFileBuffer() override {
         if (file_ != nullptr) {
+            // NOLINTNEXTLINE(cppcoreguidelines-owning-memory): FILE* is closed here by design.
             std::fclose(file_);
         }
     }
