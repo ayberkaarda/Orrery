@@ -2,6 +2,10 @@ add_library(orrery_core STATIC
     module.cpp
     body_store.cpp
     kepler.cpp
+    newtonian_gravity.cpp
+    integrator.cpp
+    conservation.cpp
+    state_hash.cpp
     include/orrery/core/module.h
     include/orrery/core/dimension.h
     include/orrery/core/quantity.h
@@ -12,7 +16,11 @@ add_library(orrery_core STATIC
     include/orrery/core/body.h
     include/orrery/core/body_store.h
     include/orrery/core/sim_state.h
-    include/orrery/core/kepler.h)
+    include/orrery/core/kepler.h
+    include/orrery/core/force_model.h
+    include/orrery/core/integrator.h
+    include/orrery/core/conservation.h
+    include/orrery/core/state_hash.h)
 add_library(orrery::core ALIAS orrery_core)
 
 target_include_directories(orrery_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
