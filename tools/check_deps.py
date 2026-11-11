@@ -74,7 +74,11 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 
 # Approved third-party link dependencies, per first-party target, as spelled
 # in target_link_libraries. Anything else in the declared graph fails.
+# orrery_core: oneTBB (Apache-2.0, approved for Phase 3a) runs the per-body
+# Barnes-Hut force loop in parallel. It is a CPU threading library with no
+# graphics dependency; the graphics-free checks below still inspect it.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
+    "orrery_core": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
 }
 
