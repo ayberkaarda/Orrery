@@ -80,10 +80,13 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # orrery_render (Phase 4a): GLFW (window and context), glad (OpenGL loader)
 # and glm (header-only render math). Graphics libraries are approved for
 # orrery_render only; GRAPHICS_FREE_TARGETS below are still checked.
+# orrery_render (Phase 4b): Dear ImGui (docking branch, GLFW and OpenGL 3
+# backends) and ImPlot for the UI layer, both private.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_core": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
-    "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only"},
+    "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
+                      "implot::implot"},
 }
 
 GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo")
