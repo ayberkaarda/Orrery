@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "name": "Sgr A* and the star S2 (Newtonian)",
+  "units": { "length": "AU", "mass": "Msun", "time": "day", "angle": "deg" },
+  "metadata": {
+    "source": "GRAVITY Collaboration (Abuter, R. et al.) 2020, Detection of the Schwarzschild precession in the orbit of the star S2 near the Galactic centre massive black hole, A&A 636, L5 (arXiv:2004.07187), Table E.1 best fit: M = 4.261e6 Msun, R0 = 8246.7 pc, a = 125.058 mas, e = 0.884649, i = 134.567 deg, omega = 66.263 deg, Omega = 228.171 deg, P = 16.0455 yr (osculating elements for the 2010 apocentre epoch). a in AU = 0.125058 arcsec x 8246.7 pc = 1031.3158086 AU (1 arcsec at 1 pc subtends 1 AU). For comparison Gillessen et al. 2017, ApJ 837, 30 give a = 0.1255 arcsec, e = 0.884 and P = 16.00 yr",
+    "epoch": "t = 0 at the apocentre of the published orbit (mean anomaly 180 deg; elements osculating at the 2010 apocentre)",
+    "description": "Point-mass Newtonian model of S2 around Sgr A*. The orbit frame is the sky frame of the paper (inclination relative to the plane of the sky); the Newtonian period does not depend on the orientation. S2 is entered with zero mass (a test star): its mass is about 1e-5 of the black hole's and changes the Kepler period by a relative amount of that order. Kepler period with G = k^2: 2 pi sqrt(a^3 / (k^2 M)) = 5860.44 day = 16.0450 Julian years."
+  },
+  "time": 0.0,
+  "bodies": [
+    {
+      "name": "Sgr A*",
+      "kind": "blackhole",
+      "mass": 4261000.0,
+      "spin": 0.0,
+      "state": { "position": [0.0, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0] }
+    },
+    {
+      "name": "S2",
+      "kind": "star",
+      "mass": 0.0,
+      "elements": { "parent": "Sgr A*", "a": 1031.3158086, "e": 0.884649, "i": 134.567, "raan": 228.171, "argp": 66.263, "ma": 180.0 }
+    }
+  ]
+}

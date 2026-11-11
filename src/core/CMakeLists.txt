@@ -29,4 +29,34 @@ target_compile_definitions(orrery_core PRIVATE
     ORRERY_VERSION_MINOR=${PROJECT_VERSION_MINOR}
     ORRERY_VERSION_PATCH=${PROJECT_VERSION_PATCH})
 
+# Phase 3a: Barnes-Hut tree gravity (oneTBB parallel_for, deterministic per
+# body) and the IAS15 adaptive integrator. oneTBB stays a private dependency
+# of core (tools/check_deps.py THIRD_PARTY_DEPS).
+find_package(TBB CONFIG REQUIRED)
+target_sources(orrery_core PRIVATE
+    octree.cpp
+    barnes_hut.cpp
+    ias15.cpp
+    include/orrery/core/octree.h
+    include/orrery/core/barnes_hut.h
+    include/orrery/core/ias15.h)
+target_link_libraries(orrery_core PRIVATE TBB::tbb)
+
+# Phase 3b: black holes (Paczynski-Wiita), tidal disruption, horizon
+# absorption, collisions and the event log.
+target_sources(orrery_core PRIVATE
+    black_hole.cpp
+    paczynski_wiita_gravity.cpp
+    collision.cpp
+    horizon.cpp
+    tidal.cpp
+    event_step.cpp
+    include/orrery/core/black_hole.h
+    include/orrery/core/paczynski_wiita_gravity.h
+    include/orrery/core/event.h
+    include/orrery/core/collision.h
+    include/orrery/core/horizon.h
+    include/orrery/core/tidal.h
+    include/orrery/core/event_step.h)
+
 orrery_configure_target(orrery_core)

@@ -1,0 +1,103 @@
+{
+  "version": 1,
+  "name": "Solar system at J2000 (JPL Horizons)",
+  "units": { "length": "AU", "mass": "Msun", "time": "day", "angle": "deg" },
+  "metadata": {
+    "source": "JPL Horizons API, https://ssd.jpl.nasa.gov/api/horizons.api, retrieved 2026-11-11 (every state used is from ephemeris DE441). Query: EPHEM_TYPE=VECTORS, CENTER=500@0 (solar-system barycentre), TLIST=2451545.0, TIME_TYPE=TDB, REF_SYSTEM=ICRF, REF_PLANE=ECLIPTIC (ecliptic and mean equinox of J2000.0), VEC_TABLE=2, VEC_CORR=NONE (geometric states), OUT_UNITS=AU-D. COMMAND: Sun 10, Mercury 199, Venus 299, Earth 399, Moon 301, Mars barycentre 4, Jupiter barycentre 5, Saturn barycentre 6, Uranus barycentre 7, Neptune barycentre 8. Masses are GM_body / GM_Sun with every GM taken from the Horizons physical-data headers (km^3/s^2): Sun 10, planets 199/299/399/499/599/699/799/899, Moon 301; planet-system masses add the satellites 501-504, 601-608, 701-705, 801",
+    "epoch": "2000-01-01 12:00:00 TDB (JD 2451545.0, J2000.0)",
+    "description": "Sun, Mercury, Venus, Earth, Moon and the Mars, Jupiter, Saturn, Uranus and Neptune system barycentres at J2000.0, barycentric ecliptic-J2000 frame, AU and AU/day, positions and velocities copied verbatim from the Horizons vector table. Satellites not listed above (Phobos, Deimos, small moons) are omitted from the system masses (Horizons lists no GM for Phobos and Deimos)."
+  },
+  "time": 0.0,
+  "bodies": [
+    {
+      "name": "Sun",
+      "kind": "star",
+      "mass": 1.0,
+      "state": {
+        "position": [-7.137179161607904E-03, -2.795997495567612E-03, 2.062985061910257E-04],
+        "velocity": [5.378460339618783E-06, -7.406916207973516E-06, -9.434293432137470E-08]
+      }
+    },
+    {
+      "name": "Mercury",
+      "kind": "planet",
+      "mass": 1.660120825375342e-07,
+      "state": {
+        "position": [-1.372307845370601E-01, -4.500836156309240E-01, -2.439200845186075E-02],
+        "velocity": [2.137177412835578E-02, -6.455396660044872E-03, -2.487957757771483E-03]
+      }
+    },
+    {
+      "name": "Venus",
+      "kind": "planet",
+      "mass": 2.447838287784771e-06,
+      "state": {
+        "position": [-7.254394755069969E-01, -3.545030569537367E-02, 4.122048053303724E-02],
+        "velocity": [8.034959761149407E-04, -2.030262561844178E-02, -3.235458586621571E-04]
+      }
+    },
+    {
+      "name": "Earth",
+      "kind": "planet",
+      "mass": 3.003489614915041e-06,
+      "state": {
+        "position": [-1.842722784343177E-01, 9.644456892709630E-01, 2.022132246085051E-04],
+        "velocity": [-1.720224660838933E-02, -3.166189060532839E-03, 1.064592514002072E-08]
+      }
+    },
+    {
+      "name": "Moon",
+      "kind": "moon",
+      "mass": 3.6943033105642786e-08,
+      "state": {
+        "position": [-1.862215600840044E-01, 9.626075632308897E-01, 4.446711984905560E-04],
+        "velocity": [-1.683057613107253E-02, -3.588367637063646E-03, -6.634893538849906E-06]
+      }
+    },
+    {
+      "name": "Mars system",
+      "kind": "planet",
+      "mass": 3.2271560713121924e-07,
+      "state": {
+        "position": [1.383578742584679E+00, -1.621231564790753E-02, -3.426136426966323E-02],
+        "velocity": [6.768779813732038E-04, 1.517984117494233E-02, 3.015574196696519E-04]
+      }
+    },
+    {
+      "name": "Jupiter system",
+      "kind": "planet",
+      "mass": 0.000954791891428992,
+      "state": {
+        "position": [3.994039981964449E+00, 2.935780109470535E+00, -1.015789781275531E-01],
+        "velocity": [-4.562935066413099E-03, 6.435799094013335E-03, 7.548517732342305E-05]
+      }
+    },
+    {
+      "name": "Saturn system",
+      "kind": "planet",
+      "mass": 0.00028588565798629077,
+      "state": {
+        "position": [6.399271680371201E+00, 6.567193619416989E+00, -3.688701277386623E-01],
+        "velocity": [-4.286973413503631E-03, 3.882908781806891E-03, 1.028535064646593E-04]
+      }
+    },
+    {
+      "name": "Uranus system",
+      "kind": "planet",
+      "mass": 4.366246207566392e-05,
+      "state": {
+        "position": [1.442471943522018E+01, -1.373711746626653E+01, -2.379353892930592E-01],
+        "velocity": [2.683484051759769E-03, 2.665288979504713E-03, -2.486640648937235E-05]
+      }
+    },
+    {
+      "name": "Neptune system",
+      "kind": "planet",
+      "mass": 5.151384800731221e-05,
+      "state": {
+        "position": [1.680490978889128E+01, -2.499455888678026E+01, 1.274291784264387E-01],
+        "velocity": [2.584652719387356E-03, 1.769493903808153E-03, -9.600395792023743E-05]
+      }
+    }
+  ]
+}

@@ -39,6 +39,29 @@ target_compile_definitions(orrery_test_core PRIVATE
 orrery_configure_target(orrery_test_core)
 catch_discover_tests(orrery_test_core DISCOVERY_MODE PRE_TEST)
 
+# Phase 3b: black holes, collisions and events.
+target_sources(orrery_test_core PRIVATE
+    core/test_black_hole.cpp
+    core/test_collisions.cpp
+    core/test_events.cpp)
+
+# Phase 3a: Barnes-Hut and IAS15. The force timing benchmark is tagged
+# [.benchmark] (hidden): it is not discovered by ctest and runs with
+# `orrery_test_core "[benchmark]"`.
+target_sources(orrery_test_core PRIVATE
+    core/test_barnes_hut.cpp
+    core/test_ias15.cpp)
+
+# Phase 3a embedded scenarios: loaded with orrery_scene, integrated with core.
+add_executable(orrery_test_phase3a_scenarios
+    core/gravity_test_support.h
+    core/test_scenarios_phase3a.cpp)
+target_link_libraries(orrery_test_phase3a_scenarios PRIVATE orrery_scene Catch2::Catch2WithMain)
+target_compile_definitions(orrery_test_phase3a_scenarios PRIVATE
+    ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
+orrery_configure_target(orrery_test_phase3a_scenarios)
+catch_discover_tests(orrery_test_phase3a_scenarios DISCOVERY_MODE PRE_TEST)
+
 # Scene: scenario and experiment formats (including the former smoke test).
 # Fixtures and bundled scenarios are located through compile-time paths.
 add_executable(orrery_test_scene

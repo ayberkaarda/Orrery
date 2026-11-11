@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <span>
 #include <string_view>
 #include <vector>
 
@@ -19,9 +20,35 @@ enum class IntegrationError : std::uint8_t {
     // A position or velocity became NaN or infinite during the step (for
     // example coincident sources without softening). The state is unchanged.
     non_finite_state,
+    // Adaptive integrators (IAS15): the step size the accuracy requires is
+    // too small to advance the time representation. The state is unchanged.
+    step_size_underflow,
 };
 
 [[nodiscard]] std::string_view to_string(IntegrationError error) noexcept;
+
+// Receives the accepted segments of one IIntegrator::step_observed call in
+// time order (encounter detection between the internal steps of an adaptive
+// integrator, see EventStepper).
+class IStepObserver {
+public:
+    virtual ~IStepObserver() = default;
+
+    // Segment [t0 + begin, t0 + end] of a call that started at time t0, with
+    // the position of every body at both ends (body order of `bodies`, whose
+    // kinds, masses and radii are those of the call). Returning true ends the
+    // call at the end of this segment (see step_observed).
+    virtual bool on_segment(const BodyStore& bodies, std::span<const Vec3<space::Length>> start,
+                            std::span<const Vec3<space::Length>> end, space::Time begin,
+                            space::Time end_offset) = 0;
+
+protected:
+    IStepObserver() = default;
+    IStepObserver(const IStepObserver&) = default;
+    IStepObserver(IStepObserver&&) = default;
+    IStepObserver& operator=(const IStepObserver&) = default;
+    IStepObserver& operator=(IStepObserver&&) = default;
+};
 
 // Fixed-step integrator of the equations of motion r'' = a(r) in space units.
 //
@@ -65,6 +92,19 @@ public:
 
     [[nodiscard]] virtual Result<space::Time, IntegrationError>
     step(SimState& state, space::Time dt, const IForceModel& forces) = 0;
+
+    // step() that reports its accepted segments to `observer`. The default
+    // (fixed-step integrators) has one segment, the whole step, reported after
+    // the state is committed; the call always covers dt. An adaptive
+    // integrator overrides it to report every accepted internal step before
+    // committing anything; if the observer returns true for a segment that
+    // ends before dt, the call stops there: the state is committed at the end
+    // of that segment, its time advances by the segment's end offset only,
+    // and the new time is returned. Otherwise the contract of step() holds,
+    // with the same arithmetic as step().
+    [[nodiscard]] virtual Result<space::Time, IntegrationError>
+    step_observed(SimState& state, space::Time dt, const IForceModel& forces,
+                  IStepObserver& observer);
 
 protected:
     IIntegrator() = default;

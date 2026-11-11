@@ -74,8 +74,31 @@ std::string_view to_string(IntegrationError error) noexcept {
             return "time step is not finite";
         case IntegrationError::non_finite_state:
             return "integration produced a non-finite position or velocity";
+        case IntegrationError::step_size_underflow:
+            return "adaptive step size became too small to advance the time";
     }
     return "unknown integration error";
+}
+
+Result<space::Time, IntegrationError> IIntegrator::step_observed(SimState& state, space::Time dt,
+                                                                 const IForceModel& forces,
+                                                                 IStepObserver& observer) {
+    const BodyStore& bodies = state.bodies();
+    std::vector<Vec3<space::Length>> start(bodies.size());
+    for (std::size_t i = 0; i < bodies.size(); ++i) {
+        start[i] = bodies.position(i);
+    }
+    auto result = step(state, dt, forces);
+    if (!result) {
+        return result;
+    }
+    std::vector<Vec3<space::Length>> end(bodies.size());
+    for (std::size_t i = 0; i < bodies.size(); ++i) {
+        end[i] = bodies.position(i);
+    }
+    // One segment covering the whole step: the return value cannot shorten it.
+    static_cast<void>(observer.on_segment(bodies, start, end, space::Time(0.0), dt));
+    return result;
 }
 
 Result<space::Time, IntegrationError> LeapfrogKdk::step(SimState& state, space::Time dt,
