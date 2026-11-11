@@ -145,3 +145,74 @@ Resource limits (`orrery/scene/limits.h`, shared by scenarios and experiment rec
 | Distinct probe `aero_ref` names in one scenario | 65,536 (far below 2^32, so an `AeroRef` never wraps to 0) |
 
 Files are read in chunks with checked reads: a read error after a successful open is an `io_error` (never a short or empty read), and an empty file reads as empty text (then a `syntax_error`). No exception crosses the scene API: running out of memory while reading, parsing, validating or building is reported as `out_of_memory`, and any other unexpected exception as `internal_error`.
+
+## Gravity and integrators (orrery_core, Phase 2)
+
+Headers: `force_model.h` (`IForceModel`, `NewtonianGravity`), `integrator.h` (`IIntegrator`, `LeapfrogKdk`, `Yoshida4`, `Rk4`, `make_integrator`), `conservation.h` (`ConservationDiagnostics`), `state_hash.h` (`state_hash`). Everything is in space units (AU, Msun, day).
+
+### Force model
+
+- Newtonian gravity by direct O(N^2) summation with Plummer softening eps (eps = 0 is exact):
+  a_i = sum over sources j != i of G m_j (r_j - r_i) / (|r_j - r_i|^2 + eps^2)^(3/2), with G = k^2 = 2.959122082855911e-4 AU^3 Msun^-1 day^-2 (Gauss constant).
+- Potential energy consistent with the force: U = - sum over source pairs i < j of G m_i m_j / (|r_j - r_i|^2 + eps^2)^(1/2), so a_i = -grad_i U / m_i also with softening (checked by central differences to 1e-7 relative).
+- Probes are test particles (`exerts_gravity` false): they are accelerated by every source, exert nothing, and do not appear in U. Integrating with or without a probe leaves the other bodies bit-identical (tested for all three integrators).
+- Zero-mass bodies have no field: a pair whose source mass is 0 contributes nothing (no 0 * infinity or 0 / 0 for coincident bodies), while a zero-mass body is still accelerated by every positive-mass source. A zero-mass body on top of a point source (eps = 0) remains singular.
+- Numeric range: for squared distances r^2 + eps^2 in [2^-200, 2^200] and masses that are 0 or in [2^-280, 2^280] Msun the direct formula is used (all intermediates are normal doubles). Any other pair is computed with the separation and eps scaled by an exact power of two (frexp/ldexp) and the factors ordered as (G m / d_s^2) u 2^(-2e), so no unscaled inverse cube is formed: separations of 1e110 AU, eps of 1e-200 or 1e200 AU and coincident bodies with positive eps give accurate finite forces and U, and force = -grad U still holds. Only a result that is itself outside the double range overflows or underflows.
+- Contract: the direct sum is the reference model for N <= 256. Measured cost at N = 256 (32640 pairs): 0.15 to 0.17 ms per force evaluation, varying from run to run (MSVC x64 Release, single thread; observational, not asserted; the test times the whole leapfrog loop and divides by the force evaluations). The range check costs nothing measurable: a same-binary comparison against the loop without it gave 0.147-0.158 ms versus 0.151-0.153 ms with bit-identical accelerations. Larger N is correct but scales as N^2.
+- Fixed summation order: pairs (i, j) are visited as i = 0..N-1, j = i+1..N-1 in body order, so each acceleration accumulates its terms in ascending source index; U is reduced in the same order. No unordered containers, no threads.
+- APPROXIMATION (Plummer softening, see also A14): 1/r^2 is replaced by r / (r^2 + eps^2)^(3/2) to bound close-encounter forces. Relative force error about 1.5 eps^2 / r^2 for r >> eps; dynamics are altered for r comparable to eps. eps = 0 disables it; the solar-system tests use eps = 0.
+- APPROXIMATION (Newtonian point masses): no general relativity, oblateness, tides or radiation forces. The largest neglected planetary effect is relativistic (Mercury's perihelion advance of 43 arcsec per century, relative force correction about 3e-8). Valid for separations far above the bodies' radii.
+
+### Integrators (ADR-002)
+
+| Integrator | Scheme | Order | Symplectic | Force evaluations per step |
+|---|---|---|---|---|
+| `LeapfrogKdk` (default) | v += a dt/2; x += v dt; v += a dt/2 | 2 | yes | 2 |
+| `Yoshida4` | Leapfrog KDK composed with weights (w1, w0, w1), merged half-kicks: kick w1/2, drift w1, kick (w1+w0)/2, drift w0, kick (w0+w1)/2, drift w1, kick w1/2 | 4 | yes | 4 |
+| `Rk4` (tests only) | classical Runge-Kutta on (x, v) | 4 | no | 4 |
+
+- Yoshida (1990) coefficients: w1 = 1 / (2 - 2^(1/3)) = 1.3512071919596578, w0 = -2^(1/3) / (2 - 2^(1/3)) = -1.7024143839193153; 2 w1 + w0 = 1 and 2 w1^3 + w0^3 = 0. 2^(1/3) is a correctly rounded literal, so the coefficients do not depend on the platform's `cbrt`.
+- Why symplectic by default: the N-body problem is Hamiltonian. A fixed-step symplectic map conserves a shadow Hamiltonian within O(dt^p) of the true one, so the energy error is bounded and oscillates; RK4's energy error grows linearly in time even though its local error is small.
+- `step(SimState&, dt, const IForceModel&)`: fixed step, dt must be finite (negative dt integrates backwards). On a non-finite result (for example coincident sources with eps = 0) the state is left unchanged and `IntegrationError::non_finite_state` is returned. Accelerations are not cached between steps, so a step depends only on the state it is given.
+- APPROXIMATION (fixed-step time discretisation): the global error scales as dt^order and is set by the shortest dynamical time (pericentre passage). Valid when dt is a small fraction of it; close encounters need adaptive steps, which this interface does not provide.
+
+### Conservation diagnostics
+
+- `ConservationDiagnostics::measure` returns total mass, kinetic energy sum m v^2 / 2, potential energy from the force model (same softening), total energy, linear momentum sum m v, angular momentum sum m r x v (about the origin), centre of mass and its velocity. Only sources of gravity are included: probes receive momentum without reaction, so including them would break conservation by construction.
+- Drifts against a baseline: |E - E0| / |E0|; |P - P0| / sum m |v|; |L - L0| / sum m |r x v|; |V_cm - V_cm0| / (sum m |v| / M). The scales replace |P0| and |L0| because those may vanish (barycentric frame). A zero scale gives drift 0 for an unchanged quantity and +infinity otherwise. The vector norms (`norm` in vec3.h) scale by an exact power of two when the squared length is outside [2^-900, 2^1000], so tiny or huge positive masses (tested with 1e-200 and 1e200 Msun) give the correct drift instead of 0, infinity or NaN.
+
+### Measured acceptance values (tests/core/test_integrators.cpp, test_conservation.cpp; MSVC x64 Release)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| Two-body vs analytic Kepler | a = 1.3 AU, e = 0.3, i = 12 deg, Sun + 3e-6 Msun, dt = T/2000; position error at T/4, T/2, T, 10 T | Yoshida4 5.8e-10, 1.4e-9, 2.7e-9, 2.7e-8 AU; Leapfrog 5.3e-6, 2.1e-5, 6.6e-5, 6.6e-4 AU; RK4 1.3e-11, 3.6e-11, 7.2e-11, 1.1e-9 AU | 5e-8 / 1e-3 / 2e-9 AU |
+| Kepler period | a = 1 AU, e = 0.5, Yoshida4 dt = T/1000, five successive periapsis passages | 365.256350 d each, relative error 2.4e-10 vs 2 pi sqrt(a^3 / mu) | 1e-9 |
+| Circular two-body, 100 orbits, Leapfrog | a = 1 AU, dt = T/150000 = 2.4e-3 d | 3.8e-7 AU | < 1e-6 AU |
+| Same with Yoshida4 | dt = T/1200 = 0.30 d | 4.4e-7 AU | < 1e-6 AU |
+| Sun + 8 planets, 1000 years, Yoshida4 | dt = 0.25 d (1461000 steps, about 1.6 s, observational), energy sampled every 50 steps | max abs(dE/E0) 1.4e-10, final 2.6e-14 | < 1e-9; every sample finite |
+| Momentum (same run) | | max linear momentum drift 6.0e-14, angular momentum drift 1.3e-13 | 10 DBL_EPSILON sqrt(steps) = 2.7e-12 |
+| Convergence order | e = 0.5, one orbit, step count doubled twice | Leapfrog 2.000, 2.000; Yoshida4 3.998, 3.999; RK4 4.13, 4.07 | expected order +- 0.15 |
+| RK4 secular vs symplectic bounded | e = 0.5, dt = T/200, 1000 orbits | RK4 abs(dE/E0) 9.3e-5 after 100 orbits, 9.3e-4 after 1000 (linear); Leapfrog max 2.7e-3 over orbits 1-100 and over 901-1000; Yoshida4 max 2.0e-5 in both windows | RK4 ratio 8 to 12; symplectic max not growing (factor < 1.05) |
+| Time reversibility | e = 0.6, 1000 steps forward then 1000 back | Leapfrog 2.5e-13 AU, Yoshida4 3.4e-13 AU | 1e-12 AU |
+
+- Choice of dt for the 1000-year run: the maximum energy error is set by Mercury's periapsis passages (e = 0.21, P = 88 d). With dt = 0.5 d (176 steps per Mercury orbit) the maximum was 2.2e-9, above the 1e-9 target; dt = 0.25 d (352 steps per orbit) gives 1.4e-10. The dt = 0.5 d figure is an observation from a development run and is not re-run or asserted by the tests (it would add about 0.8 s); only the dt = 0.25 d bound is enforced. The error at the end of the run (2.6e-14) is far smaller than the maximum because the symplectic energy error oscillates rather than accumulates; it is printed and required to be finite, not bounded separately.
+- Sampled maxima: every sampled drift (energy, momentum, angular momentum, and the per-step energy errors of the secular/bounded comparison) is checked with std::isfinite before it enters a maximum, and a non-finite sample fails the bound. A plain std::max(m, NaN) returns m and would discard it; a unit test of the accumulator covers this.
+- Linear and angular momentum are conserved exactly by the pairwise-symmetric force up to rounding; their drift grows as a rounding random walk, about DBL_EPSILON sqrt(steps).
+- Initial conditions of the solar-system run: Sun plus the eight planets (Earth and Moon merged) from the approximate J2000 mean elements of Standish (JPL, "Keplerian Elements for Approximate Positions of the Major Planets", table 1) and IAU 1976 reciprocal masses, shifted to the barycentre. They are realistic for conservation tests, not an ephemeris.
+
+### Determinism contract
+
+- Same initial state, dt, force model and integrator give a bit-identical state. The integration loop uses only IEEE-754 +, -, *, / and sqrt in a fixed order; all are correctly rounded, and fp contraction and fast-math are off project-wide (`/fp:precise`, `-fno-fast-math -ffp-contract=off`). Pairs outside the ordinary numeric range additionally use frexp and ldexp, which are exact (ldexp rounds only when its result is subnormal, as IEEE scaleB specifies); the golden scenario never leaves the ordinary range.
+- `state_hash`: 64-bit FNV-1a (offset basis 14695981039346656037, prime 1099511628211) over the time and, per body in store order, id, kind tag (`BodyKindTag` value: star 0, planet 1, moon 2, asteroid 3, black_hole 4, probe 5), kind payload (IEEE-754 bits of a black hole's spin, a probe's `aero_ref` value, 0 otherwise), mass, position x, y, z and velocity x, y, z; doubles contribute their IEEE-754 bit patterns, every word is widened to 64 bits and folded least significant byte first. Names are not hashed. The kind is hashed because it decides source membership: a planet and a probe with identical columns have different dynamics.
+- Golden scenario (`golden_run` in tests/core/gravity_test_support.h): the barycentric Sun + 8 planets state written as hexadecimal double literals, plus a 1e-12 Msun probe at (0, 1, 0) AU with velocity (-0.01720209895, 0, 0) AU/day; Plummer eps = 1e-4 AU; 10000 steps of 1 day.
+
+| State | Golden hash |
+|---|---|
+| Initial state (t = 0) | 0xaf61005ef03001b2 |
+| Leapfrog KDK, 10000 steps | 0xe0fa7b48f95f973e |
+| Yoshida4, 10000 steps | 0x9edf045b7f8169ad |
+| RK4, 10000 steps | 0xec2fbc333855be6d |
+
+- All four hashes are pinned by tests/core/test_determinism.cpp. Adding the kind words changed every value; the trajectories did not change (the previous hash format still gives the earlier pins 0xb7f630a04ca4e70a, 0x10e2f6e541855b5e, 0x1bf1e9628b4eda55, 0xe74be3e9fa28b8e1 on the same final states).
+- Platforms verified: MSVC 19.44 x64 Release (`/O2 /fp:precise`) and GCC 15.2 `-O3 -fno-fast-math -ffp-contract=off` on x86-64 Linux (WSL Ubuntu, standalone driver over the core sources) produce the same four hashes, and the same bits for scaled-path forces and potentials, so a single set is stored. Clang and non-x86 targets have not been checked.
+- The golden initial state is given as literals on purpose: building it from Kepler elements goes through sin, cos and atan2, whose last-bit results differ between C runtime libraries (measured: the MSVC and glibc barycentric states differ by 1 ulp in several components, which changes every hash). Determinism across platforms therefore holds for the integration loop; scenario set-up that uses transcendental functions is reproducible only per C runtime.

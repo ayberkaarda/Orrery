@@ -27,7 +27,12 @@ add_executable(orrery_test_core
     core/allocation_failure_injection.cpp
     core/test_body_store.cpp
     core/test_sim_state.cpp
-    core/test_kepler.cpp)
+    core/test_kepler.cpp
+    core/gravity_test_support.h
+    core/test_gravity.cpp
+    core/test_integrators.cpp
+    core/test_conservation.cpp
+    core/test_determinism.cpp)
 target_link_libraries(orrery_test_core PRIVATE orrery_core Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_core PRIVATE
     ORRERY_EXPECTED_VERSION="${PROJECT_VERSION}")
