@@ -58,6 +58,8 @@ std::string_view to_string(BodyError error) noexcept {
             return "black hole spin is outside [0, 1]";
         case BodyError::id_space_exhausted:
             return "body id space exhausted";
+        case BodyError::invalid_radius:
+            return "radius is not finite or is negative";
     }
     return "unknown body error";
 }
@@ -82,6 +84,7 @@ void BodyStore::swap(BodyStore& other) noexcept {
     swap(vx_, other.vx_);
     swap(vy_, other.vy_);
     swap(vz_, other.vz_);
+    swap(radii_, other.radii_);
 }
 
 Result<BodyId, BodyError> BodyStore::add(BodyInit init) {
@@ -111,6 +114,7 @@ Result<BodyId, BodyError> BodyStore::add(BodyInit init) {
     grow_for(vx_, new_size);
     grow_for(vy_, new_size);
     grow_for(vz_, new_size);
+    grow_for(radii_, new_size);
 
     const BodyId id{next_id_};
     if (next_id_ == std::numeric_limits<std::uint32_t>::max()) {
@@ -129,6 +133,7 @@ Result<BodyId, BodyError> BodyStore::add(BodyInit init) {
     vx_.push_back(init.velocity.x);
     vy_.push_back(init.velocity.y);
     vz_.push_back(init.velocity.z);
+    radii_.push_back(space::Length(0.0));
     return id;
 }
 
@@ -148,6 +153,7 @@ bool BodyStore::remove(BodyId id) {
     erase_at(vx_, i);
     erase_at(vy_, i);
     erase_at(vz_, i);
+    erase_at(radii_, i);
     return true;
 }
 
@@ -188,6 +194,24 @@ Result<BodyId, BodyError> BodyStore::set_velocity(std::size_t index,
     vx_[index] = velocity.x;
     vy_[index] = velocity.y;
     vz_[index] = velocity.z;
+    return body;
+}
+
+Result<BodyId, BodyError> BodyStore::set_radius(std::size_t index, space::Length radius) {
+    const BodyId body = ids_.at(index);
+    if (!isfinite(radius) || radius.value() < 0.0) {
+        return failure(BodyError::invalid_radius);
+    }
+    radii_[index] = radius;
+    return body;
+}
+
+Result<BodyId, BodyError> BodyStore::set_mass(std::size_t index, space::Mass mass) {
+    const BodyId body = ids_.at(index);
+    if (const auto error = validate_mass(kinds_[index], mass)) {
+        return failure(*error);
+    }
+    masses_[index] = mass;
     return body;
 }
 

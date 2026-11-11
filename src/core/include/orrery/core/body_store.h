@@ -36,6 +36,8 @@ enum class BodyError : std::uint8_t {
     invalid_spin,
     // All 2^32 ids of this store have been handed out.
     id_space_exhausted,
+    // Radius is NaN, infinite or negative.
+    invalid_radius,
 };
 
 [[nodiscard]] std::string_view to_string(BodyError error) noexcept;
@@ -92,6 +94,15 @@ public:
     [[nodiscard]] Result<BodyId, BodyError> set_velocity(std::size_t index,
                                                          const Vec3<space::Velocity>& velocity);
 
+    // Physical radius used by collision detection and the tidal-disruption
+    // test (Phase 3b). Every body starts as a point (radius 0); a point never
+    // collides with another point and is never tidally disrupted.
+    [[nodiscard]] space::Length radius(std::size_t index) const { return radii_.at(index); }
+    // Returns invalid_radius (body unchanged) for a NaN, infinite or negative radius.
+    [[nodiscard]] Result<BodyId, BodyError> set_radius(std::size_t index, space::Length radius);
+    // Same validation as add() for the body's kind; the body is unchanged on failure.
+    [[nodiscard]] Result<BodyId, BodyError> set_mass(std::size_t index, space::Mass mass);
+
     // Contiguous columns, in body order.
     [[nodiscard]] std::span<const BodyId> ids() const noexcept { return ids_; }
     [[nodiscard]] std::span<const space::Mass> masses() const noexcept { return masses_; }
@@ -101,6 +112,7 @@ public:
     [[nodiscard]] std::span<const space::Velocity> velocity_x() const noexcept { return vx_; }
     [[nodiscard]] std::span<const space::Velocity> velocity_y() const noexcept { return vy_; }
     [[nodiscard]] std::span<const space::Velocity> velocity_z() const noexcept { return vz_; }
+    [[nodiscard]] std::span<const space::Length> radii() const noexcept { return radii_; }
 
 private:
     std::uint32_t next_id_ = 0;
@@ -115,6 +127,7 @@ private:
     std::vector<space::Velocity> vx_;
     std::vector<space::Velocity> vy_;
     std::vector<space::Velocity> vz_;
+    std::vector<space::Length> radii_;
 };
 
 } // namespace orrery::core
