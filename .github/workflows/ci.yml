@@ -16,9 +16,11 @@ concurrency:
   cancel-in-progress: true
 
 env:
+  # System packages the vcpkg glfw3 port requires on Linux (X11 headers,
+  # GL/GLU, pkg-config); vcpkg's X11 ports defer to the system libraries.
   LINUX_DEPS: >-
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
-    libgl1-mesa-dev libglu1-mesa-dev pkg-config
+    xorg-dev libgl1-mesa-dev libglu1-mesa-dev pkg-config
   # tools/check_deps.py needs File API codemodel >= 2.9 (CMake >= 4.1).
   CMAKE_PIN: cmake==4.4.4
   NINJA_PIN: ninja==1.13.2
