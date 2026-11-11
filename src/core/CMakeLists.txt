@@ -1,6 +1,18 @@
 add_library(orrery_core STATIC
     module.cpp
-    include/orrery/core/module.h)
+    body_store.cpp
+    kepler.cpp
+    include/orrery/core/module.h
+    include/orrery/core/dimension.h
+    include/orrery/core/quantity.h
+    include/orrery/core/units.h
+    include/orrery/core/angle.h
+    include/orrery/core/vec3.h
+    include/orrery/core/result.h
+    include/orrery/core/body.h
+    include/orrery/core/body_store.h
+    include/orrery/core/sim_state.h
+    include/orrery/core/kepler.h)
 add_library(orrery::core ALIAS orrery_core)
 
 target_include_directories(orrery_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
