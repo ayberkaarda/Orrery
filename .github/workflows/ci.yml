@@ -21,6 +21,7 @@ env:
   LINUX_DEPS: >-
     libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
     xorg-dev libgl1-mesa-dev libglu1-mesa-dev pkg-config
+    autoconf autoconf-archive automake libtool make m4
   # tools/check_deps.py needs File API codemodel >= 2.9 (CMake >= 4.1).
   CMAKE_PIN: cmake==4.4.4
   NINJA_PIN: ninja==1.13.2
