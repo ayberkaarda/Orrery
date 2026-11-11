@@ -1,0 +1,8 @@
+{
+  "version": 1, "units": { "length": "AU", "mass": "Msun", "time": "day", "angle": "deg" }, "metadata": { "source": "test fixture", "epoch": "t = 0" },
+  "bodies": [
+    { "name": "Sun", "kind": "star", "mass": 1.0, "state": { "position": [0.0, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0] } },
+    { "name": "A", "kind": "asteroid", "mass": 1e-12, "elements": { "parent": "B", "a": 0.001, "e": 0.0, "i": 0.0, "raan": 0.0, "argp": 0.0, "ma": 0.0 } },
+    { "name": "B", "kind": "asteroid", "mass": 1e-12, "elements": { "parent": "A", "a": 0.001, "e": 0.0, "i": 0.0, "raan": 0.0, "argp": 0.0, "ma": 0.0 } }
+  ]
+}
