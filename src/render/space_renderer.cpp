@@ -369,7 +369,7 @@ core::Result<SpaceRenderer, std::string> SpaceRenderer::create(const StarfieldPa
     std::vector<StarVertex> star_data;
     star_data.reserve(points.size());
     for (const StarPoint& p : points) {
-        const double m = p.magnitude;
+        const double m = static_cast<double>(p.magnitude);
         // APPROXIMATION: star brightness on screen - flux 10^(-0.4 * 0.85 m)
         // instead of 10^(-0.4 m) and a sprite width growing for bright stars -
         // compresses the 11.5-magnitude range of the sky into what a display

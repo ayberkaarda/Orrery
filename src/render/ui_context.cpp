@@ -379,10 +379,12 @@ UiRect UiContext::dockspace() {
         ImGui::DockBuilderFinish(dock_id);
     }
     ImGui::DockSpaceOverViewport(dock_id, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
-    UiRect area{viewport->WorkPos.x, viewport->WorkPos.y, viewport->WorkSize.x,
-                viewport->WorkSize.y};
+    UiRect area{static_cast<double>(viewport->WorkPos.x), static_cast<double>(viewport->WorkPos.y),
+                static_cast<double>(viewport->WorkSize.x),
+                static_cast<double>(viewport->WorkSize.y)};
     if (const ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dock_id)) {
-        area = {central->Pos.x, central->Pos.y, central->Size.x, central->Size.y};
+        area = {static_cast<double>(central->Pos.x), static_cast<double>(central->Pos.y),
+                static_cast<double>(central->Size.x), static_cast<double>(central->Size.y)};
     }
     return area;
 }
@@ -406,7 +408,8 @@ std::optional<UiRect> UiContext::window_rect(std::string_view name) const {
     if (window == nullptr || !window->WasActive) {
         return std::nullopt;
     }
-    return UiRect{window->Pos.x, window->Pos.y, window->Size.x, window->Size.y};
+    return UiRect{static_cast<double>(window->Pos.x), static_cast<double>(window->Pos.y),
+                  static_cast<double>(window->Size.x), static_cast<double>(window->Size.y)};
 }
 
 bool UiContext::window_docked(std::string_view name) const {

@@ -451,7 +451,7 @@ RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
     ImGui::BeginDisabled(s.scale_mode == ScaleMode::true_scale);
     if (ImGui::SliderFloat("##min_size", &min_scale, 0.25F, 8.0F, "%.2fx",
                            ImGuiSliderFlags_Logarithmic)) {
-        s.min_radius_scale = min_scale;
+        s.min_radius_scale = static_cast<double>(min_scale);
         changed = true;
     }
     ImGui::EndDisabled();
@@ -477,13 +477,13 @@ RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
     auto width = static_cast<float>(s.trail_width_px);
     row_label("Width");
     if (ImGui::SliderFloat("##width", &width, 0.5F, 6.0F, "%.1f px")) {
-        s.trail_width_px = width;
+        s.trail_width_px = static_cast<double>(width);
         changed = true;
     }
     auto trail_brightness = static_cast<float>(s.trail_brightness);
     row_label("Brightness");
     if (ImGui::SliderFloat("##trail_brightness", &trail_brightness, 0.0F, 4.0F, "%.2f")) {
-        s.trail_brightness = trail_brightness;
+        s.trail_brightness = static_cast<double>(trail_brightness);
         changed = true;
     }
     ImGui::EndDisabled();
@@ -495,13 +495,13 @@ RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
     auto stars = static_cast<float>(s.star_brightness);
     row_label("Stars");
     if (ImGui::SliderFloat("##stars", &stars, 0.0F, 4.0F, "%.2f")) {
-        s.star_brightness = stars;
+        s.star_brightness = static_cast<double>(stars);
         changed = true;
     }
     auto milky_way = static_cast<float>(s.milky_way_brightness);
     row_label("Milky Way");
     if (ImGui::SliderFloat("##milky_way", &milky_way, 0.0F, 4.0F, "%.2f")) {
-        s.milky_way_brightness = milky_way;
+        s.milky_way_brightness = static_cast<double>(milky_way);
         changed = true;
     }
     ImGui::EndDisabled();
@@ -516,7 +516,7 @@ RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
     auto falloff = static_cast<float>(s.light_falloff_exponent);
     row_label("Falloff");
     if (ImGui::SliderFloat("##falloff", &falloff, 0.0F, 2.0F, "1/r^%.2f")) {
-        s.light_falloff_exponent = falloff;
+        s.light_falloff_exponent = static_cast<double>(falloff);
         changed = true;
     }
     ImGui::Dummy(ImVec2(0.0F, 4.0F));
