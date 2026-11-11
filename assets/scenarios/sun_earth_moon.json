@@ -1,0 +1,31 @@
+{
+  "version": 1,
+  "name": "Sun, Earth and Moon",
+  "units": { "length": "AU", "mass": "Msun", "time": "day", "angle": "deg" },
+  "metadata": {
+    "source": "synthetic; rounded textbook mean values (Earth a = 1 AU, Moon a = 384400 km, Moon i = 5.145 deg to the ecliptic)",
+    "epoch": "arbitrary (t = 0)",
+    "description": "Three-body test with a parent chain: Moon relative to Earth, Earth relative to Sun."
+  },
+  "time": 0.0,
+  "bodies": [
+    {
+      "name": "Sun",
+      "kind": "star",
+      "mass": 1.0,
+      "state": { "position": [0.0, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0] }
+    },
+    {
+      "name": "Earth",
+      "kind": "planet",
+      "mass": 3.003489e-6,
+      "elements": { "parent": "Sun", "a": 1.0, "e": 0.0167, "i": 0.0, "raan": 0.0, "argp": 102.9, "ma": 0.0 }
+    },
+    {
+      "name": "Moon",
+      "kind": "moon",
+      "mass": 3.694303e-8,
+      "elements": { "parent": "Earth", "a": 0.0025695553, "e": 0.0549, "i": 5.145, "raan": 125.08, "argp": 318.15, "ma": 135.27 }
+    }
+  ]
+}

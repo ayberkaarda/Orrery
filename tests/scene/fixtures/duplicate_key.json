@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "bodies": [
+    { "name": "Sun", "mass": 1.0, "mass": 2.0 }
+  ]
+}

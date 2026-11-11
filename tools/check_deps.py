@@ -72,6 +72,12 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
     "orrery_app": {"orrery_scene", "orrery_render"},
 }
 
+# Approved third-party link dependencies, per first-party target, as spelled
+# in target_link_libraries. Anything else in the declared graph fails.
+THIRD_PARTY_DEPS: dict[str, set[str]] = {
+    "orrery_scene": {"nlohmann_json::nlohmann_json"},
+}
+
 GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo")
 PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
 
@@ -447,7 +453,7 @@ def check_declared_graph(errors: list[str]) -> None:
         if target not in defined:
             errors.append(f"[graph] target {target} is not defined under src/")
             continue
-        actual = graph[target]
+        actual = graph[target] - THIRD_PARTY_DEPS.get(target, set())
         if actual != expected:
             errors.append(
                 f"[graph] {target}: expected deps {sorted(expected)}, found {sorted(actual)}"

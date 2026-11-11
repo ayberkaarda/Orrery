@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "domain": "fluid",
+  "inputs": { "geometry": "cylinder.stl" },
+  "conditions": { "reynolds": 150 },
+  "solver": { "name": "lbm-d2q9", "version": "1" },
+  "result": { "strouhal": 0.18 }
+}

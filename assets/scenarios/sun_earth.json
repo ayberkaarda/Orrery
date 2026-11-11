@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "name": "Sun and Earth-Moon barycentre",
+  "units": { "length": "AU", "mass": "Msun", "time": "day", "angle": "deg" },
+  "metadata": {
+    "source": "JPL Solar System Dynamics, 'Approximate Positions of the Planets', Table 1 (Standish), EM barycentre mean elements valid 1800-2050",
+    "epoch": "J2000.0 (JD 2451545.0 TDB)",
+    "description": "Two-body test. Inclination to the J2000 ecliptic rounded to 0 (table value -1.5e-5 deg); argument of periapsis = longitude of perihelion with node 0; mean anomaly = mean longitude - longitude of perihelion. Mass is Earth + Moon, GM ratio 1 / 328900.56."
+  },
+  "time": 0.0,
+  "bodies": [
+    {
+      "name": "Sun",
+      "kind": "star",
+      "mass": 1.0,
+      "state": { "position": [0.0, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0] }
+    },
+    {
+      "name": "Earth-Moon",
+      "kind": "planet",
+      "mass": 3.0404326e-6,
+      "elements": {
+        "parent": "Sun",
+        "a": 1.00000261,
+        "e": 0.01671123,
+        "i": 0.0,
+        "raan": 0.0,
+        "argp": 102.93768193,
+        "ma": -2.47311027
+      }
+    }
+  ]
+}
