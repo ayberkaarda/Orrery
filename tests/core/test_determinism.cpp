@@ -1,6 +1,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
@@ -9,6 +10,7 @@
 
 #include "gravity_test_support.h"
 #include "orrery/core/body.h"
+#include "orrery/core/collision.h"
 #include "orrery/core/force_model.h"
 #include "orrery/core/integrator.h"
 #include "orrery/core/state_hash.h"
@@ -32,11 +34,11 @@ std::string hex(std::uint64_t value) {
 // contraction is off project-wide, so the values are platform independent;
 // they were reproduced bit for bit with GCC 15 -O3 on x86-64 Linux
 // (docs/physics.md, determinism contract). The hash includes each body's kind
-// tag and kind payload.
-constexpr std::uint64_t golden_initial = 0xaf61005ef03001b2ULL;
-constexpr std::uint64_t golden_leapfrog = 0xe0fa7b48f95f973eULL;
-constexpr std::uint64_t golden_yoshida4 = 0x9edf045b7f8169adULL;
-constexpr std::uint64_t golden_rk4 = 0xec2fbc333855be6dULL;
+// tag, kind payload and radius.
+constexpr std::uint64_t golden_initial = 0x8ad1887966f2ea12ULL;
+constexpr std::uint64_t golden_leapfrog = 0x08ca0a8c4993debeULL;
+constexpr std::uint64_t golden_yoshida4 = 0xd0c645137b27a3cdULL;
+constexpr std::uint64_t golden_rk4 = 0xab3b17d03159374dULL;
 
 } // namespace
 
@@ -132,6 +134,109 @@ TEST_CASE("state hash covers the kind and every other hashed field", "[core][det
     add_or_throw(renamed, BodyInit{"C", Star{}, space::Mass(1.0), origin, {}});
     add_or_throw(renamed, BodyInit{"D", Planet{}, space::Mass(1.0), x1, {}});
     CHECK(state_hash(SimState(space::Time(0.0), std::move(renamed))) == base);
+}
+
+TEST_CASE("state hash covers the radius", "[core][determinism]") {
+    // Two stationary asteroids 1 AU apart: identical except for their radii,
+    // which decide whether the encounter phase merges them.
+    const auto pair = [](double radius) {
+        BodyStore store;
+        add_or_throw(store, BodyInit{"A", Asteroid{}, space::Mass(1.0e-9), {}, {}});
+        add_or_throw(
+            store,
+            BodyInit{"B", Asteroid{}, space::Mass(1.0e-9), {space::Length(1.0), {}, {}}, {}});
+        REQUIRE(store.set_radius(0, space::Length(radius)));
+        REQUIRE(store.set_radius(1, space::Length(radius)));
+        return SimState(space::Time(0.0), std::move(store));
+    };
+    const SimState points = pair(0.0);
+    const SimState spheres = pair(0.6);
+    CHECK(state_hash(points) != state_hash(spheres));
+    // One radius, one bit, and the sign of zero.
+    {
+        SimState one = points;
+        REQUIRE(one.bodies().set_radius(1, space::Length(0.6)));
+        CHECK(state_hash(one) != state_hash(points));
+        CHECK(state_hash(one) != state_hash(spheres));
+        SimState ulp = spheres;
+        REQUIRE(ulp.bodies().set_radius(0, space::Length(std::nextafter(0.6, 1.0))));
+        CHECK(state_hash(ulp) != state_hash(spheres));
+        SimState negative_zero = points;
+        REQUIRE(negative_zero.bodies().set_radius(0, space::Length(-0.0)));
+        CHECK(state_hash(negative_zero) != state_hash(points));
+    }
+    // Swapping the radii of two otherwise identical-looking bodies changes the
+    // hash (the radius is bound to its body, not summed).
+    {
+        SimState ab = points;
+        REQUIRE(ab.bodies().set_radius(0, space::Length(0.1)));
+        REQUIRE(ab.bodies().set_radius(1, space::Length(0.2)));
+        SimState ba = points;
+        REQUIRE(ba.bodies().set_radius(0, space::Length(0.2)));
+        REQUIRE(ba.bodies().set_radius(1, space::Length(0.1)));
+        CHECK(state_hash(ab) != state_hash(ba));
+    }
+
+    // Copy construction and copy/move assignment keep the radius, and so the hash.
+    const std::uint64_t spheres_hash = state_hash(spheres);
+    const SimState copied = spheres;
+    CHECK(state_hash(copied) == spheres_hash);
+    SimState assigned = points;
+    assigned = spheres;
+    CHECK(state_hash(assigned) == spheres_hash);
+    SimState moved_from = spheres;
+    SimState moved = points;
+    moved = std::move(moved_from);
+    CHECK(state_hash(moved) == spheres_hash);
+    {
+        BodyStore copy_assigned;
+        copy_assigned = spheres.bodies();
+        CHECK(state_hash(SimState(space::Time(0.0), copy_assigned)) == spheres_hash);
+    }
+
+    // Removal keeps the remaining body's radius in the hash.
+    {
+        BodyStore three;
+        add_or_throw(three, BodyInit{"A", Asteroid{}, space::Mass(1.0e-9), {}, {}});
+        const auto gone = three.add(BodyInit{"X", Asteroid{}, space::Mass(1.0e-9), {}, {}});
+        REQUIRE(gone);
+        REQUIRE(three.set_radius(1, space::Length(0.9)));
+        add_or_throw(three, BodyInit{"B", Asteroid{}, space::Mass(1.0e-9), {}, {}});
+        REQUIRE(three.set_radius(0, space::Length(0.3)));
+        REQUIRE(three.set_radius(2, space::Length(0.4)));
+        REQUIRE(three.remove(gone.value()));
+        BodyStore expected_store;
+        add_or_throw(expected_store, BodyInit{"A", Asteroid{}, space::Mass(1.0e-9), {}, {}});
+        static_cast<void>(
+            expected_store.add(BodyInit{"X", Asteroid{}, space::Mass(1.0e-9), {}, {}}));
+        add_or_throw(expected_store, BodyInit{"B", Asteroid{}, space::Mass(1.0e-9), {}, {}});
+        REQUIRE(expected_store.set_radius(0, space::Length(0.3)));
+        REQUIRE(expected_store.set_radius(2, space::Length(0.4)));
+        REQUIRE(expected_store.remove(expected_store.id(1)));
+        const SimState after(space::Time(0.0), std::move(three));
+        CHECK(state_hash(after) == state_hash(SimState(space::Time(0.0), expected_store)));
+        REQUIRE(expected_store.set_radius(1, space::Length(0.9)));
+        CHECK(state_hash(after) != state_hash(SimState(space::Time(0.0), expected_store)));
+    }
+
+    // A merge sets the volume-combined radius, which the hash sees: two merges
+    // that differ only in the absorbed body's radius give different hashes,
+    // and replaying the same merge gives the same hash.
+    const auto merged = [&](double absorbed_radius) {
+        SimState state = pair(0.6);
+        REQUIRE(state.bodies().set_radius(1, space::Length(absorbed_radius)));
+        const auto outcome = merge_bodies(state.bodies(), 0, 1, RadiusRule::combine_volumes);
+        REQUIRE(outcome);
+        REQUIRE(state.bodies().size() == 1);
+        return state;
+    };
+    const SimState merged_a = merged(0.6);
+    const SimState merged_b = merged(0.5);
+    REQUIRE(merged_a.bodies().mass(0) == merged_b.bodies().mass(0));
+    REQUIRE(merged_a.bodies().position(0) == merged_b.bodies().position(0));
+    REQUIRE(merged_a.bodies().radius(0) != merged_b.bodies().radius(0));
+    CHECK(state_hash(merged_a) != state_hash(merged_b));
+    CHECK(state_hash(merged_a) == state_hash(merged(0.6)));
 }
 
 TEST_CASE("an isolated planet and probe hash differently after free motion",
