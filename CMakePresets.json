@@ -1,0 +1,124 @@
+{
+  "version": 6,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 1,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "name": "base",
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/${presetName}",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake",
+      "cacheVariables": {
+        "ORRERY_BUILD_TESTS": "ON"
+      }
+    },
+    {
+      "name": "windows-msvc",
+      "hidden": true,
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Windows"
+      },
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "cl",
+        "VCPKG_TARGET_TRIPLET": "x64-windows"
+      }
+    },
+    {
+      "name": "linux",
+      "hidden": true,
+      "condition": {
+        "type": "equals",
+        "lhs": "${hostSystemName}",
+        "rhs": "Linux"
+      },
+      "cacheVariables": {
+        "VCPKG_TARGET_TRIPLET": "x64-linux"
+      }
+    },
+    {
+      "name": "cfg-debug-asan",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "ORRERY_SANITIZE": "ON"
+      }
+    },
+    {
+      "name": "cfg-release",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "cfg-ci-headless",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Release",
+        "ORRERY_WARNINGS_AS_ERRORS": "ON",
+        "ORRERY_HEADLESS": "ON"
+      }
+    },
+    {
+      "name": "debug-asan",
+      "displayName": "Debug + AddressSanitizer (MSVC)",
+      "inherits": [ "cfg-debug-asan", "windows-msvc" ]
+    },
+    {
+      "name": "release",
+      "displayName": "Release (MSVC)",
+      "inherits": [ "cfg-release", "windows-msvc" ]
+    },
+    {
+      "name": "ci-headless",
+      "displayName": "CI headless, warnings as errors (MSVC)",
+      "inherits": [ "cfg-ci-headless", "windows-msvc" ]
+    },
+    {
+      "name": "linux-debug-asan",
+      "displayName": "Debug + ASan/UBSan (Linux)",
+      "inherits": [ "cfg-debug-asan", "linux" ]
+    },
+    {
+      "name": "linux-release",
+      "displayName": "Release (Linux)",
+      "inherits": [ "cfg-release", "linux" ]
+    },
+    {
+      "name": "linux-ci-headless",
+      "displayName": "CI headless, warnings as errors (Linux)",
+      "inherits": [ "cfg-ci-headless", "linux" ]
+    }
+  ],
+  "buildPresets": [
+    { "name": "debug-asan", "configurePreset": "debug-asan" },
+    { "name": "release", "configurePreset": "release" },
+    { "name": "ci-headless", "configurePreset": "ci-headless" },
+    { "name": "linux-debug-asan", "configurePreset": "linux-debug-asan" },
+    { "name": "linux-release", "configurePreset": "linux-release" },
+    { "name": "linux-ci-headless", "configurePreset": "linux-ci-headless" }
+  ],
+  "testPresets": [
+    {
+      "name": "test-base",
+      "hidden": true,
+      "output": { "outputOnFailure": true },
+      "execution": { "noTestsAction": "error", "stopOnFailure": false }
+    },
+    { "name": "debug-asan", "inherits": "test-base", "configurePreset": "debug-asan" },
+    { "name": "release", "inherits": "test-base", "configurePreset": "release" },
+    { "name": "ci-headless", "inherits": "test-base", "configurePreset": "ci-headless" },
+    { "name": "linux-debug-asan", "inherits": "test-base", "configurePreset": "linux-debug-asan" },
+    { "name": "linux-release", "inherits": "test-base", "configurePreset": "linux-release" },
+    { "name": "linux-ci-headless", "inherits": "test-base", "configurePreset": "linux-ci-headless" }
+  ]
+}
