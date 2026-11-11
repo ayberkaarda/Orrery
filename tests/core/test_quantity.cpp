@@ -88,6 +88,18 @@ TEST_CASE("vector quantities", "[core][quantity]") {
     const Vec3<space::Velocity> v{space::Velocity(0.0), space::Velocity(1.0), space::Velocity(0.0)};
     CHECK(norm(r) == space::Length(3.0));
 
+    // The norm neither underflows nor overflows for representable lengths.
+    const auto length = [](double x, double y, double z) {
+        return norm(Vec3<space::Length>{space::Length(x), space::Length(y), space::Length(z)})
+            .value();
+    };
+    CHECK_THAT(length(3.0e-200, 0.0, 4.0e-200), WithinRel(5.0e-200, 1e-15));
+    CHECK_THAT(length(0.0, -3.0e200, 4.0e200), WithinRel(5.0e200, 1e-15));
+    CHECK_THAT(length(1.0e308, 1.0e308, 0.0), WithinRel(1.4142135623730951e308, 1e-15));
+    CHECK(length(5.0e-324, 0.0, 0.0) == 5.0e-324);
+    CHECK(length(0.0, 0.0, 0.0) == 0.0);
+    CHECK(length(-0.0, 0.0, -0.0) == 0.0);
+
     const auto h = cross(r, v);
     CHECK(h.x.value() == -2.0);
     CHECK(h.y.value() == 0.0);
