@@ -16,6 +16,78 @@ foreach(module IN ITEMS geom atmo aero render)
     orrery_add_module_test(${module})
 endforeach()
 
+# Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
+# shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
+# context and are reported as skipped when none can be created (set
+# ORRERY_REQUIRE_GL=1 to make that a failure). The golden reference is
+# regenerated only on request: ORRERY_UPDATE_GOLDEN=1 orrery_test_render "[golden]".
+target_sources(orrery_test_render PRIVATE
+    render/gl_test_support.h
+    render/test_camera.cpp
+    render/test_png.cpp
+    render/test_ssim.cpp
+    render/test_tone_map.cpp
+    render/test_shaders.cpp
+    render/test_gl.cpp
+    render/test_golden.cpp)
+target_include_directories(orrery_test_render PRIVATE ${PROJECT_BINARY_DIR}/src/render/generated)
+target_compile_definitions(orrery_test_render PRIVATE
+    ORRERY_RENDER_SHADER_DIR="${PROJECT_SOURCE_DIR}/src/render/shaders"
+    ORRERY_RENDER_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/golden"
+    ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/render_output")
+
+# Phase 4a review fixes: renderer lifetime across contexts, image size
+# overflow, and logger reentrancy.
+target_sources(orrery_test_render PRIVATE
+    render/test_renderer_lifetime.cpp
+    render/test_image.cpp
+    render/test_log.cpp)
+
+# Shader embedding of overlong lines: fixture shaders are generated at build
+# time and embedded by the production script into a header that the test
+# compiles (MSVC limits each string literal to 16380 bytes). The fixture
+# translation unit is compiled as UTF-8 so its non-ASCII fixture keeps its bytes.
+set(ORRERY_EMBED_FIXTURE_DIR ${CMAKE_CURRENT_BINARY_DIR}/render_embed_fixture)
+set(ORRERY_EMBED_FIXTURE_SHADERS
+    ${ORRERY_EMBED_FIXTURE_DIR}/long_line.frag.glsl
+    ${ORRERY_EMBED_FIXTURE_DIR}/many_lines.frag.glsl
+    ${ORRERY_EMBED_FIXTURE_DIR}/utf8_line.frag.glsl)
+set(ORRERY_EMBED_FIXTURE_HEADER
+    ${ORRERY_EMBED_FIXTURE_DIR}/include/orrery_test/embedded_fixture_shaders.h)
+add_custom_command(
+    OUTPUT ${ORRERY_EMBED_FIXTURE_HEADER} ${ORRERY_EMBED_FIXTURE_SHADERS}
+    COMMAND ${CMAKE_COMMAND} -DOUTPUT_DIR=${ORRERY_EMBED_FIXTURE_DIR}
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/render/make_embed_fixtures.cmake
+    COMMAND ${CMAKE_COMMAND}
+        -DOUTPUT=${ORRERY_EMBED_FIXTURE_HEADER}
+        -DNAMESPACE=orrery::render::embed_fixture
+        "-DSHADERS=${ORRERY_EMBED_FIXTURE_SHADERS}"
+        -P ${PROJECT_SOURCE_DIR}/src/render/cmake/embed_shaders.cmake
+    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/render/make_embed_fixtures.cmake
+        ${PROJECT_SOURCE_DIR}/src/render/cmake/embed_shaders.cmake
+    COMMENT "Generating shader embedding fixtures"
+    VERBATIM)
+target_sources(orrery_test_render PRIVATE
+    render/test_shader_embedding.cpp
+    ${ORRERY_EMBED_FIXTURE_HEADER})
+target_include_directories(orrery_test_render PRIVATE ${ORRERY_EMBED_FIXTURE_DIR}/include)
+target_compile_definitions(orrery_test_render PRIVATE
+    ORRERY_EMBED_FIXTURE_DIR="${ORRERY_EMBED_FIXTURE_DIR}"
+    ORRERY_EMBED_FIXTURE_HEADER="${ORRERY_EMBED_FIXTURE_HEADER}"
+    ORRERY_RENDER_SHADER_HEADER="${PROJECT_BINARY_DIR}/src/render/generated/orrery/render/embedded_shaders.h")
+set_source_files_properties(render/test_shader_embedding.cpp PROPERTIES
+    COMPILE_OPTIONS "$<$<CXX_COMPILER_ID:MSVC>:/utf-8>")
+
+# Negative test of the dependency checker: core, geom and atmo must still be
+# rejected when they link a graphics library, while render may link GLFW/glad.
+find_package(Python3 COMPONENTS Interpreter)
+if(Python3_Interpreter_FOUND)
+    add_test(NAME check_deps.graphics_boundary
+        COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/render/test_check_deps_graphics.py)
+else()
+    message(WARNING "Python 3 not found: check_deps.graphics_boundary test not registered")
+endif()
+
 # Core: unit and property tests (including the former smoke test).
 # allocation_failure_injection.cpp replaces the global operator new/delete
 # family of each executable that lists it (allocation-failure tests).
