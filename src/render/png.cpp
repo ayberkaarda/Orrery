@@ -751,7 +751,8 @@ std::optional<std::uint16_t> decode_symbol(BitReader& in, const Decoder& decoder
         code |= static_cast<int>(in.bit());
         const int count = decoder.count[bits];
         if (code - count < first) {
-            return decoder.symbol[static_cast<std::size_t>(index + (code - first))];
+            return decoder
+                .symbol[static_cast<std::size_t>(index) + static_cast<std::size_t>(code - first)];
         }
         index += count;
         first = (first + count) << 1;

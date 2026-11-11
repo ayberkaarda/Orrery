@@ -214,10 +214,12 @@ TEST_CASE("LOD selection is monotonic in the projected size and honours the bias
     CHECK(select_lod(between_2_and_3, -5) == 0);
     CHECK(select_lod(between_2_and_3, 50) == kLodCount - 1);
     std::size_t previous = 0;
-    for (double px = 0.1; px < 5000.0; px *= 1.3) {
+    double px = 0.1;
+    while (px < 5000.0) {
         const std::size_t lod = select_lod(px, 0);
         CHECK(lod >= previous);
         previous = lod;
+        px *= 1.3;
     }
 }
 

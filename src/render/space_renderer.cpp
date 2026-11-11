@@ -92,10 +92,11 @@ core::Result<Program, std::string> build_program(const shaders::EmbeddedShader& 
     return Program::create(stages);
 }
 
-// Grows a dynamic buffer to hold at least `bytes` (geometric growth).
-bool ensure_capacity(std::optional<Buffer>& buffer, std::size_t bytes, std::string_view what) {
+// Grows a dynamic buffer to hold at least `bytes` (geometric growth). Returns
+// the buffer, or nullptr if it could not be allocated.
+Buffer* ensure_capacity(std::optional<Buffer>& buffer, std::size_t bytes, std::string_view what) {
     if (buffer && buffer->size() >= bytes) {
-        return true;
+        return &*buffer;
     }
     std::size_t capacity = buffer ? buffer->size() : std::size_t{4096};
     while (capacity < bytes) {
@@ -106,10 +107,10 @@ bool ensure_capacity(std::optional<Buffer>& buffer, std::size_t bytes, std::stri
         log_message(LogLevel::error,
                     std::string("space renderer: ") + std::string(what) + ": " + created.error());
         buffer.reset();
-        return false;
+        return nullptr;
     }
     buffer = std::move(created).value();
-    return true;
+    return &*buffer;
 }
 
 struct LodRange {
@@ -369,7 +370,7 @@ core::Result<SpaceRenderer, std::string> SpaceRenderer::create(const StarfieldPa
     std::vector<StarVertex> star_data;
     star_data.reserve(points.size());
     for (const StarPoint& p : points) {
-        const double m = static_cast<double>(p.magnitude);
+        const auto m = static_cast<double>(p.magnitude);
         // APPROXIMATION: star brightness on screen - flux 10^(-0.4 * 0.85 m)
         // instead of 10^(-0.4 m) and a sprite width growing for bright stars -
         // compresses the 11.5-magnitude range of the sky into what a display
@@ -495,11 +496,14 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
     glDepthMask(GL_TRUE);
-    if (!prepared.instances.empty() &&
-        ensure_capacity(gpu.body_instances, prepared.instances.size() * sizeof(BodyInstance),
-                        "body instances")) {
-        gpu.body_instances->update(0, std::as_bytes(std::span(prepared.instances)));
-        gpu.body_vao.set_vertex_buffer(1, *gpu.body_instances, 0, sizeof(BodyInstance));
+    Buffer* const body_instances =
+        prepared.instances.empty()
+            ? nullptr
+            : ensure_capacity(gpu.body_instances, prepared.instances.size() * sizeof(BodyInstance),
+                              "body instances");
+    if (body_instances != nullptr) {
+        body_instances->update(0, std::as_bytes(std::span(prepared.instances)));
+        gpu.body_vao.set_vertex_buffer(1, *body_instances, 0, sizeof(BodyInstance));
         gpu.body.set("u_view_projection", view_projection);
         gpu.body.set("u_log_depth_scale", log_scale);
         gpu.body.set("u_ambient", kAmbientFraction);
@@ -517,6 +521,7 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
             const LodRange& range = gpu.lods[lod];
             glDrawElementsInstancedBaseVertexBaseInstance(
                 GL_TRIANGLES, static_cast<GLsizei>(range.index_count), GL_UNSIGNED_INT,
+                // NOLINTNEXTLINE(performance-no-int-to-ptr): GL takes a byte offset as a pointer.
                 reinterpret_cast<const void*>(range.first_index * sizeof(std::uint32_t)),
                 static_cast<GLsizei>(n), static_cast<GLint>(range.base_vertex),
                 static_cast<GLuint>(prepared.lod_first[lod]));
@@ -543,11 +548,15 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
                     {glm::vec4(s.p0, s.fade0), glm::vec4(s.p1, s.fade1), color});
             }
         }
-        if (!gpu.trail_scratch.empty() &&
-            ensure_capacity(gpu.trail_instances, gpu.trail_scratch.size() * sizeof(TrailInstance),
-                            "trail segments")) {
-            gpu.trail_instances->update(0, std::as_bytes(std::span(gpu.trail_scratch)));
-            gpu.trail_vao.set_vertex_buffer(0, *gpu.trail_instances, 0, sizeof(TrailInstance));
+        Buffer* const trail_instances =
+            gpu.trail_scratch.empty()
+                ? nullptr
+                : ensure_capacity(gpu.trail_instances,
+                                  gpu.trail_scratch.size() * sizeof(TrailInstance),
+                                  "trail segments");
+        if (trail_instances != nullptr) {
+            trail_instances->update(0, std::as_bytes(std::span(gpu.trail_scratch)));
+            gpu.trail_vao.set_vertex_buffer(0, *trail_instances, 0, sizeof(TrailInstance));
             gpu.trail.set("u_view_projection", view_projection);
             gpu.trail.set("u_viewport", viewport);
             gpu.trail.set("u_half_width", static_cast<float>(0.5 * settings.trail_width_px));
@@ -567,11 +576,14 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
     }
 
     // 4. Glow sprites, additive, hidden by bodies in front.
-    if (!prepared.glows.empty() &&
-        ensure_capacity(gpu.glow_instances, prepared.glows.size() * sizeof(GlowInstance),
-                        "glow sprites")) {
-        gpu.glow_instances->update(0, std::as_bytes(std::span(prepared.glows)));
-        gpu.glow_vao.set_vertex_buffer(0, *gpu.glow_instances, 0, sizeof(GlowInstance));
+    Buffer* const glow_instances =
+        prepared.glows.empty()
+            ? nullptr
+            : ensure_capacity(gpu.glow_instances, prepared.glows.size() * sizeof(GlowInstance),
+                              "glow sprites");
+    if (glow_instances != nullptr) {
+        glow_instances->update(0, std::as_bytes(std::span(prepared.glows)));
+        gpu.glow_vao.set_vertex_buffer(0, *glow_instances, 0, sizeof(GlowInstance));
         gpu.glow.set("u_view_projection", view_projection);
         gpu.glow.set("u_viewport", viewport);
         gpu.glow.set("u_near", near);

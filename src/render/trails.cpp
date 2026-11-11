@@ -120,7 +120,7 @@ void append_trail_segments(const TrailRing& ring, const glm::dvec3& head, const 
     if (n == 0 || ring.capacity() == 0) {
         return;
     }
-    const double capacity = static_cast<double>(ring.capacity());
+    const auto capacity = static_cast<double>(ring.capacity());
     // Point j (0 = oldest) has age n - j samples; the head has age 0.
     const auto fade = [&](std::size_t age) {
         return static_cast<float>(std::max(0.0, 1.0 - static_cast<double>(age) / capacity));

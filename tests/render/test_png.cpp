@@ -359,7 +359,7 @@ TEST_CASE("PNG reader undoes all five row filters", "[render][png]") {
 TEST_CASE("PNG reader rejects corrupt input with a clear error", "[render][png]") {
     auto encoded = encode_png(ImageRgba8::filled(4, 4, 1, 2, 3));
     REQUIRE(encoded.has_value());
-    const std::vector<std::uint8_t> good = encoded.value();
+    const std::vector<std::uint8_t>& good = encoded.value();
 
     SECTION("bad signature") {
         std::vector<std::uint8_t> bad = good;

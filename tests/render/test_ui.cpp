@@ -242,7 +242,8 @@ TEST_CASE("Clicking a body in the inspector list selects it", "[render][ui]") {
     // Scan down the list column until a row reacts to a click: the list
     // starts under the tab bar and the BODIES caption.
     std::optional<core::BodyId> picked;
-    for (double y = left->y + 30.0; y < left->y + 220.0 && !picked; y += 6.0) {
+    double y = left->y + 30.0;
+    while (y < left->y + 220.0 && !picked) {
         UiPointer pointer;
         pointer.x = left->x + 60.0;
         pointer.y = y;
@@ -254,6 +255,7 @@ TEST_CASE("Clicking a body in the inspector list selects it", "[render][ui]") {
         pointer.buttons[0] = false;
         input.pointer = pointer;
         picked = draw_panels(ui, input, inspector, {}, {}).inspector.select; // release
+        y += 6.0;
     }
     REQUIRE(picked.has_value());
     // The first row reached is the first body of the list.

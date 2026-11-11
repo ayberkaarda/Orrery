@@ -21,11 +21,13 @@ TEST_CASE("sRGB transfer function matches IEC 61966-2-1", "[render][tone_map]") 
 TEST_CASE("ACES fitted curve: black stays black, monotonic, soft shoulder", "[render][tone_map]") {
     CHECK(tone_map_aces(glm::dvec3(0.0)).x == Catch::Approx(0.0).margin(1.0e-3));
     double previous = -1.0;
-    for (double v = 0.0; v <= 64.0; v = v * 1.25 + 0.01) {
+    double v = 0.0;
+    while (v <= 64.0) {
         const double out = tone_map_aces(glm::dvec3(v)).y;
         CHECK(out >= previous);
         CHECK(out <= 1.0);
         previous = out;
+        v = v * 1.25 + 0.01;
     }
     // Scene-linear 1.0 is not clipped; very bright values approach white.
     CHECK(tone_map_aces(glm::dvec3(1.0)).x < 0.9);

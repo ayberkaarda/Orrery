@@ -92,7 +92,7 @@ TEST_CASE("Replacing the sink is safe while other threads log", "[render][log]")
     const LogSink count_first = [first](LogLevel, std::string_view) { ++*first; };
     const LogSink count_second = [second](LogLevel, std::string_view) { ++*second; };
     (void)set_log_sink(count_first);
-    REQUIRE(returns_in_time([&] {
+    const auto hammer = [&] {
         std::vector<std::thread> loggers;
         loggers.reserve(kThreads);
         for (int t = 0; t < kThreads; ++t) {
@@ -108,7 +108,8 @@ TEST_CASE("Replacing the sink is safe while other threads log", "[render][log]")
         for (std::thread& logger : loggers) {
             logger.join();
         }
-    }));
+    };
+    REQUIRE(returns_in_time(hammer));
     // Every message reached exactly one of the two sinks.
     CHECK(*first + *second == kThreads * kMessages);
 }
