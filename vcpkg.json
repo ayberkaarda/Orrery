@@ -6,6 +6,14 @@
   "builtin-baseline": "2ec0f1747d8186a5c9babe276e2ad57cd2b12d2a",
   "dependencies": [
     "catch2",
+    {
+      "name": "glad",
+      "features": [
+        "gl-api-46"
+      ]
+    },
+    "glfw3",
+    "glm",
     "nlohmann-json",
     "tbb"
   ]

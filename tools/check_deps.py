@@ -77,9 +77,13 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # orrery_core: oneTBB (Apache-2.0, approved for Phase 3a) runs the per-body
 # Barnes-Hut force loop in parallel. It is a CPU threading library with no
 # graphics dependency; the graphics-free checks below still inspect it.
+# orrery_render (Phase 4a): GLFW (window and context), glad (OpenGL loader)
+# and glm (header-only render math). Graphics libraries are approved for
+# orrery_render only; GRAPHICS_FREE_TARGETS below are still checked.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_core": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
+    "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only"},
 }
 
 GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo")
