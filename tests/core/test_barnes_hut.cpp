@@ -296,6 +296,7 @@ TEST_CASE("Barnes-Hut probes feel the field but exert none", "[core][barnes_hut]
     const std::vector<Vec3<space::Acceleration>> a = evaluate(bh, with_probes);
     const std::vector<Vec3<space::Acceleration>> b = evaluate(bh, without_probes);
     std::vector<Vec3<space::Acceleration>> a_sources;
+    a_sources.reserve(kept.size());
     for (const std::size_t i : kept) {
         a_sources.push_back(a[i]);
     }

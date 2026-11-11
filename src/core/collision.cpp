@@ -261,7 +261,7 @@ private:
         // Boxes too large for a child stay here.
         const auto movable_begin = std::stable_partition(
             first, last, [&](std::size_t i) { return !(extent(i) <= child_size / 2.0); });
-        std::size_t kept = static_cast<std::size_t>(movable_begin - first);
+        auto kept = static_cast<std::size_t>(movable_begin - first);
         const std::size_t movable = end - begin - kept;
         if (movable <= leaf_capacity || !splittable(node, depth)) {
             kept = end - begin;

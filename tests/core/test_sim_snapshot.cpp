@@ -28,7 +28,7 @@ SimState three_body_state() {
                                 {space::Length(-3.0), space::Length(2.0), space::Length(0.5)},
                                 {}}));
     REQUIRE(bodies.set_radius(1, space::Length(4.26e-5)));
-    return SimState(space::Time(12.5), std::move(bodies));
+    return {space::Time(12.5), std::move(bodies)};
 }
 
 } // namespace
@@ -107,6 +107,7 @@ TEST_CASE("a snapshot cannot be copied or moved into a mutable object", "[core][
     // immutable object the factory built.
     const SimState state = three_body_state();
     const std::shared_ptr<const SimSnapshot> first = SimSnapshot::capture(state, 7);
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization): the copy is the subject.
     const std::shared_ptr<const SimSnapshot> second = first;
     CHECK(second.get() == first.get());
     CHECK(first.use_count() == 2);

@@ -58,7 +58,7 @@ SimState hole_and_probe(double hole_mass, double r, double v_r, double v_t) {
     add_or_throw(store, BodyInit{"BH", BlackHole{0.5}, space::Mass(hole_mass), {}, {}});
     add_or_throw(store, BodyInit{"Probe", Probe{}, space::Mass(1.0e-12), at(r, 0.0, 0.0),
                                  vel(v_r, v_t, 0.0)});
-    return SimState(space::Time(0.0), std::move(store));
+    return {space::Time(0.0), std::move(store)};
 }
 
 struct OrbitOutcome {

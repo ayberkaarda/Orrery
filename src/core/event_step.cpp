@@ -113,7 +113,7 @@ Result<space::Time, IntegrationError> EventStepper::step(IIntegrator& integrator
     }
     state.set_time(t_start + dt);
     for (Event& e : pending.drain()) {
-        log.append(std::move(e));
+        log.append(e);
     }
     return state.time();
 }

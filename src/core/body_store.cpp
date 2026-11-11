@@ -133,7 +133,7 @@ Result<BodyId, BodyError> BodyStore::add(BodyInit init) {
     vx_.push_back(init.velocity.x);
     vy_.push_back(init.velocity.y);
     vz_.push_back(init.velocity.z);
-    radii_.push_back(space::Length(0.0));
+    radii_.emplace_back(0.0);
     return id;
 }
 

@@ -426,6 +426,7 @@ TEST_CASE("Points never collide; black holes are left to the horizon phase", "[c
     add_or_throw(store, BodyInit{"C", Asteroid{}, space::Mass(1.0e-12), at(1.0, 0.0, 0.0), {}});
     set_radius_or_throw(store, 2, 1.0);
     std::vector<Vec3<space::Length>> start;
+    start.reserve(store.size());
     for (std::size_t i = 0; i < store.size(); ++i) {
         start.push_back(store.position(i));
     }
