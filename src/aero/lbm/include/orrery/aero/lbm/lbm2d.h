@@ -203,7 +203,10 @@ public:
 make_cpu_solver(const Lbm2DConfig& config, SolidMask2D mask);
 
 // GPU solver on `backend`, which must provide the kernels lbm_d2q9_step,
-// lbm_d2q9_moments and lbm_d2q9_force and outlive the solver.
+// lbm_d2q9_moments and lbm_d2q9_force and outlive the solver. Besides
+// validate(), refuses (before allocating) a configuration the binary32
+// kernels cannot carry: a real parameter outside the binary32 range, or a
+// tau that rounds to 1/2 (tau - 1/2 not above 2^-25).
 [[nodiscard]] core::Result<std::unique_ptr<Lbm2DSolver>, std::string>
 make_gpu_solver(compute::IComputeBackend& backend, const Lbm2DConfig& config, SolidMask2D mask);
 

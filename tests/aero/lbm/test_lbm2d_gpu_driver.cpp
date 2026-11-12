@@ -170,3 +170,34 @@ TEST_CASE("GPU solver reports backend failures", "[aero][lbm][gpu]") {
     bad.tau = 0.4;
     CHECK_FALSE(make_gpu_solver(strict, bad, setup.mask));
 }
+
+TEST_CASE("GPU solver refuses parameters that binary32 cannot carry", "[aero][lbm][gpu]") {
+    const CylinderSetup setup = cylinder_setup(16, 8, 3.0, 6.0, 4.0, 0.05, 20.0);
+    // tau above 1/2 in double, exactly 1/2 in binary32: zero viscosity on the
+    // GPU. The CPU solver keeps the positive viscosity.
+    Lbm2DConfig thin = setup.config;
+    thin.tau = 0.50000001;
+    REQUIRE(compute::round_to_float32(thin.tau) == 0.5);
+    CHECK(make_cpu_solver(thin, setup.mask));
+    compute::NullComputeBackend backend;
+    const auto refused = make_gpu_solver(backend, thin, setup.mask);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("tau") != std::string::npos);
+    CHECK(refused.error().find("binary32") != std::string::npos);
+    CHECK(backend.live_buffers() == 0); // refused before allocation
+
+    // Finite in double, infinite in binary32.
+    Lbm2DConfig huge = setup.config;
+    huge.tau = 1e100;
+    CHECK_FALSE(make_gpu_solver(backend, huge, setup.mask));
+    huge = setup.config;
+    huge.smagorinsky = Smagorinsky{true, 1e30}; // C^2 = 1e60
+    CHECK_FALSE(make_gpu_solver(backend, huge, setup.mask));
+    CHECK(backend.live_buffers() == 0);
+
+    // A tau that stays above 1/2 in binary32 is accepted.
+    Lbm2DConfig ok = setup.config;
+    ok.tau = 0.5000001;
+    CHECK(compute::round_to_float32(ok.tau) > 0.5);
+    CHECK(make_gpu_solver(backend, ok, setup.mask));
+}

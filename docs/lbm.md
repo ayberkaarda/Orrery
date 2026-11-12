@@ -170,6 +170,14 @@ match, the remedy is a binary64 kernel variant (memory traffic doubles,
 binary64 arithmetic runs at 1/16 of the binary32 rate on this GPU class);
 binary32 stays the default for speed.
 
+The kernels see tau, the inlet and wall speeds, C^2 and the body force
+rounded to binary32. `make_gpu_solver` refuses, before allocating, a
+configuration for which that rounding changes the physics class: a value
+outside the binary32 range (it would become infinite), or a tau that rounds
+to exactly 1/2 (zero viscosity on the GPU while the CPU keeps a positive
+one; tau - 1/2 must exceed 2^-25, about 3e-8). Tau values that close to 1/2
+are far outside the stable range of BGK anyway (section 7 warns below 0.51).
+
 ### Throughput
 
 2048 x 1024 cylinder channel (D = 64, Re 1000), hidden `[benchmark]` of

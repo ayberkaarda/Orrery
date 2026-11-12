@@ -6,8 +6,13 @@
 // weights (Skordos 1993; docs/lbm.md, "GPU precision"). Every host-side sum
 // (force, mass) is done in double after readback.
 #include <array>
+#include <cmath>
 #include <cstring>
+#include <iomanip>
 #include <limits>
+#include <optional>
+#include <sstream>
+#include <string>
 #include <utility>
 
 #include "orrery/aero/compute/float32_pack.h"
@@ -54,6 +59,40 @@ template <typename T> std::span<const std::byte> bytes_of(const std::vector<T>& 
 
 std::string with_context(const char* what, const std::string& error) {
     return std::string("lbm2d gpu: ") + what + ": " + error;
+}
+
+// The kernels see every real parameter rounded to binary32: each must stay
+// finite, and tau must stay above 1/2 (a tau that rounds to 1/2 is zero
+// viscosity on the GPU while the CPU keeps a positive one).
+std::optional<std::string> check_binary32(const Lbm2DConfig& config) {
+    const double c = config.smagorinsky.enabled ? config.smagorinsky.constant : 0.0;
+    struct Parameter {
+        const char* name;
+        double value;
+    };
+    for (const Parameter p :
+         {Parameter{"tau", config.tau}, Parameter{"bottom wall speed", config.bottom.velocity_x},
+          Parameter{"top wall speed", config.top.velocity_x},
+          Parameter{"inlet x velocity", config.inlet_ux},
+          Parameter{"inlet y velocity", config.inlet_uy},
+          Parameter{"squared Smagorinsky constant", c * c},
+          Parameter{"body force x", config.body_force_x},
+          Parameter{"body force y", config.body_force_y}}) {
+        if (!std::isfinite(compute::round_to_float32(p.value))) {
+            std::ostringstream message;
+            message << "lbm2d gpu: " << p.name << " " << p.value
+                    << " is outside the binary32 range of the kernels";
+            return message.str();
+        }
+    }
+    if (!(compute::round_to_float32(config.tau) > 0.5)) {
+        std::ostringstream message;
+        message << std::setprecision(17) << "lbm2d gpu: tau " << config.tau
+                << " rounds to 1/2 in binary32 (zero viscosity in the kernels); tau - 1/2 must "
+                   "exceed 2^-25 (about 3e-8)";
+        return message.str();
+    }
+    return std::nullopt;
 }
 
 class GpuLbm2D final : public Lbm2DSolver {
@@ -325,6 +364,9 @@ make_gpu_solver(compute::IComputeBackend& backend, const Lbm2DConfig& config, So
     }
     if (q * config.nx * config.ny > std::numeric_limits<std::uint32_t>::max()) {
         return core::failure(std::string("lbm2d gpu: lattice too large for 32-bit indices"));
+    }
+    if (auto problem = check_binary32(config)) {
+        return core::failure(std::move(*problem));
     }
     auto solver = std::make_unique<GpuLbm2D>(backend, config, std::move(mask));
     if (auto ready = solver->allocate(); !ready) {
