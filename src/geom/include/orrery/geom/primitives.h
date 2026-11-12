@@ -75,7 +75,9 @@ public:
 
     // Closed, outward-oriented mesh: one pole vertex at each end and one ring
     // of `around` vertices per interior polyline point. Throws
-    // std::invalid_argument if the profile or the resolution is invalid.
+    // std::invalid_argument if the profile or the resolution is invalid, or if
+    // the mesh would exceed the default MeshLimits (checked before anything
+    // is allocated).
     [[nodiscard]] TriangleMesh mesh(const RevolutionResolution& res) const;
 
 private:

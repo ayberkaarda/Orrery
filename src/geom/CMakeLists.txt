@@ -17,6 +17,7 @@ target_sources(orrery_geom PRIVATE
     voxel_grid.cpp
     panel_mesh.cpp
     reference_quantities.cpp
+    generated_size.h
     include/orrery/geom/vector3.h
     include/orrery/geom/triangle_mesh.h
     include/orrery/geom/mesh_validation.h

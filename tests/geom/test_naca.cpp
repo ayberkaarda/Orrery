@@ -90,3 +90,11 @@ TEST_CASE("extruded NACA wing is a closed prism", "[geom][naca]") {
     CHECK_THROWS_AS(naca_wing(Naca4{}, 1.0, 1.0, 2, 1), std::invalid_argument);
     CHECK_THROWS_AS(naca_wing(Naca4{}, 1.0, 1.0, 10, 0), std::invalid_argument);
 }
+
+TEST_CASE("a wing too large to build is rejected before allocation", "[geom][naca]") {
+    // Each resolution is accepted alone; together they ask for 2e11 vertices.
+    CHECK_THROWS_AS(naca_wing(Naca4{}, 1.0, 1.0, 1'000'000, 100'000), std::invalid_argument);
+    CHECK_THROWS_AS(naca_wing(Naca4{}, 1.0, 1.0, 5'000, 1'000), std::invalid_argument);
+    // Just inside the generated-mesh budget still builds.
+    CHECK(naca_wing(Naca4{}, 1.0, 1.0, 500, 20).mesh.triangles.size() == 2 * 1000 * 20 + 4 * 499);
+}

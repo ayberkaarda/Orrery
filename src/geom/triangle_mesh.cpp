@@ -76,6 +76,12 @@ Vector3 volume_centroid(const TriangleMesh& mesh) noexcept {
 }
 
 void append(TriangleMesh& mesh, const TriangleMesh& other) {
+    if (&mesh == &other) {
+        // Inserting a vector's own range into it is undefined: copy first.
+        const TriangleMesh copy = other;
+        append(mesh, copy);
+        return;
+    }
     const std::size_t offset = mesh.vertices.size();
     if (offset + other.vertices.size() > 0xffffffffU) {
         throw std::length_error("TriangleMesh: more than 2^32 - 1 vertices");

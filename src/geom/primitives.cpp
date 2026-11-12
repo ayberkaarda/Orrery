@@ -11,6 +11,8 @@
 #include <string>
 #include <utility>
 
+#include "generated_size.h"
+
 namespace orrery::geom {
 
 namespace {
@@ -236,6 +238,24 @@ double RevolutionProfile::polyhedral_area(const RevolutionResolution& res) const
 }
 
 TriangleMesh RevolutionProfile::mesh(const RevolutionResolution& res) const {
+    // Size the mesh before the polyline or the mesh is built.
+    check_resolution(res);
+    if (const auto error = validate()) {
+        throw std::invalid_argument("RevolutionProfile: " + *error);
+    }
+    std::size_t points = 1;
+    for (const ProfileSegment& s : segments_) {
+        points += s.kind == ProfileSegment::Kind::line
+                      ? 1U
+                      : static_cast<std::size_t>(arc_pieces(s, res.arc_step));
+    }
+    // points - 2 rings of `around` vertices plus two poles; 2 around
+    // triangles per ring.
+    const std::size_t planned_rings = points < 2 ? 0 : points - 2;
+    const auto around = static_cast<std::size_t>(res.around);
+    detail::check_generated_size(
+        detail::saturating_add(detail::saturating_mul(planned_rings, around), 2),
+        detail::saturating_mul(planned_rings, 2 * around), "RevolutionProfile::mesh");
     const std::vector<ProfilePoint> p = polyline(res);
     const std::size_t rings = p.size() - 2;
     if (rings == 0) {

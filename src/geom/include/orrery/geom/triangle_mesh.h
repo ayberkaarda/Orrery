@@ -46,7 +46,8 @@ struct Bounds {
 // when the signed volume is zero.
 [[nodiscard]] Vector3 volume_centroid(const TriangleMesh& mesh) noexcept;
 
-// Appends `other` to `mesh`, offsetting its indices.
+// Appends `other` to `mesh`, offsetting its indices. `other` may be `mesh`
+// itself (the mesh is then doubled).
 void append(TriangleMesh& mesh, const TriangleMesh& other);
 
 } // namespace orrery::geom

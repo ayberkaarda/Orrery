@@ -7,6 +7,8 @@
 #include <numbers>
 #include <stdexcept>
 
+#include "generated_size.h"
+
 namespace orrery::geom {
 
 namespace {
@@ -185,6 +187,21 @@ NacaWing naca_wing(const Naca4& airfoil, double chord, double span, int n, int s
     }
     if (span_divisions < 1 || span_divisions > 100000) {
         throw std::invalid_argument("naca_wing: span_divisions must be in [1, 100000]");
+    }
+    if (n < 3 || n > 1000000) {
+        throw std::invalid_argument("naca_wing: n must be in [3, 1000000]");
+    }
+    {
+        // Size the mesh before the section or the mesh is built: rings of 2n
+        // vertices at span_divisions + 1 stations, two triangles per quad
+        // and 2 (n - 1) per tip cap.
+        const auto stations = static_cast<std::size_t>(n);
+        const auto strips = static_cast<std::size_t>(span_divisions);
+        detail::check_generated_size(
+            detail::saturating_mul(2 * stations, strips + 1),
+            detail::saturating_add(detail::saturating_mul(4 * stations, strips),
+                                   4 * (stations - 1)),
+            "naca_wing");
     }
     const std::vector<SectionPoint> section = airfoil.section(n);
     const std::size_t ring = section.size();

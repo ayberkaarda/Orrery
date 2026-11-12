@@ -68,8 +68,9 @@ struct NacaWing {
     double polyhedral_area = 0.0;
 };
 
-// Throws std::invalid_argument for a non-positive chord or span, n < 3 or
-// span_divisions < 1.
+// Throws std::invalid_argument for a non-positive chord or span, n outside
+// [3, 1e6], span_divisions outside [1, 1e5], or a mesh above the default
+// MeshLimits (checked before anything is allocated).
 [[nodiscard]] NacaWing naca_wing(const Naca4& airfoil, double chord, double span, int n,
                                  int span_divisions);
 

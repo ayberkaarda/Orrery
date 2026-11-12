@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <stdexcept>
 #include <vector>
@@ -237,6 +238,37 @@ TEST_CASE("capsule parameters are validated", "[geom][primitives]") {
     const RevolutionProfile broken({ProfileSegment::line({0.0, 0.0}, {1.0, 0.0}),
                                     ProfileSegment::line({1.0, 0.5}, {0.0, 1.0})});
     CHECK(broken.validate().has_value());
+}
+
+TEST_CASE("a revolution mesh too large to build is rejected before allocation",
+          "[geom][primitives]") {
+    // around 1e5 and the finest arc step are each valid; together they ask
+    // for about 1e11 vertices.
+    const RevolutionProfile sphere = sphere_profile(1.0);
+    CHECK_THROWS_AS(sphere.mesh({100000, 1.0001e-6}), std::invalid_argument);
+    CHECK_THROWS_AS(sphere.mesh({100000, 1e-5}), std::invalid_argument);
+    CHECK_THROWS_AS(Ellipsoid{}.mesh({100000, 1e-5}), std::invalid_argument);
+    CHECK(sphere.mesh({1000, 1e-2}).triangles.size() == 2 * 1000 * 314);
+}
+
+TEST_CASE("appending a mesh to itself doubles it", "[geom][primitives]") {
+    TriangleMesh m = cube_mesh(1.0);
+    const TriangleMesh original = m;
+    append(m, m);
+    REQUIRE(m.vertices.size() == 2 * original.vertices.size());
+    REQUIRE(m.triangles.size() == 2 * original.triangles.size());
+    const auto offset = static_cast<std::uint32_t>(original.vertices.size());
+    for (std::size_t i = 0; i < original.vertices.size(); ++i) {
+        CHECK(m.vertices[i] == original.vertices[i]);
+        CHECK(m.vertices[i + original.vertices.size()] == original.vertices[i]);
+    }
+    for (std::size_t i = 0; i < original.triangles.size(); ++i) {
+        const Triangle& t = original.triangles[i];
+        CHECK(m.triangles[i] == t);
+        CHECK(m.triangles[i + original.triangles.size()] ==
+              Triangle{t[0] + offset, t[1] + offset, t[2] + offset});
+    }
+    CHECK(std::abs(signed_volume(m) - 2.0) < 1e-15);
 }
 
 TEST_CASE("Carlson integrals reproduce Carlson's test values", "[geom][primitives]") {
