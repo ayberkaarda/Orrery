@@ -13,12 +13,16 @@ target_sources(orrery_geom PRIVATE
     mesh_repair.cpp
     primitives.cpp
     naca.cpp
+    winding_number.cpp
+    voxel_grid.cpp
     include/orrery/geom/vector3.h
     include/orrery/geom/triangle_mesh.h
     include/orrery/geom/mesh_validation.h
     include/orrery/geom/mesh_repair.h
     include/orrery/geom/primitives.h
-    include/orrery/geom/naca.h)
+    include/orrery/geom/naca.h
+    include/orrery/geom/winding_number.h
+    include/orrery/geom/voxel_grid.h)
 
 # Phase 6a: model import through assimp, a private dependency of geom
 # (tools/check_deps.py THIRD_PARTY_DEPS), behind a validation gate (ADR-018).
