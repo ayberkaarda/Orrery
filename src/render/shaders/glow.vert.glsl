@@ -25,7 +25,7 @@ void main() {
     v_color_disc = i_color_disc;
     v_kind = i_centre_kind.w;
     float disc = i_color_disc.w;
-    float extent = v_kind < 0.5 ? clamp(disc * 10.0, 28.0, 320.0) : disc * 1.6 + 4.0;
+    float extent = v_kind < 0.5 ? clamp(disc * 24.0, 64.0, 480.0) : disc * 1.6 + 4.0;
     v_extent_px = extent;
     if (clip.w < u_near) {
         gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // behind the eye: clipped away
