@@ -137,7 +137,8 @@ benchmark_headless(const sim::SpaceExperiment& experiment, const HeadlessRequest
                    std::int64_t frames) {
     auto prepared = prepare_scene(experiment, request);
     if (!prepared) {
-        return core::failure(prepared.error());
+        const HeadlessError& cause = prepared.error();
+        return core::failure(HeadlessError{cause.kind, cause.message});
     }
     HeadlessScene& prepared_scene = *prepared.value();
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access): set by prepare_scene.
