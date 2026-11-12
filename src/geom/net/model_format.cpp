@@ -71,14 +71,57 @@ bool is_glb(std::span<const std::byte> head, std::uint64_t total_size) noexcept 
            read_le32(head, 8) == total_size;
 }
 
-bool is_ply(std::string_view text) noexcept {
+enum class PlyCheck : std::uint8_t { not_ply, valid, invalid };
+
+// A PLY file is a text header ("ply", a "format" line, ..., "end_header")
+// followed by a body that is text for "format ascii" and raw bytes for the
+// binary formats. Only the header must be text for a binary PLY: its body
+// holds coordinates and indices, so NUL and control bytes are normal there.
+// `text` must start at the "ply" magic.
+PlyCheck check_ply(std::string_view text) noexcept {
     if (!(text.starts_with("ply\n") || text.starts_with("ply\r\n"))) {
-        return false;
+        return PlyCheck::not_ply;
     }
-    const auto header_end = text.find("end_header");
-    const auto format = text.find("\nformat ");
-    return format != std::string_view::npos && header_end != std::string_view::npos &&
-           format < header_end;
+    // The header ends with the line "end_header" (trailing blanks allowed);
+    // the body starts after its line break, or at the end of a bodiless file.
+    constexpr std::string_view kEnd = "\nend_header";
+    std::size_t body = std::string_view::npos;
+    for (std::size_t at = text.find(kEnd); at != std::string_view::npos;
+         at = text.find(kEnd, at + 1)) {
+        std::size_t next = at + kEnd.size();
+        while (next < text.size() && (text[next] == ' ' || text[next] == '\t')) {
+            ++next;
+        }
+        if (next < text.size() && text[next] == '\r') {
+            ++next;
+        }
+        if (next == text.size()) {
+            body = next;
+        } else if (text[next] == '\n') {
+            body = next + 1;
+        } else {
+            continue;
+        }
+        break;
+    }
+    if (body == std::string_view::npos) {
+        return PlyCheck::invalid; // no complete header within the sniffed bytes
+    }
+    const std::string_view header = text.substr(0, body);
+    if (!is_text(header)) {
+        return PlyCheck::invalid;
+    }
+    const auto format_line = header.find("\nformat ");
+    if (format_line == std::string_view::npos) {
+        return PlyCheck::invalid;
+    }
+    std::string_view format = header.substr(format_line + 8);
+    format = format.substr(0, format.find_first_of(" \t\r\n"));
+    if (format == "ascii") {
+        return is_text(text.substr(body)) ? PlyCheck::valid : PlyCheck::invalid;
+    }
+    return format == "binary_little_endian" || format == "binary_big_endian" ? PlyCheck::valid
+                                                                             : PlyCheck::invalid;
 }
 
 // Every complete line of an OBJ file is empty, a comment or a statement of
@@ -115,15 +158,21 @@ bool is_obj(std::string_view text, bool truncated) noexcept {
 
 ModelFormat detect_text_format(std::span<const std::byte> head, std::uint64_t total_size) {
     const std::string_view raw{reinterpret_cast<const char*>(head.data()), head.size()};
-    if (!is_text(raw)) {
-        return ModelFormat::unknown;
-    }
     std::string_view text = raw;
     if (text.starts_with("\xEF\xBB\xBF")) {
         text.remove_prefix(3);
     }
-    if (is_ply(text)) {
-        return ModelFormat::ply;
+    // PLY first: a binary PLY body is not text, only its header is.
+    switch (check_ply(text)) {
+        case PlyCheck::valid:
+            return ModelFormat::ply;
+        case PlyCheck::invalid:
+            return ModelFormat::unknown;
+        case PlyCheck::not_ply:
+            break;
+    }
+    if (!is_text(raw)) {
+        return ModelFormat::unknown;
     }
     text = trim_left(text);
     if (text.starts_with("solid") && text.size() > 5 &&

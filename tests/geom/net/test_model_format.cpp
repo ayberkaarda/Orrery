@@ -48,6 +48,24 @@ TEST_CASE("Model formats are detected from magic bytes", "[net][format]") {
     CHECK(detect(std::string{"PK\x03\x04", 4} + std::string(40, '\0')) == ModelFormat::zip);
 }
 
+TEST_CASE("A binary PLY with a real binary body is detected", "[net][format][ply]") {
+    // The body holds float zeros and small integers: NUL and control bytes.
+    CHECK(detect(binary_ply(false)) == ModelFormat::ply);
+    CHECK(detect(binary_ply(true)) == ModelFormat::ply);
+    std::string crlf = binary_ply(false);
+    crlf.replace(0, 4, "ply\r\n");
+    CHECK(detect(crlf) == ModelFormat::ply);
+    // Only the header has to be text, and it must still be one.
+    std::string bad_header = binary_ply(false);
+    bad_header.replace(bad_header.find("comment") + 2, 1, std::string{"\0", 1});
+    CHECK(detect(bad_header) == ModelFormat::unknown);
+    // An ASCII PLY body must be text too.
+    CHECK(detect("ply\nformat ascii 1.0\nelement vertex 1\nproperty float x\nend_header\n" +
+                 std::string{"0\0\n", 3}) == ModelFormat::unknown);
+    // An unknown storage format is no PLY.
+    CHECK(detect("ply\nformat binary_middle_endian 1.0\nend_header\n") == ModelFormat::unknown);
+}
+
 TEST_CASE("A binary STL whose header begins with 'solid' is still binary", "[net][format]") {
     std::string stl = binary_stl(2);
     stl.replace(0, 6, "solid ");
