@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "domain": "aero",
+  "inputs": { "geometry": "sphere" },
+  "solver": { "name": "lbm" }
+}
