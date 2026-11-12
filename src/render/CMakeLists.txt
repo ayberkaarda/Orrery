@@ -76,6 +76,12 @@ target_sources(orrery_render PRIVATE
     include/orrery/render/ui_theme.h)
 target_link_libraries(orrery_render PRIVATE imgui::imgui implot::implot)
 
+# Phase 4c: application bar (workspace tab, transport, time warp, scenario
+# selector) and scene input of the interactive window.
+target_sources(orrery_render PRIVATE
+    ui_app_bar.cpp
+    include/orrery/render/ui_app_bar.h)
+
 # Shaders: src/render/shaders/*.glsl are embedded at build time into one
 # generated header (no runtime file reads). The header is private to the
 # library sources and to the render tests, which check the embedding.
