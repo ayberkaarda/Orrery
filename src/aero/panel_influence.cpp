@@ -1,5 +1,6 @@
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <numbers>
 
 #include "orrery/aero/panel_method.h"
