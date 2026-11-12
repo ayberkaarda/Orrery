@@ -58,7 +58,7 @@ Weld weld(const std::vector<Vector3>& vertices, double tolerance) {
         return ka != kb ? ka < kb : a < b;
     });
     Weld w;
-    w.map.resize(vertices.size());
+    w.map.assign(vertices.size(), 0U);
     for (std::size_t i = 0; i < order.size();) {
         std::size_t j = i + 1;
         while (j < order.size() && key(vertices[order[j]]) == key(vertices[order[i]])) {

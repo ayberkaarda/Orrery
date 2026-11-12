@@ -160,7 +160,7 @@ MeshTree::MeshTree(const TriangleMesh& mesh, double beta, std::size_t leaf_size)
     if (mesh.triangles.size() > std::numeric_limits<std::uint32_t>::max()) {
         throw std::length_error("MeshTree: too many triangles");
     }
-    order_.resize(mesh.triangles.size());
+    order_.assign(mesh.triangles.size(), 0U);
     std::iota(order_.begin(), order_.end(), 0U);
     if (!order_.empty()) {
         nodes_.reserve(2 * (mesh.triangles.size() / leaf_size + 1));
