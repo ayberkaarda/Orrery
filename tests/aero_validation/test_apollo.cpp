@@ -67,4 +67,7 @@ TEST_CASE("Apollo capsule at Mach 20: Cd about 1.3", "[aero_validation][newtonia
     solver.step();
     const AeroResult& trim = solver.result();
     CHECK(std::abs(trim.cd - 1.3) < 0.10 * 1.3);
+    // Lift to drag ratio about 0.3 in magnitude. A blunt body's force is mostly
+    // axial, so its lift opposes the angle of attack (negative cl here).
+    CHECK(std::abs(std::abs(trim.cl / trim.cd) - 0.3) < 0.05);
 }
