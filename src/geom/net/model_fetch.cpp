@@ -45,6 +45,51 @@ FetchedModel to_result(detail::CacheEntry entry, std::string_view url, const Fet
                         from_cache};
 }
 
+std::filesystem::path source_name_for(ModelFormat format) {
+    return "source" + std::string{model_format_extension(format)};
+}
+
+// A cache hit is served only if the cached download would pass this request's
+// policy as a fresh download: the size limit, the content sniffing, and for a
+// zip the archive limits. The model is derived from the source again rather
+// than trusted: a plain download is its own model, and the model of a zip
+// must be byte-identical to a fresh extraction under the current limits.
+// On false the caller downloads again, so the outcome (success or the
+// policy error) is the one an uncached fetch would give.
+bool hit_conforms(const detail::CacheEntry& entry, const detail::ModelCache& cache,
+                  const FetchOptions& options) {
+    std::error_code ec;
+    const std::uintmax_t size = std::filesystem::file_size(entry.source_file, ec);
+    if (ec || size > options.limits.max_download_bytes) {
+        return false;
+    }
+    const auto detected = detect_file_format(entry.source_file);
+    if (!detected || entry.source_file.filename() != source_name_for(detected.value())) {
+        return false;
+    }
+    const ModelFormat format = detected.value();
+    if (format != ModelFormat::zip) {
+        return is_model_format(format) && entry.format == format &&
+               entry.model_file == entry.source_file && entry.archive_member.empty();
+    }
+    auto staging = cache.make_staging();
+    if (!staging) {
+        return false;
+    }
+    const StagingGuard guard{staging.value()};
+    const auto models =
+        extract_archive_models(entry.source_file, staging.value(), options.limits.archive);
+    if (!models) {
+        return false;
+    }
+    const ExtractedModel& first = models.value().front();
+    const std::string fresh = detail::sha256_of_file(first.file);
+    return !fresh.empty() && entry.format == first.format &&
+           entry.archive_member == first.member_name &&
+           entry.model_file.filename() == first.file.filename() &&
+           detail::sha256_of_file(entry.model_file) == fresh;
+}
+
 #ifdef _WIN32
 std::optional<std::filesystem::path> environment_path(const wchar_t* name) {
     wchar_t* value = nullptr;
@@ -109,7 +154,8 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
         return failure(*std::move(problem));
     }
     if (options.use_cache) {
-        if (auto hit = cache.lookup_url(url)) {
+        auto hit = cache.lookup_url(url);
+        if (hit && hit_conforms(*hit, cache, options)) {
             return to_result(*std::move(hit), url, options, true);
         }
     }
@@ -145,8 +191,7 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
                                       std::string{model_format_name(format)} + ")"});
     }
 
-    const std::filesystem::path source_name =
-        "source" + std::string{model_format_extension(format)};
+    const std::filesystem::path source_name = source_name_for(format);
     std::error_code ec;
     std::filesystem::rename(download_file, dir / source_name, ec);
     if (ec) {
@@ -168,7 +213,7 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
         member = first.member_name;
     }
 
-    auto entry = cache.commit(dir, got.sha256, model_format, model_name, member);
+    auto entry = cache.commit(dir, got.sha256, source_name, model_format, model_name, member);
     if (!entry) {
         return failure(entry.error());
     }

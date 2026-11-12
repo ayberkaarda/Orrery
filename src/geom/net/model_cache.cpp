@@ -82,6 +82,18 @@ bool write_atomically(const std::filesystem::path& file, std::string_view text) 
     return true;
 }
 
+// A directory itself, not a symbolic link or a junction to one.
+bool is_real_directory(const std::filesystem::path& dir) {
+    std::error_code ec;
+    return std::filesystem::symlink_status(dir, ec).type() == std::filesystem::file_type::directory;
+}
+
+// A regular file itself, not a link to one.
+bool is_real_file(const std::filesystem::path& file) {
+    std::error_code ec;
+    return std::filesystem::symlink_status(file, ec).type() == std::filesystem::file_type::regular;
+}
+
 std::optional<std::string> read_small_file(const std::filesystem::path& file) {
     std::error_code ec;
     const std::uintmax_t size = std::filesystem::file_size(file, ec);
@@ -128,6 +140,14 @@ std::optional<FetchError> ModelCache::prepare() const {
             return cache_error("cannot create the cache directory: " + ec.message());
         }
     }
+    // Downloads are staged and indexed only inside the cache itself: a link
+    // here would move them to wherever it points.
+    for (const std::filesystem::path& dir : {root_ / kUrlDir, root_ / kStagingDir}) {
+        if (!is_real_directory(dir)) {
+            return cache_error("the cache directory '" + dir.filename().string() +
+                               "' is a link or not a directory; refusing to use it");
+        }
+    }
     return std::nullopt;
 }
 
@@ -136,13 +156,16 @@ std::optional<CacheEntry> ModelCache::read_entry(const std::string& sha256) cons
         return std::nullopt;
     }
     const std::filesystem::path dir = root_ / sha256;
+    if (!is_real_directory(dir)) {
+        return std::nullopt;
+    }
     const auto text = read_small_file(dir / kEntryFile);
     if (!text) {
         return std::nullopt;
     }
     std::string format_name;
+    std::string source;
     std::string model;
-    std::string model_sha;
     CacheEntry entry;
     std::istringstream lines(*text);
     for (std::string line; std::getline(lines, line);) {
@@ -154,23 +177,29 @@ std::optional<CacheEntry> ModelCache::read_entry(const std::string& sha256) cons
         std::string value = line.substr(equals + 1);
         if (key == "format") {
             format_name = std::move(value);
+        } else if (key == "source") {
+            source = std::move(value);
         } else if (key == "model") {
             model = std::move(value);
-        } else if (key == "model_sha256") {
-            model_sha = std::move(value);
         } else if (key == "member") {
             entry.archive_member = std::move(value);
         }
     }
     const auto format = parse_format(format_name);
-    if (!format || !is_plain_file_name(model) || !is_sha256_hex(model_sha)) {
+    if (!format || !is_plain_file_name(source) || !is_plain_file_name(model)) {
         return std::nullopt;
     }
+    entry.source_file = dir / source;
     entry.model_file = dir / model;
     entry.sha256 = sha256;
     entry.format = *format;
-    // The model may have been altered since it was stored: verify it.
-    if (sha256_of_file(entry.model_file) != model_sha) {
+    if (!is_real_file(entry.source_file) || !is_real_file(entry.model_file)) {
+        return std::nullopt;
+    }
+    // The content address is the only trusted fact: the source must hash to
+    // the name of its directory. A digest stored in entry.txt would prove
+    // nothing, as whoever can alter a file can alter entry.txt too.
+    if (sha256_of_file(entry.source_file) != sha256) {
         return std::nullopt;
     }
     return entry;
@@ -201,19 +230,21 @@ core::Result<std::filesystem::path, FetchError> ModelCache::make_staging() const
 
 core::Result<CacheEntry, FetchError> ModelCache::commit(const std::filesystem::path& staging,
                                                         const std::string& sha256,
+                                                        const std::filesystem::path& source_name,
                                                         ModelFormat format,
                                                         const std::filesystem::path& model_name,
                                                         const std::string& archive_member) const {
-    if (!is_sha256_hex(sha256) || !is_model_format(format)) {
+    if (!is_sha256_hex(sha256) || !is_model_format(format) ||
+        !is_plain_file_name(source_name.string()) || !is_plain_file_name(model_name.string())) {
         return failure(cache_error("invalid cache entry"));
     }
     const std::string model_sha = sha256_of_file(staging / model_name);
     if (model_sha.empty()) {
         return failure(cache_error("cannot hash the model file"));
     }
-    std::string text = "format=" + std::string{model_format_name(format)} + "\n";
+    std::string text = "source=" + source_name.string() + "\n";
+    text += "format=" + std::string{model_format_name(format)} + "\n";
     text += "model=" + model_name.string() + "\n";
-    text += "model_sha256=" + model_sha + "\n";
     if (!archive_member.empty()) {
         text += "member=" + archive_member + "\n";
     }
@@ -221,15 +252,35 @@ core::Result<CacheEntry, FetchError> ModelCache::commit(const std::filesystem::p
         return failure(cache_error("cannot write the cache entry description"));
     }
 
+    // An existing entry is reused only if it holds exactly what was just
+    // staged: its source is verified by read_entry(), its model is compared
+    // with the freshly produced one. Otherwise the fresh download wins.
+    const auto identical_entry = [&]() -> std::optional<CacheEntry> {
+        auto existing = read_entry(sha256);
+        if (!existing || existing->source_file.filename() != source_name ||
+            existing->model_file.filename() != model_name || existing->format != format ||
+            existing->archive_member != archive_member ||
+            sha256_of_file(existing->model_file) != model_sha) {
+            return std::nullopt;
+        }
+        return existing;
+    };
+
     const std::filesystem::path final_dir = root_ / sha256;
     std::error_code ec;
-    if (std::filesystem::exists(final_dir, ec)) {
-        if (auto existing = read_entry(sha256)) {
+    const auto final_type = std::filesystem::symlink_status(final_dir, ec).type();
+    if (final_type != std::filesystem::file_type::not_found) {
+        if (auto existing = identical_entry()) {
             std::filesystem::remove_all(staging, ec);
             return *std::move(existing);
         }
-        // A damaged entry under this address: replace it.
-        std::filesystem::remove_all(final_dir, ec);
+        // A damaged, altered or linked entry under this address: replace it.
+        // A link is removed itself, never the directory it points to.
+        if (final_type == std::filesystem::file_type::directory) {
+            std::filesystem::remove_all(final_dir, ec);
+        } else {
+            std::filesystem::remove(final_dir, ec);
+        }
         if (ec) {
             return failure(cache_error("cannot replace a damaged cache entry: " + ec.message()));
         }
@@ -237,7 +288,7 @@ core::Result<CacheEntry, FetchError> ModelCache::commit(const std::filesystem::p
     std::filesystem::rename(staging, final_dir, ec);
     if (ec) {
         // Another process may have committed the same content meanwhile.
-        if (auto existing = read_entry(sha256)) {
+        if (auto existing = identical_entry()) {
             std::filesystem::remove_all(staging, ec);
             return *std::move(existing);
         }
