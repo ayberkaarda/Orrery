@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../scenarios/solar_system_j2000.json" },
+  "conditions": { "time_warp": 1000000 },
+  "solver": {
+    "name": "leapfrog_kdk",
+    "version": "1",
+    "settings": { "dt_days": 0.05, "force": "auto" }
+  },
+  "result": {}
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../scenarios/sgr_a_s2.json" },
+  "conditions": { "time_warp": 10000000 },
+  "solver": {
+    "name": "ias15",
+    "version": "1",
+    "settings": { "dt_days": 2.0, "force": "auto" }
+  },
+  "result": {}
+}

@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../scenarios/sun_earth_moon.json" },
+  "conditions": { "time_warp": 200000 },
+  "solver": {
+    "name": "leapfrog_kdk",
+    "version": "1",
+    "settings": { "dt_days": 0.02, "force": "auto" }
+  },
+  "result": {}
+}

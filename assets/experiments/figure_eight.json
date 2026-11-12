@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../scenarios/figure_eight.json" },
+  "conditions": { "time_warp": 2000000 },
+  "solver": {
+    "name": "yoshida4",
+    "version": "1",
+    "settings": { "dt_days": 0.5, "force": "auto" }
+  },
+  "result": {}
+}
