@@ -64,6 +64,8 @@ public:
                                                                const OverlayCallback& overlay);
 
     [[nodiscard]] GlContext& context() noexcept { return context_; }
+    // Precondition: not moved-from (pipeline_ is engaged until then).
+    // NOLINTNEXTLINE(bugprone-unchecked-optional-access): guarded by the precondition.
     [[nodiscard]] HdrPipeline& pipeline() noexcept { return *pipeline_; }
 
 private:
