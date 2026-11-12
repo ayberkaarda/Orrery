@@ -65,6 +65,9 @@ ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_GRAPH: dict[str, set[str]] = {
     "orrery_core": set(),
     "orrery_geom": {"orrery_core"},
+    # Phase 6b: the URL model loader (src/geom/net) downloads and unpacks
+    # files only; it never parses meshes, so it does not need orrery_geom.
+    "orrery_geom_net": {"orrery_core"},
     "orrery_atmo": {"orrery_core"},
     "orrery_aero": {"orrery_core", "orrery_geom"},
     "orrery_scene": {"orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo"},
@@ -89,15 +92,30 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # backends) and ImPlot for the UI layer, both private.
 # orrery_sim (Phase 4c): oneTBB's concurrent_queue carries SimCommands from the
 # render thread to the physics thread, private like in core.
+# orrery_geom_net (Phase 6b): libcurl (curl licence, https transport over
+# OpenSSL) and miniz (MIT, zip reading), both private and graphics-free.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
+    "orrery_geom_net": {"CURL::libcurl", "miniz::miniz"},
     "orrery_core": {"TBB::tbb"},
+    # orrery_geom (Phase 6a): assimp (BSD-3-Clause) imports OBJ, STL, glTF 2.0,
+    # PLY and FBX models; private, graphics-free, single precision only
+    # behind its API (converted to double on read).
+    "orrery_geom": {"assimp::assimp"},
     "orrery_sim": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
                       "implot::implot"},
 }
 
-GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim")
+# Imported targets created by CMake's own Find modules (FindZLIB, FindOpenSSL)
+# are UNKNOWN_LIBRARY targets whose file the code model does not report on
+# Linux, so the artifact check cannot inspect them. They are plain system
+# compression and TLS libraries reached through assimp, curl and miniz; the
+# names are matched exactly so any other artifact-less import still fails.
+UNVERIFIABLE_IMPORTED_OK = frozenset({"ZLIB::ZLIB", "OpenSSL::SSL", "OpenSSL::Crypto"})
+
+GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim",
+                         "orrery_geom_net")
 PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
 
 # Graphics libraries, matched against each link name after the linker-flag
@@ -666,7 +684,7 @@ def check_configuration(config: dict, reply: Path, source_root: Path, tag: str,
             if node is None:
                 continue
             if (node.get("imported") and node.get("type") != "INTERFACE_LIBRARY"
-                    and not node.get("artifacts")):
+                    and not node.get("artifacts") and name not in UNVERIFIABLE_IMPORTED_OK):
                 errors.append(
                     f"[{tag}] {target}{via}: imported {node.get('type', 'target')} {name} "
                     f"has no artifact in the code model; its library file cannot be verified"

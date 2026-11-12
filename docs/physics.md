@@ -420,3 +420,55 @@ Timing deviation: the kernel is scalar double arithmetic with one correctly roun
 - `sgr_a_s2.json`: Sgr A* (black-hole kind, spin 0, Newtonian gravity) and S2 with the GRAVITY Collaboration 2020 best fit (A&A 636, L5, Table E.1): M = 4.261e6 Msun, R0 = 8246.7 pc, a = 125.058 mas, e = 0.884649, i = 134.567 deg, omega = 66.263 deg, Omega = 228.171 deg, P = 16.0455 yr; a = 0.125058 x 8246.7 = 1031.3158 AU. Starts at apocentre. For comparison, Gillessen et al. 2017 (ApJ 837, 30): a = 0.1255 arcsec, e = 0.884, P = 16.00 yr.
 - APPROXIMATION (S2 scenario): Newtonian point masses; S2 is a zero-mass test star (its mass is of order 1e-5 of the hole's), and the Schwarzschild precession and Roemer delay measured by GRAVITY are not modelled. Valid for the orbital period and shape, not for the precession or the redshift.
   Measured: period from successive pericentre passages (sign change of r.v, bisected) 16.045008 Julian years for both orbits; Kepler 2 pi sqrt(a^3 / (k^2 M)) = 16.045008 yr (relative difference 9e-15); GRAVITY fit 16.0455 yr. Acceptance 16.0 +- 0.3 yr.
+
+## Geometry pipeline (orrery_geom, Phase 6a)
+
+Sources: `orrery/geom/primitives.h`, `naca.h`, `mesh_import.h`,
+`mesh_repair.h`, `winding_number.h`, `voxel_grid.h`, `panel_mesh.h`,
+`reference_quantities.h`; design and formulas in `geometry-import.md`;
+decisions ADR-010 (untrusted models) and ADR-018 (kernels without libigl,
+validation gate around assimp); tests in `tests/geom`.
+
+### Primitives and analytic references
+- Solids of revolution (sphere, cylinder, cone, capsule): exact volume
+  (integral of pi r^2 dz) and area (integral of 2 pi r ds) from the
+  antiderivatives on each line and circular arc of the meridian profile. The
+  tessellation's own volume and area are known in closed form (regular N-gon
+  frustums), so every mesh is checked against an exact value; the true shape
+  is reached at second order in the resolution.
+- Ellipsoid area 4 pi a b c R_G(a^-2, b^-2, c^-2) with Carlson's symmetric
+  integrals (Carlson 1995, duplication theorem).
+- NACA 4-digit section area: integral of 2 y_t sqrt(1 + y_c'^2) dx by
+  Gauss-Legendre quadrature after x = u^2 (thickness applied normal to the
+  camber line; Abbott and von Doenhoff, *Theory of Wing Sections*, 1959).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| Primitive volume and area against analytic | sphere, cylinder, cone, box, cube, plate, wedges, Apollo and Orion capsules, ellipsoids (closed forms, spheroid formulas, 2D quadrature); meshes against their polyhedral closed forms at N = 16 .. 128 | worst relative error 6.1e-14 over 65 checks | 1e-9 (acceptance) |
+| Capsule antiderivatives against independent quadrature | 20-point Gauss-Legendre, 64 panels per segment | below 1e-12 relative | 1e-12 |
+| Carlson integrals | Carlson (1995) table values R_F, R_D, R_G | 14 published digits reproduced | 1e-12 relative |
+| Tessellation convergence | N doubled from 16 to 128 | volume error ratio below 0.3 per doubling (second order) | 0.3 |
+| NACA 0012 section area | quadrature against closed form | below 1e-13 relative; polygon of 800 stations 1e-5 | 1e-13 / 1e-5 |
+| NACA 2412 section area | against Richardson-extrapolated polygons (4000, 8000 stations) | below 1e-9 relative | 1e-9 |
+| Broken STL fixture | unit cube with hole, flipped triangle, duplicate, degenerate triangle, fin | reported exactly (14 triangles, 1 degenerate, 1 duplicate, 20 edges, 5 boundary, 1 non-manifold, 3 inconsistent, 1 hole, 1 open chain); repaired: watertight outward unit cube, volume error below 1e-15 | exact counts |
+| Sphere voxelization | r = 1, 16128 triangles, 44^3 cells of 0.05, against the true sphere | 85184 of 85184 cells agree (accuracy 1.0); solid volume within 2 percent | 0.999 (acceptance) |
+| Hierarchical winding number | beta = 2 against the direct sum, 2000 random points in [-2, 2]^3 | worst abs error 0.024, no inside/outside disagreement | 0.05 |
+| Narrow-band SDF | r = 0.8 sphere, 96 x 48 facets, band 3 cells | worst error 8.6e-4 against abs(p) - r (facet sagitta 1.7e-3) | sagitta |
+| Hostile input | NaN/inf coordinates, out-of-range indices, STL/PLY/FBX headers declaring billions of elements, a PLY comment naming `end_header` before the counts, 16 GB deflate claim, oversized files, referenced files over the byte budget, references outside the model directory | all rejected before parsing or before post-processing | rejected |
+| Import of 508320 triangles (glb) with watertight report | hidden benchmark `[benchmark]` | 0.96 s | 5 s (project criterion) |
+
+### Approximations (geometry)
+Every item is marked `// APPROXIMATION:` in the code. A1 (uniform density
+for the centre of mass) applies to `reference_quantities`.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| G1 | Apollo- and Orion-like capsule presets: published diameter, nose radius, shoulder radius and afterbody angle; rounded apex replaced by a flat top | `CapsuleShape::apollo`, `orion` | Drag and heating studies of the heat shield and shoulder | Afterbody details, RCS fairings and the apex shape of the real vehicles are absent |
+| G2 | NACA thickness with the closed-trailing-edge coefficient -0.1036 instead of -0.1015 | `Naca4::half_thickness` | Half thickness differs by 0.0105 t x^4 (0.13 percent of chord at t = 0.12) | Comparisons that depend on the 0.021 t open trailing edge of the original series |
+| G3 | Unit of a file without one guessed from its bounding box (e > 500: mm, 50 < e <= 500: cm, else m) | `estimate_unit` | Bodies of 5 cm to 500 m; the caller confirms | Tiny or huge models, inches and feet are never guessed |
+| G4 | Holes filled by a fan from the loop centroid | `repair_mesh` | Small, nearly planar holes | Large or curved holes get a flat or self-intersecting patch (changes volume and area) |
+| G5 | Winding number far field truncated at first order (dipole), beta = 2 | `MeshTree::winding_number` | Error a few percent at worst, far below the 1/2 decision threshold | Values near 1/2 (open or self-overlapping meshes) may be misclassified where the exact sum is within a few percent of the threshold |
+| G6 | Silhouette area by cell-centre raster coverage (1024 cells along the larger side) | `projected_area` | Error below perimeter x cell size (about 0.4 percent for a sphere) | Thin features below a cell are lost; use the bound for convex bodies |
+| G7 | Imported coordinates and node transforms parsed in single precision (the vcpkg assimp port has no `ASSIMP_DOUBLE_PRECISION` build), widened to double afterwards | `import_mesh_file`, `import_mesh_memory` | Detail above about 1e-7 of the model extent (float resolution 6e-8 relative); every later stage is double | Coordinates closer than float resolution (`1.0` and `1.000000001`) collapse to one vertex; a double-precision assimp build is needed for such models |
