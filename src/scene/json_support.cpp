@@ -81,11 +81,12 @@ std::string index_path(std::string_view parent, std::size_t index) {
     return out;
 }
 
-SceneError exception_error(std::exception_ptr exception) noexcept {
+// NOLINTNEXTLINE(bugprone-exception-escape): the messages fit the small-string buffer.
+SceneError exception_error(const std::exception_ptr& exception) noexcept {
     // The messages fit the small-string buffer of the standard libraries, so
     // building the error does not allocate while memory is exhausted.
     try {
-        std::rethrow_exception(std::move(exception));
+        std::rethrow_exception(exception);
     } catch (const std::bad_alloc&) {
         return SceneError{SceneErrorCode::out_of_memory, {}, "out of memory", {}, {}};
     } catch (const std::exception& e) {
@@ -203,9 +204,17 @@ private:
     struct Frame {
         Json* container;
         bool array;
-        std::size_t size;
+        std::size_t size = 0;
         std::string key;
         std::set<std::string, std::less<>> keys;
+
+        Frame(Json* c, bool a) : container(c), array(a) {}
+        // Moving the key set may allocate, so the move operations are not noexcept.
+        Frame(const Frame&) = delete;
+        Frame& operator=(const Frame&) = delete;
+        Frame(Frame&&) noexcept(false) = default;
+        Frame& operator=(Frame&&) noexcept(false) = default;
+        ~Frame() = default;
     };
 
     // Path of the value about to be stored: the next element of the
@@ -297,7 +306,7 @@ private:
             return false;
         }
         Json* placed = place(std::move(container));
-        frames_.push_back(Frame{placed, array, 0, {}, {}});
+        frames_.emplace_back(placed, array);
         return true;
     }
 
@@ -339,14 +348,14 @@ Document parse_or_throw(std::string_view text) {
     }
     StrictBuilder builder;
     const bool parsed = Json::sax_parse(text.begin(), text.end(), &builder);
-    if (builder.error()) {
-        throw SceneFailure{*builder.error()};
+    if (const std::optional<SceneError>& error = builder.error()) {
+        throw SceneFailure{*error};
     }
     if (!parsed) {
         fail(SceneErrorCode::syntax_error, {}, "the document could not be parsed");
     }
-    if (builder.duplicate()) {
-        throw SceneFailure{*builder.duplicate()};
+    if (const std::optional<SceneError>& duplicate = builder.duplicate()) {
+        throw SceneFailure{*duplicate};
     }
     return Document(std::move(builder.root()));
 }
@@ -470,9 +479,9 @@ std::optional<double> ObjectReader::optional_number(std::string_view key) const 
 
 OrderedJson number_to_json(double value) {
     if (!std::isfinite(value)) {
-        return OrderedJson(nullptr);
+        return nullptr;
     }
-    return OrderedJson(value);
+    return value;
 }
 
 } // namespace orrery::scene::detail

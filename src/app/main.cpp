@@ -21,9 +21,7 @@ void print_modules(std::ostream& out) {
     }
 }
 
-} // namespace
-
-int main(int argc, char** argv) {
+int run(int argc, char** argv) {
     const std::span<char*> args(argv, static_cast<std::size_t>(argc));
 
     std::cout << "Orrery " << orrery::core::version_string() << '\n';
@@ -39,4 +37,14 @@ int main(int argc, char** argv) {
     }
     print_modules(std::cout);
     return 0;
+}
+
+} // namespace
+
+int main(int argc, char** argv) {
+    try {
+        return run(argc, argv);
+    } catch (...) {
+        return 1;
+    }
 }

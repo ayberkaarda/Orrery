@@ -13,6 +13,14 @@
 // initialised by the first live context and terminated with the last one.
 namespace orrery::render {
 
+class GlContext;
+
+namespace detail {
+// Private to orrery_render (UI backend): the native window of a context
+// (GLFWwindow*), nullptr for a moved-from context.
+[[nodiscard]] void* native_window(const GlContext& context) noexcept;
+} // namespace detail
+
 struct ContextOptions {
     int width = 64;
     int height = 64;
@@ -66,6 +74,7 @@ public:
     [[nodiscard]] int framebuffer_height() const;
 
 private:
+    friend void* detail::native_window(const GlContext& context) noexcept;
     struct Impl;
     explicit GlContext(std::unique_ptr<Impl> impl) noexcept;
     std::unique_ptr<Impl> impl_;

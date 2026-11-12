@@ -104,6 +104,9 @@ void delete_texture(std::uint32_t id) {
 void delete_framebuffer(std::uint32_t id) {
     glDeleteFramebuffers(1, &id);
 }
+void delete_query(std::uint32_t id) {
+    glDeleteQueries(1, &id);
+}
 
 GLenum gl_stage(ShaderStage stage) {
     switch (stage) {
@@ -336,6 +339,15 @@ void Program::set(std::string_view name, float value) const {
     glProgramUniform1f(handle_.get(), uniform_location(name), value);
 }
 
+void Program::set(std::string_view name, const glm::vec2& value) const {
+    glProgramUniform2fv(handle_.get(), uniform_location(name), 1, glm::value_ptr(value));
+}
+
+void Program::set(std::string_view name, const glm::mat3& value) const {
+    glProgramUniformMatrix3fv(handle_.get(), uniform_location(name), 1, GL_FALSE,
+                              glm::value_ptr(value));
+}
+
 void Program::set(std::string_view name, const glm::vec3& value) const {
     glProgramUniform3fv(handle_.get(), uniform_location(name), 1, glm::value_ptr(value));
 }
@@ -384,6 +396,30 @@ void VertexArray::set_float_attribute(std::uint32_t location, std::uint32_t bind
     glVertexArrayAttribFormat(handle_.get(), location, components, GL_FLOAT, GL_FALSE,
                               relative_offset);
     glVertexArrayAttribBinding(handle_.get(), location, binding);
+}
+
+void VertexArray::set_binding_divisor(std::uint32_t binding, std::uint32_t divisor) const {
+    glVertexArrayBindingDivisor(handle_.get(), binding, divisor);
+}
+
+GpuTimer GpuTimer::create() {
+    GLuint id = 0;
+    glCreateQueries(GL_TIME_ELAPSED, 1, &id);
+    return GpuTimer(detail::GlHandle(id, delete_query));
+}
+
+void GpuTimer::begin() const {
+    glBeginQuery(GL_TIME_ELAPSED, handle_.get());
+}
+
+void GpuTimer::end() const {
+    glEndQuery(GL_TIME_ELAPSED);
+}
+
+std::uint64_t GpuTimer::elapsed_ns() const {
+    GLuint64 value = 0;
+    glGetQueryObjectui64v(handle_.get(), GL_QUERY_RESULT, &value);
+    return value;
 }
 
 void VertexArray::set_index_buffer(const Buffer& buffer) const {

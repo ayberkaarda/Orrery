@@ -59,4 +59,9 @@ target_sources(orrery_core PRIVATE
     include/orrery/core/tidal.h
     include/orrery/core/event_step.h)
 
+# Phase 4b: immutable snapshot of the observable state read by the renderer.
+target_sources(orrery_core PRIVATE
+    sim_snapshot.cpp
+    include/orrery/core/sim_snapshot.h)
+
 orrery_configure_target(orrery_core)

@@ -48,6 +48,34 @@ target_link_libraries(orrery_render
     PUBLIC glm::glm-header-only
     PRIVATE glfw glad::glad)
 
+# Phase 4b: space scene visuals (icosphere bodies, starfield, trails) and the
+# Dear ImGui / ImPlot user-interface layer. Both UI libraries are private
+# (tools/check_deps.py THIRD_PARTY_DEPS): no public header includes ImGui.
+#   imgui  - docking branch with the GLFW and OpenGL 3 backends
+#   implot - plots in the System Monitor panel
+find_package(imgui CONFIG REQUIRED)
+find_package(implot CONFIG REQUIRED)
+target_sources(orrery_render PRIVATE
+    body_visuals.cpp
+    icosphere.cpp
+    render_settings.cpp
+    space_renderer.cpp
+    starfield.cpp
+    trails.cpp
+    ui_context.cpp
+    ui_panels.cpp
+    ui_theme.cpp
+    include/orrery/render/body_visuals.h
+    include/orrery/render/icosphere.h
+    include/orrery/render/render_settings.h
+    include/orrery/render/space_renderer.h
+    include/orrery/render/starfield.h
+    include/orrery/render/trails.h
+    include/orrery/render/ui_context.h
+    include/orrery/render/ui_panels.h
+    include/orrery/render/ui_theme.h)
+target_link_libraries(orrery_render PRIVATE imgui::imgui implot::implot)
+
 # Shaders: src/render/shaders/*.glsl are embedded at build time into one
 # generated header (no runtime file reads). The header is private to the
 # library sources and to the render tests, which check the embedding.

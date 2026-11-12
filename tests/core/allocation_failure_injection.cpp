@@ -86,11 +86,14 @@ void* allocate_aligned(std::size_t size, std::align_val_t alignment) {
     if (raw == nullptr) {
         throw std::bad_alloc();
     }
-    const std::uintptr_t first = reinterpret_cast<std::uintptr_t>(raw) + sizeof(void*);
+    const auto base = reinterpret_cast<std::uintptr_t>(raw);
+    const std::uintptr_t first = base + sizeof(void*);
     const std::uintptr_t mask = align - 1;
     const std::uintptr_t aligned = (first + mask) & ~mask;
-    auto* block = reinterpret_cast<unsigned char*>(aligned);
-    std::memcpy(block - sizeof(void*), &raw, sizeof(void*));
+    auto* block = static_cast<unsigned char*>(raw) + (aligned - base);
+    // The stored back-pointer is exactly one pointer wide, so sizeof(void*) is intended.
+    // cppcheck-suppress pointerSize
+    std::memcpy(block - sizeof(void*), static_cast<const void*>(&raw), sizeof(void*));
     return block;
 }
 
@@ -99,7 +102,8 @@ void deallocate_aligned(void* memory) noexcept {
         return;
     }
     void* raw = nullptr;
-    std::memcpy(&raw, static_cast<unsigned char*>(memory) - sizeof(void*), sizeof(void*));
+    std::memcpy(static_cast<void*>(&raw), static_cast<unsigned char*>(memory) - sizeof(void*),
+                sizeof(void*));
     std::free(raw);
 }
 

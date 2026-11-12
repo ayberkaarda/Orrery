@@ -9,7 +9,9 @@
 #include <variant>
 #include <vector>
 
+#include <glm/ext/matrix_float3x3.hpp>
 #include <glm/ext/matrix_float4x4.hpp>
+#include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
 
@@ -114,8 +116,10 @@ public:
     // Setters ignore uniforms that do not exist (location -1), as OpenGL does.
     void set(std::string_view name, int value) const;
     void set(std::string_view name, float value) const;
+    void set(std::string_view name, const glm::vec2& value) const;
     void set(std::string_view name, const glm::vec3& value) const;
     void set(std::string_view name, const glm::vec4& value) const;
+    void set(std::string_view name, const glm::mat3& value) const;
     void set(std::string_view name, const glm::mat4& value) const;
 
 private:
@@ -162,6 +166,9 @@ public:
     // bytes inside each vertex of `binding`.
     void set_float_attribute(std::uint32_t location, std::uint32_t binding, int components,
                              std::uint32_t relative_offset) const;
+    // Instanced binding: the binding advances once per `divisor` instances
+    // (0 = per vertex).
+    void set_binding_divisor(std::uint32_t binding, std::uint32_t divisor) const;
     void set_index_buffer(const Buffer& buffer) const;
     void bind() const;
     [[nodiscard]] std::uint32_t id() const noexcept { return handle_.get(); }
@@ -206,6 +213,21 @@ private:
     int height_ = 0;
     int samples_ = 1;
     TextureFormat format_ = TextureFormat::rgba8;
+};
+
+// GPU time of the commands between begin() and end() (GL_TIME_ELAPSED query).
+// Only one timer may be active at a time per context.
+class GpuTimer {
+public:
+    [[nodiscard]] static GpuTimer create();
+    void begin() const;
+    void end() const;
+    // Waits for the result; nanoseconds.
+    [[nodiscard]] std::uint64_t elapsed_ns() const;
+
+private:
+    explicit GpuTimer(detail::GlHandle handle) noexcept : handle_(std::move(handle)) {}
+    detail::GlHandle handle_;
 };
 
 class Framebuffer {

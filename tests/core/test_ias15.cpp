@@ -44,7 +44,7 @@ std::string hex(std::uint64_t value) {
     std::array<char, 24> buffer{};
     std::snprintf(buffer.data(), buffer.size(), "0x%016llx",
                   static_cast<unsigned long long>(value));
-    return std::string(buffer.data());
+    return {buffer.data()};
 }
 
 } // namespace
@@ -115,7 +115,8 @@ TEST_CASE("IAS15 beats fixed-step Leapfrog at equal cost on an e = 0.99 orbit", 
     LeapfrogKdk leapfrog;
     const double dt = orbits * period / static_cast<double>(steps);
     RunningMax lf_max;
-    const long long per_sample = std::max(1LL, steps / (orbits * samples_per_orbit));
+    const long long per_sample =
+        std::max(1LL, steps / (static_cast<long long>(orbits) * samples_per_orbit));
     for (long long s = 0; s < steps; ++s) {
         step_or_throw(leapfrog, lf_state, space::Time(dt), gravity);
         if ((s + 1) % per_sample == 0) {

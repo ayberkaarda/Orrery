@@ -2,9 +2,12 @@
 
 Conventions and design of `orrery_render`. Phase 4a provides the foundation:
 camera, OpenGL context and object wrappers, shader embedding, the HDR chain,
-headless snapshots, PNG output and snapshot comparison. Body rendering,
-starfield, trails, ImGui panels, the physics thread and the application loop
-come in later phases (ADR-005, ADR-011).
+headless snapshots, PNG output and snapshot comparison. Phase 4b adds the
+space scene (sections 10 to 12: bodies, starfield, trails), the immutable
+`SimSnapshot` the renderer reads (section 9) and the Dear ImGui / ImPlot
+layer (section 13). The physics thread, the triple buffer and the
+application loop come in Phase 4c (ADR-005, ADR-011); bloom, rings,
+atmospheres and black-hole lensing later.
 
 ## 1. Precision and units
 
@@ -230,6 +233,12 @@ sRGB target      read back as 8-bit RGBA (glGetTextureImage: stored bytes, no co
 | `log_depth.glsl` | log depth snippet |
 | `background.frag.glsl` | test scene backdrop gradient |
 | `test_shape.vert.glsl`, `test_shape.frag.glsl` | test shape pair: lit torus with log depth |
+| `noise.glsl` | snippet: PCG3D integer hash, value noise, fbm (driver-independent) |
+| `body.vert.glsl`, `body.frag.glsl` | instanced icosphere bodies: procedural surfaces, PBR-lite, emissive stars, log depth |
+| `glow.vert.glsl`, `glow.frag.glsl` | screen-space star glare and black-hole ring sprites |
+| `stars.vert.glsl`, `stars.frag.glsl` | starfield point sprites at infinity |
+| `milky_way.frag.glsl` | Milky Way band (with `fullscreen.vert.glsl`) |
+| `trail.vert.glsl`, `trail.frag.glsl` | anti-aliased screen-space trail segments, near-plane clipped |
 
 ## 7. Headless snapshots
 
@@ -258,11 +267,24 @@ another renderer's frame leaves that renderer working.
 The `--headless` application flags and EGL/Mesa contexts for CI (spec 7.7)
 arrive with the application loop.
 
-PNG output (`png.h`) is dependency-free: 8-bit RGBA, non-interlaced, zlib
-stream of stored deflate blocks (no compression), CRC-32 per chunk, Adler-32
-over the data. The reader accepts the same subset (any row filter) and
-validates every checksum. Uncompressed files are about `4 * width * height`
-bytes (300 KB for 320x240).
+PNG output (`png.h`) is dependency-free: 8-bit RGBA, non-interlaced, CRC-32
+per chunk, Adler-32 over the data. The writer picks a row filter per row
+(None, Sub, Up, Average, Paeth: smallest sum of absolute filtered values) and
+compresses with its own deflate: LZ77 over a 32 KiB window (hash chains of
+3-byte prefixes, one step of lazy matching), blocks of up to 32768 tokens
+written as stored, fixed-Huffman or dynamic-Huffman blocks (length-limited
+canonical codes), whichever is smallest. Output is deterministic and decodes
+with standard decoders (the `render.png_python_zlib` test decodes written
+files with Python's zlib and compares every pixel). The reader inflates all
+three block types and rejects malformed input: over-subscribed or incomplete
+Huffman codes (except the single one-bit code deflate allows), invalid
+symbols, distances before the start of the output, repeats beyond the code
+count, truncation, trailing data, preset dictionaries and checksum
+mismatches. Decompression is bounded by the image: the output may not exceed
+the `(4 * width + 1) * height` scanline bytes of the header (at most 2^28
+pixels), so a small file cannot make the reader inflate or allocate more than
+the image it announces (tested with a stream that would expand to 64 MiB).
+The rendered references compress to 3 to 19 percent of their raw size.
 
 ## 8. Snapshot comparison and golden images
 
@@ -299,7 +321,312 @@ gradient. Independent of the reference image, the test also checks that the
 backdrop corners equal the CPU tone map of the gradient ends and that the
 torus is lit well above the backdrop without clipping to white.
 
-## 9. Approximations
+## 9. Simulation snapshot
+
+`core::SimSnapshot` (`src/core/include/orrery/core/sim_snapshot.h`) is the
+only physics data the renderer and the panels read (architecture rule:
+`std::shared_ptr<const SimSnapshot>`). `SimSnapshot::capture(state,
+sequence)` copies time, ids, names, kinds (with black-hole spin and probe
+aero refs), masses, radii, positions and velocities in space units (AU,
+solar mass, day; double), in BodyStore order, so the id column is sorted and
+`index_of` is a binary search. There are no mutators; the private
+constructor makes `capture` the only way to build one, and copy and move
+construction and assignment are deleted (compile-time tested), so no caller
+can hold a writable `SimSnapshot` behind a published const pointer; sharing
+is by copying the `shared_ptr`. Capturing reads the state once, so the source
+`SimState` must not change during `capture`, and spans returned by the
+accessors are valid while their snapshot is alive. The type lives in
+core and depends only on core headers (no GL; `tools/check_deps.py` still
+reports core graphics-free and float-free). Handing snapshots from the
+physics thread to the render thread (triple buffer) is Phase 4c.
+
+## 10. Bodies
+
+`SpaceRenderer::draw(view, frame)` draws a snapshot into the bound HDR scene
+target in four passes:
+
+1. Milky Way and starfield, at infinity, additive, no depth (section 11);
+2. bodies, instanced icospheres with log depth, back faces culled;
+3. trails, alpha-blended, depth-tested, no depth write (section 12);
+4. glow sprites (star glare, black-hole ring), additive, depth-tested
+   against the centre's log depth so that bodies in front hide them.
+
+The CPU part of the frame (`prepare_bodies`) is separate from OpenGL and
+unit-tested: visual radius, LOD, frustum culling, lighting, instance data and
+the projected screen position of every body (`BodyScreenInfo`, used for
+labels).
+
+**Meshes.** `make_icosphere(n)` subdivides the icosahedron n times
+(10 * 4^n + 2 vertices, 20 * 4^n triangles, counter-clockwise from outside).
+Midpoints are formed and normalised in double and cast to float once, so the
+vertices lie on the unit sphere to float rounding (< 2e-7) and double as
+normals. All seven levels live in one vertex and one index buffer; each
+frame draws one `glDrawElementsInstancedBaseVertexBaseInstance` per used LOD.
+
+**Screen bounds.** A sphere seen off the optical axis projects to an ellipse
+stretched towards the image edge. `project_sphere` derives its bounds from
+the camera-space centre (distance d, depth z along the view axis, radius r,
+s = pixels per unit tangent):
+
+- `radius_px`, the largest screen extent: the semi-major axis
+  `r sqrt(d^2 - r^2) / (z^2 - r^2) * s`. It equals the on-axis apparent radius
+  `r / sqrt(d^2 - r^2) * s` at the image centre and grows towards the edges
+  (at 90 degrees FOV, a sphere of 1.5 m at (90, 0, -100) m on a 1080-row image
+  spans 10.90 px, not the 6.02 px of the distance-only formula). Labels and
+  glare sprites use it (`BodyScreenInfo::radius_px`).
+- `lod_scale_px = r (d + r) / (z - r)^2 * s`, the largest magnification of the
+  projection over the sphere: a point displaced by e on the sphere moves at
+  most `e / r * lod_scale_px` pixels on screen. It is at least `radius_px`
+  and equal to it for small spheres.
+
+Both are infinite when the sphere reaches the plane of the eye.
+
+**LOD.** The silhouette error of a mesh is bounded by measured geometry, not
+by an assumed edge length: every point of an inscribed polyhedron lies
+between the sphere and the sphere through its closest face plane, and a face
+seen edge-on at the silhouette pulls the outline in by that full face depth
+`1 - h`. Subdivision does not halve every edge (the new central edges are
+longer than half their parent), and the face depth exceeds the sagitta
+`1 - cos(theta / 2)` of the longest edge by about a third, so both are
+measured from the generated meshes (`make_icosphere`, float vertices) and the
+larger one is used. `select_lod(lod_scale_px, bias)` takes the coarsest level
+with `(1 - h) * lod_scale_px <= 0.25` px:
+
+| LOD (subdivision) | 0 | 1 | 2 | 3 | 4 | 5 | 6 |
+|---|---|---|---|---|---|---|---|
+| vertices | 12 | 42 | 162 | 642 | 2562 | 10242 | 40962 |
+| longest edge [rad] | 1.1071 | 0.6283 | 0.3264 | 0.1648 | 0.0826 | 0.0413 | 0.0207 |
+| face depth 1 - h | 0.2053 | 0.0658 | 0.0178 | 0.0045 | 0.0011 | 2.8e-4 | 7.1e-5 |
+| up to lod_scale_px [px] | 1.22 | 3.80 | 14.1 | 55.2 | 220 | 878 | any |
+
+Tested: every level is measured again (longest edge, deepest face), the
+bound holds at each threshold, and the projected outline of the actual mesh,
+in the worst orientation (deepest face at the silhouette) and in arbitrary
+ones, stays within 0.25 px of the exact projected sphere, on the axis and for
+off-axis spheres with 60 to 120 degree fields of view and several aspect
+ratios. The Render Settings bias shifts the level by -3 .. +3.
+
+**Visual radius policy.** Physical radii are tiny at solar-system scale: at
+12 AU the Sun covers about 0.6 px and the Earth 0.006 px on a 1080-row
+image. Two modes (`ScaleMode`):
+
+- `true_scale`: every body is drawn at its physical radius. Honest, and
+  most bodies vanish below a pixel.
+- `clamped` (default): the physical radius, enlarged where necessary so that
+  the body covers at least a per-kind minimum screen radius, times the
+  "Min. size" factor (0.25 .. 8):
+
+  | star | planet | moon | asteroid | black hole | probe |
+  |---|---|---|---|---|---|
+  | 5 px | 3 px | 2 px | 1.25 px | 4 px | 2.5 px |
+
+  The enlarged radius is `d m / sqrt(s^2 + m^2)`: angular radius m pixels at
+  distance d (s = pixels per unit tangent), which is the projected radius at
+  the image centre. The policy is deliberately angular: a marker keeps its
+  size wherever it is, so off the axis its drawn ellipse (`radius_px`) is
+  somewhat larger than m. Once a body is resolved
+  the physical radius wins, so close-ups are never distorted (tested: the
+  Earth disc is identical in both modes in the Earth-Moon golden image). A
+  body drawn above its true size gets a marker weight `1 - true_px / min_px`
+  that keeps its night side at 30 percent of the lit albedo, so unresolved
+  bodies never read as black holes.
+
+The physical radius is the snapshot radius when positive; otherwise the
+nominal radius from a built-in table of solar-system bodies (IAU/NASA mean
+radii; matched on the first word of the name, so "Jupiter system" is
+Jupiter) or, for unknown bodies, from mass and a bulk density per kind. A
+black hole uses its shadow radius `sqrt(27)/2 r_s`.
+
+**Materials and lighting.** Each kind and known body has a primary and a
+secondary albedo, a procedural surface style (rocky, cloudy, terrestrial,
+desert, banded, ice giant) evaluated from value noise in the body frame
+(spin axis from the IAU pole), and a specular weight. Lighting is PBR-lite:
+Lambert diffuse plus an energy-normalised Blinn-Phong lobe with Schlick
+Fresnel, from one directional light per body (the star that gives it the
+highest irradiance, direction computed in double at the body centre), plus a
+0.25 percent ambient. Irradiance is `6 * L (1 AU / d)^p` (scene-linear, L in
+solar luminosities); p defaults to 0.5 so that Neptune stays visible next to
+Mercury, and the Render Settings "Falloff" slider reaches the physical p = 2.
+Without any star a soft headlight from the camera is used. A star at the
+body's own position (coincident bodies, which the body store allows) has no
+direction and is not a light candidate; the direction to any other star is
+normalised after scaling by its largest component, so it stays finite even
+when the squared distance underflows (tested: coincident and 1e-200 AU
+pairs give finite instance data and an evenly lit disc).
+
+**Stars** are emissive: photosphere radiance 14 times the black-body colour
+of their effective temperature (unit luminance, linear sRGB from the
+Planckian locus), limb darkening `1 - 0.6 (1 - mu)`, faint granulation. They
+are by far the brightest objects, so the future bloom pass has HDR values to
+work with. Until then an analytic glare sprite (core plus wide skirt, sized
+from the disc) marks them. **Black holes** are a black disc of the shadow
+radius with a faint warm ring sprite (no lensing; Phase 5). **Probes** are
+small emissive cyan markers.
+
+## 11. Starfield and Milky Way
+
+`generate_starfield(params)` is deterministic per seed on every platform
+(own SplitMix64 generator, no standard-library distributions). Defaults:
+1e5 stars, V = -1.5 .. 10, cumulative counts `N(<m) ~ 10^(0.35 m)` (about
+4000 stars brighter than V = 6, as on the real sky; tested), spectral
+classes O..M with the mix of a magnitude-limited sample and temperatures per
+class, colours from the black-body locus, and a disc population whose share
+grows towards faint magnitudes, concentrated in galactic latitude and towards
+the galactic centre (tested: 40+ percent of V > 8 stars within 10 degrees of
+the plane, against 17 percent for an isotropic sky). The galactic frame
+follows the IAU definition (pole and centre tested against their ecliptic
+coordinates).
+
+Stars are point sprites with a Gaussian profile at infinity: the vertex stage
+multiplies the direction (w = 0) by the view-projection matrix, so only the
+camera rotation matters. Peak radiance `2.4 * 10^(-0.4 * 0.85 m) / sigma^2`,
+sigma 0.42 .. 1.02 px growing for bright stars, scaled with the viewport
+height. The Milky Way is a full-screen pass in galactic coordinates: a
+Gaussian disc that thickens towards the centre, a bulge, star clouds and fine
+grain from value noise, and a meandering dust lane; surface brightness at most
+about 0.04 scene-linear, which the ACES toe keeps subtle. Tested: the band is
+more than twice as bright towards the centre as towards the anticentre, and
+dark at the galactic pole.
+
+## 12. Trails
+
+`TrailHistory` keeps one fixed-capacity `TrailRing` of world positions
+(metres, double) per body id, sorted by id: new bodies start a trail, bodies
+missing from a snapshot (merged, absorbed) lose theirs, and `set_settings`
+changes the length keeping the newest points. A sample is stored only once
+the body has moved by `min_step_angle * (distance to the most massive body)`
+since the last stored one, so every trail spans about `length *
+min_step_angle` radians of its orbit whatever the period (tested with two
+orbits of period ratio 8); 0 stores every recorded snapshot.
+
+Each frame `append_trail_segments` converts a ring plus the body's current
+position into segments relative to the camera (`Camera::to_render_double`,
+then one float cast): float-safe at any distance from the origin (tested at
+1e4 AU with 1 km spacing, which a float world coordinate cannot resolve).
+The fade is `1 - age / capacity`; the shader squares it. Repeated world
+positions (a stationary body, the newest sample equal to the head) are
+merged on the CPU: a run of equal points counts once, with the fade of its
+first point, so a stationary body has no trail at all instead of hundreds of
+stacked zero-length quads. Segments are drawn as instanced screen-space
+quads: both ends clipped against the near plane in clip space, widened
+perpendicular to the screen direction, with a one-pixel coverage ramp for
+anti-aliasing (independent of MSAA), log depth, and alpha blending. A segment
+whose projection is shorter than 0.01 px (seen along the view axis) has no
+direction to widen along and is dropped by the vertex shader; neighbouring
+segments overlap at the joints, so no cap is lost. Tested by rendering: an
+empty ring, one stationary sample, 512 stationary duplicates and a segment
+along the view axis leave the image bit-identical to the image without
+trails, while a moving one-sample trail draws. Trail colours are the body hue, desaturated and dimmer than the
+bodies. Recording cadence is the caller's (Phase 4c: per physics snapshot).
+
+## 13. User interface
+
+Dear ImGui (docking branch, vcpkg port 1.93.0 with `docking-experimental`,
+`glfw-binding`, `opengl3-binding`) and ImPlot (1.1) are private dependencies
+of `orrery_render`; no public header includes them.
+
+`UiContext` owns one ImGui and one ImPlot context (made current in
+`begin_frame`; no `imgui.ini`, the layout is code-defined):
+
+- `UiContext::create(gl_context, options, attach_window_input)`: OpenGL 3
+  renderer backend (GLSL `#version 460 core`), optionally the GLFW platform
+  backend on the context's window. Fails cleanly for a moved-from context.
+  The destructor shuts the backends down with its own GL context current and
+  restores the previously current one, or no context if none was current
+  (tested with a detached context).
+- `UiContext::create_headless()`: no OpenGL and no GLFW; frames are laid out
+  and their draw lists built, but not rasterised. Used by the unit tests on
+  every platform (including CI without a display).
+
+`dockspace()` covers the viewport with a transparent central node (the
+scene) and builds the default layout once: Body Inspector on the left (23
+percent), Render Settings on the right, System Monitor at the bottom between
+them. Offscreen, `OffscreenRenderer::render(scene, overlay)` calls the overlay
+after tone mapping with the 8-bit sRGB target bound
+(`HdrPipeline::begin_overlay`, `GL_FRAMEBUFFER_SRGB` off), so ImGui colours
+are display values, as ImGui expects.
+
+**Panels** are free functions of a data struct returning an intent struct;
+they read no physics state and keep no state of their own:
+
+| Panel | Data | Intent |
+|---|---|---|
+| `draw_body_inspector` | body list; selected body: kind, mass (Msun, kg), radius (nominal flagged), position (AU) and velocity (km/s), distance, speed, osculating a, e, i, period around its primary | `select`, `focus_camera` |
+| `draw_system_monitor` | sim time, body count, frame and physics step time, integrator, one recorded series (for example the relative energy drift) plotted with ImPlot | `clear_series` |
+| `draw_render_settings` | `RenderSettings` (scale mode, minimum size, LOD bias, star glare, trails, starfield, Milky Way, exposure in EV, light falloff) | `changed` (sanitised copy) |
+| `draw_scene_labels` | `make_scene_labels`: visible bodies, selected first, then by mass, decluttered | none |
+
+`make_body_inspector_data(snapshot, selected)` computes the osculating orbit
+with `core::to_elements` relative to the body's primary: the least massive
+heavier body whose sphere of influence `r (m / M_heaviest)^(2/5)` contains it,
+else the heaviest body (Moon around Earth, planets around the Sun; tested).
+
+**Theme.** Slate surfaces close to the black of space (window #101318,
+controls #1B1F27 .. #2D333F), light grey text (#DADEE5, 14:1 on the panel),
+muted labels (#8E96A4, 6:1), one warm accent (#E2A75C, sunlight amber) for
+interaction and data, and a cool secondary (#74AACC). Contrast ratios (WCAG)
+and the ordering of the surfaces are unit-tested; the stock ImGui blue is not
+used. Embedded scalable ImGui font at 15 px, 4 px rounding, 12/10 px window
+padding, upper-case muted section captions, label-left form rows.
+
+## 14. Phase 4b golden snapshots and tests
+
+Same procedure as section 8 (`ORRERY_UPDATE_GOLDEN=1 orrery_test_render
+"[golden]"`, SSIM > 0.98, actual images in `<build>/tests/render_output/`):
+
+| Reference | Size | Scene |
+|---|---|---|
+| `space_solar_system.png` | 960x540 | J2000 solar system loaded with orrery_scene, oblique Orbit camera 12.5 AU from a point 4.2 AU from the Sun, 40 degree FOV, trails from a 150-year backward leapfrog run (600 samples, 85 percent of each orbit), starfield and Milky Way |
+| `space_earth_moon_true_scale.png`, `space_earth_moon_clamped.png` | 640x360 | the J2000 Earth from 32,000 km with the Moon beside it, 55 degree FOV, no trails; true scale and clamped (min. size x2) |
+| `ui_space_workspace.png` | 1280x720 | the docked panels (Earth selected, drift plot of the backward run) and scene labels over the solar system |
+
+Whole-image SSIM cannot see a small planet: in the mostly empty 960x540
+frame, erasing a 10x10 patch changes at most 20x20 of the 950x530 SSIM
+windows, so even the worst score there leaves the mean above 0.998. The
+solar-system comparison therefore also checks every visible planet on its
+own (`golden_mismatches`): around each body that is at least 14 px from the
+Sun (Venus, Earth/Moon, Mars, Jupiter, Saturn), the window of half-size
+`ceil(radius_px) + 2` must show the body in both images (peak at least 25
+luma levels above the window border's median) with summed and peak luma
+above that background within 35 and 30 percent of the reference. Tested
+without GL on the reference image: erasing any one of these planets keeps
+the SSIM above 0.99 but is rejected, in either direction, while a half-pixel
+shift of every body plus +-2 levels of noise is accepted.
+
+Besides SSIM, the tests check structure that holds on any driver: the Sun is
+the brightest pixel and nothing else clips, the sky stays dark on average,
+the Earth disc is identical in both scale modes while the Moon grows, the UI
+panels are docked and carry text while the scene shows in the central area.
+With the compressed PNG writer (section 7) the five references take 1.05 MB
+(previously 7.9 MB of stored blocks): `space_solar_system.png` 388 KB,
+`ui_space_workspace.png` 490 KB, the two Earth-Moon images 72 to 73 KB each,
+`test_shape.png` 22 KB.
+
+CPU tests (no GL): icosphere topology and precision, LOD thresholds, scale
+policy, frustum culling, appearance table and black-body colours, settings
+clamping, frame preparation (lighting direction, LOD, culling, float safety
+at 1e4 AU), trail ring and history, starfield statistics and galactic frame,
+UI theme contrast, inspector data, label declutter, headless dock layout and
+pointer routing, and a simulated click selecting a body.
+
+## 15. Performance
+
+`[perf]` test, 1920x1080, 4x MSAA, J2000 solar system (10 bodies), 600-sample
+trails (about 6000 segments), 1e5 stars, Milky Way, glare; GPU time from a
+`GL_TIME_ELAPSED` query around scene + resolve + tone map (readback
+excluded), 60 frames after 5 warm-up frames, AMD Radeon RX 9060 XT
+(OpenGL 4.6, driver 26.10.1):
+
+| GPU median | GPU p95 | CPU submit median |
+|---|---|---|
+| 1.4 .. 1.9 ms | 1.4 .. 1.9 ms | 0.15 ms |
+
+Two runs on the reference machine: median 1.38 / 1.86 ms, p95 1.40 / 1.93 ms
+(the frame is far below the 16 ms budget; the remaining time belongs to
+physics and UI). The test requires the GPU 95th percentile below 16 ms and
+GPU median plus CPU submit below 16 ms.
+
+## 16. Approximations
 
 Every item is marked `// APPROXIMATION:` in the code.
 
@@ -309,3 +636,18 @@ Every item is marked `// APPROXIMATION:` in the code.
 | `shaders/test_shape.frag.glsl` | energy-normalised Blinn-Phong, Schlick Fresnel (F0 = 0.04), hemispheric ambient | test shape only; exercises the HDR path, not a material model | test scene only; not used for bodies |
 | `camera.cpp` | rotation smoothing uses a slerp analogue of the exact scalar blend | quaternions have no linear blend | exact when lag and increment share an axis; second order in the per-update rotation otherwise; affects camera feel only |
 | `camera.cpp` | Surface latitude/longitude advanced with the midpoint rule per substep of at most 1/240 s | the path along a turning heading on a sphere has no closed form | tangent-plane motion exact; second order in the substep; splits into multiples of 1/240 s give identical substeps; camera placement only |
+| `body_visuals.cpp` | minimum screen size: unresolved bodies drawn enlarged (clamped mode) and shaded as markers | true radii are far below a pixel at solar-system scale | positions exact; sizes of unresolved bodies symbolic; `true_scale` exact |
+| `body_visuals.cpp` | body colours: hand-chosen albedo pairs; IAU poles at J2000 without precession | no measured maps or spectra are bundled | display only |
+| `body_visuals.cpp` | generic stars: R ~ M^0.8, L ~ M^3.5, T from L and R | scenarios carry only the mass | within ~2x for main-sequence stars of 0.1 .. 50 Msun; wrong for giants and remnants |
+| `body_visuals.cpp` | unknown bodies: radius from mass and a bulk density per kind | scenarios carry no radius | display size within ~2x for solar-system-like bodies |
+| `body_visuals.cpp` | black-body colour from cubic fits of the Planckian locus | avoids integrating the Planck spectrum | ~1e-3 in xy, 1667 .. 25000 K (clamped outside) |
+| `space_renderer.cpp` | one directional light per body from its brightest star, at the body centre; irradiance (1 AU/d)^p with display default p = 0.5 | single dominant star; outer planets must stay visible | exact direction for one star; brightness ratios compressed unless p = 2 |
+| `space_renderer.cpp` | star brightness on screen: flux 10^(-0.4 * 0.85 m), widening sprites | 11.5 magnitudes exceed what a display shows | brightness order kept; not photometric |
+| `starfield.cpp` | spectral mix of a magnitude-limited sample, log-uniform temperatures per class | no catalogue data | plausible as a population, not star by star |
+| `starfield.cpp` | galactic star-count structure (disc share, scale height, longitude excess) | no catalogue data | visible concentration towards the Milky Way only |
+| `shaders/body.frag.glsl` | procedural surfaces from value noise | no textures or maps | look of each body class; no real geography |
+| `shaders/body.frag.glsl` | PBR-lite: Lambert + normalised Blinn-Phong with Schlick Fresnel, small ambient; no atmosphere, shadows or eclipses | restrained shading for bodies seen from space | plausible; no mutual shadowing |
+| `shaders/body.frag.glsl` | photosphere: linear limb darkening (u = 0.6), faint granulation | display of emissive stars | Sun-like stars |
+| `shaders/body.frag.glsl` | black hole: unlensed black disc of the shadow radius with a faint ring | lensing renderer is Phase 5 | position and apparent size of the shadow only |
+| `shaders/glow.frag.glsl` | star glare: analytic halo sprite | stands in for optical glare until the bloom pass | display only |
+| `shaders/milky_way.frag.glsl` | Milky Way: Gaussian disc, bulge, noise star clouds and dust lane | no survey data | band position and overall shape, not detail |

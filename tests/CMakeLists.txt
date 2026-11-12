@@ -50,6 +50,23 @@ target_sources(orrery_test_render PRIVATE
     render/test_image.cpp
     render/test_log.cpp)
 
+# Phase 4b: space scene visuals and the UI layer. CPU tests (icosphere, LOD,
+# scale policy, trails, starfield, theme, headless UI panels) always run; the
+# golden snapshots and the frame-time measurement are tagged [gl]. The J2000
+# scenario is loaded through orrery_scene.
+target_sources(orrery_test_render PRIVATE
+    render/space_test_support.h
+    render/test_icosphere.cpp
+    render/test_body_visuals.cpp
+    render/test_starfield.cpp
+    render/test_trails.cpp
+    render/test_ui.cpp
+    render/test_space_golden.cpp
+    render/test_space_render.cpp)
+target_link_libraries(orrery_test_render PRIVATE orrery_scene)
+target_compile_definitions(orrery_test_render PRIVATE
+    ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
+
 # Shader embedding of overlong lines: fixture shaders are generated at build
 # time and embedded by the production script into a header that the test
 # compiles (MSVC limits each string literal to 16380 bytes). The fixture
@@ -91,8 +108,13 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME check_deps.graphics_boundary
         COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/render/test_check_deps_graphics.py)
+    # The PNG writer checked by an independent decoder (Python's zlib).
+    add_test(NAME render.png_python_zlib
+        COMMAND Python3::Interpreter ${CMAKE_CURRENT_SOURCE_DIR}/render/check_png_zlib.py
+            $<TARGET_FILE:orrery_test_render> ${CMAKE_CURRENT_BINARY_DIR}/render_output)
 else()
-    message(WARNING "Python 3 not found: check_deps.graphics_boundary test not registered")
+    message(WARNING "Python 3 not found: check_deps.graphics_boundary and "
+        "render.png_python_zlib tests not registered")
 endif()
 
 # Core: unit and property tests (including the former smoke test).
@@ -130,6 +152,10 @@ target_sources(orrery_test_core PRIVATE
 target_sources(orrery_test_core PRIVATE
     core/test_barnes_hut.cpp
     core/test_ias15.cpp)
+
+# Phase 4b: immutable simulation snapshot read by the renderer.
+target_sources(orrery_test_core PRIVATE
+    core/test_sim_snapshot.cpp)
 
 # Phase 3a embedded scenarios: loaded with orrery_scene, integrated with core.
 add_executable(orrery_test_phase3a_scenarios

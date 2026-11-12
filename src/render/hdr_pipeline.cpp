@@ -155,6 +155,14 @@ void HdrPipeline::resolve() const {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
+void HdrPipeline::begin_overlay() const {
+    srgb_fbo_.bind();
+    glViewport(0, 0, width_, height_);
+    glDisable(GL_FRAMEBUFFER_SRGB);
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_MULTISAMPLE);
+}
+
 ImageRgba8 HdrPipeline::read_srgb() const {
     ImageRgba8 image;
     image.width = static_cast<std::uint32_t>(width_);

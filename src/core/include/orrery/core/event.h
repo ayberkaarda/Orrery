@@ -95,7 +95,7 @@ using Event = std::variant<CollisionEvent, DisruptionEvent, HorizonCrossingEvent
 // appended, which the encounter resolver keeps deterministic.
 class EventLog {
 public:
-    void append(Event event) { events_.push_back(std::move(event)); }
+    void append(const Event& event) { events_.push_back(event); }
 
     [[nodiscard]] std::span<const Event> events() const noexcept { return events_; }
     [[nodiscard]] std::size_t size() const noexcept { return events_.size(); }

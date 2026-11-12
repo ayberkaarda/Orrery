@@ -88,7 +88,7 @@ SimState cluster(std::uint64_t seed) {
             k % 3 == 0 ? 0.005 + 0.015 * rng.uniform() : 5.0e-6 + 5.0e-6 * rng.uniform();
         set_radius_or_throw(store, store.size() - 1, radius);
     }
-    return SimState(space::Time(0.0), std::move(store));
+    return {space::Time(0.0), std::move(store)};
 }
 
 struct ClusterRun {
@@ -127,7 +127,7 @@ ClusterRun run_cluster(std::uint64_t seed) {
             previous_phase = phase;
         }
         for (Event& e : log.drain()) {
-            out.events.push_back(std::move(e));
+            out.events.push_back(e);
         }
         REQUIRE(log.empty());
     }

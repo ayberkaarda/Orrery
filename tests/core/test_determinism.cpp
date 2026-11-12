@@ -24,7 +24,7 @@ std::string hex(std::uint64_t value) {
     std::array<char, 24> buffer{};
     std::snprintf(buffer.data(), buffer.size(), "0x%016llx",
                   static_cast<unsigned long long>(value));
-    return std::string(buffer.data());
+    return {buffer.data()};
 }
 
 // Golden hashes of golden_initial_state() and of golden_run()
@@ -179,6 +179,7 @@ TEST_CASE("state hash covers the radius", "[core][determinism]") {
 
     // Copy construction and copy/move assignment keep the radius, and so the hash.
     const std::uint64_t spheres_hash = state_hash(spheres);
+    // NOLINTNEXTLINE(performance-unnecessary-copy-initialization): exercises the copy constructor.
     const SimState copied = spheres;
     CHECK(state_hash(copied) == spheres_hash);
     SimState assigned = points;

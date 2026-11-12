@@ -75,15 +75,30 @@ OffscreenRenderer::create(GlContext context, int width, int height, const HdrSet
 }
 
 core::Result<ImageRgba8, std::string> OffscreenRenderer::render(const SceneCallback& scene) {
+    return render(scene, OverlayCallback{});
+}
+
+core::Result<ImageRgba8, std::string> OffscreenRenderer::render(const SceneCallback& scene,
+                                                                const OverlayCallback& overlay) {
     context_.make_current();
     context_.reset_debug_error_count();
-    pipeline_->begin_scene();
+    if (!pipeline_.has_value()) {
+        return core::failure(std::string("offscreen renderer has no pipeline (moved-from)"));
+    }
+    HdrPipeline& pipeline = *pipeline_;
+    pipeline.begin_scene();
     if (scene) {
-        scene(pipeline_->frame());
+        scene(pipeline.frame());
         context_.make_current();
     }
-    pipeline_->resolve();
-    ImageRgba8 image = pipeline_->read_srgb();
+    pipeline.resolve();
+    if (overlay) {
+        pipeline.begin_overlay();
+        overlay(pipeline.frame());
+        context_.make_current();
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+    ImageRgba8 image = pipeline.read_srgb();
     glFinish();
     if (const std::size_t errors = context_.debug_error_count(); errors > 0) {
         return core::failure("OpenGL debug output reported " + std::to_string(errors) +

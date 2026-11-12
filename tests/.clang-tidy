@@ -1,0 +1,25 @@
+---
+# Test-only relaxations. Everything else is inherited from the root config.
+#
+# bugprone-unchecked-optional-access: Catch2 REQUIRE(x.has_value()) guards
+#   are macros the analysis cannot see through, so every dereference after
+#   such a guard is reported although the test aborts first.
+# cppcoreguidelines-owning-memory, cppcoreguidelines-no-malloc: the
+#   allocation-failure injection harness replaces operator new/delete with
+#   malloc/free on purpose, which is exactly what these checks forbid.
+# modernize-return-braced-init-list, modernize-loop-convert,
+#   cppcoreguidelines-special-member-functions: style-only checks in test
+#   fixtures where the explicit form reads better.
+# bugprone-use-after-move, clang-analyzer-cplusplus.Move: clang-tidy 17
+#   reports each block-local store passed once to SimState as reused.
+InheritParentConfig: true
+Checks: >
+  -bugprone-unchecked-optional-access,
+  -cppcoreguidelines-owning-memory,
+  -cppcoreguidelines-no-malloc,
+  -modernize-return-braced-init-list,
+  -modernize-loop-convert,
+  -cppcoreguidelines-special-member-functions,
+  -bugprone-use-after-move,
+  -clang-analyzer-cplusplus.Move
+...

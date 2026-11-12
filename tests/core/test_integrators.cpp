@@ -327,10 +327,9 @@ TEST_CASE("probes are test particles under integration", "[core][integrator]") {
                                          space::Mass(0.5),
                                          {space::Length(1.0), {}, {}},
                                          {{}, space::Velocity(0.0172), {}}});
-    SimState plain = without;
     for (const IntegratorKind kind :
          {IntegratorKind::leapfrog_kdk, IntegratorKind::yoshida4, IntegratorKind::rk4}) {
-        SimState a = plain;
+        SimState a = without;
         SimState b = with;
         const auto i1 = make_integrator(kind);
         const auto i2 = make_integrator(kind);

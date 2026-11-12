@@ -17,8 +17,8 @@ ImageRgba8 pattern(std::uint32_t width, std::uint32_t height, int shift = 0) {
     ImageRgba8 image = ImageRgba8::filled(width, height, 0, 0, 0);
     for (std::uint32_t y = 0; y < height; ++y) {
         for (std::uint32_t x = 0; x < width; ++x) {
-            const double fx = static_cast<double>(static_cast<int>(x) + shift);
-            const double fy = static_cast<double>(y);
+            const auto fx = static_cast<double>(static_cast<int>(x) + shift);
+            const auto fy = static_cast<double>(y);
             const std::size_t o = image.offset(x, y);
             image.pixels[o] = static_cast<std::uint8_t>(127.5 + 100.0 * std::sin(fx * 0.21) *
                                                                     std::cos(fy * 0.13));

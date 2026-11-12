@@ -63,7 +63,7 @@ private:
 [[nodiscard]] Document parse_or_throw(std::string_view text);
 
 // out_of_memory for std::bad_alloc, internal_error for anything else.
-[[nodiscard]] SceneError exception_error(std::exception_ptr exception) noexcept;
+[[nodiscard]] SceneError exception_error(const std::exception_ptr& exception) noexcept;
 
 // JSON type name used in error messages.
 [[nodiscard]] std::string_view type_name(const Json& value) noexcept;
