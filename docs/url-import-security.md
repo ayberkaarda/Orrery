@@ -80,12 +80,15 @@ URL path, file name and extension are never consulted:
 | GLB | `glTF`, version 2, header length equal to the file size |
 | FBX | `Kaydara FBX Binary  \0`, or ASCII starting with `; FBX` |
 | STL binary | 84-byte header with a triangle count n > 0 and size = 84 + 50 n |
-| PLY | `ply` line, then `format` before `end_header` |
+| PLY | `ply` line, a `format ascii`, `binary_little_endian` or `binary_big_endian` line, then an `end_header` line |
 | STL ASCII | text starting with `solid` and containing `facet` or `endsolid` |
 | glTF | text starting with `{` and containing `"asset"` |
 | OBJ | text whose every line is empty, a comment or an OBJ statement, with at least one `v` |
 
 Text formats must be text (no NUL, no control bytes except whitespace).
+For PLY only the header up to and including the `end_header` line has to be
+text: a binary PLY body holds raw coordinates and indices, where NUL and
+control bytes are normal. The body of an ASCII PLY must be text as well.
 Anything else fails with `unrecognised_content`: executables, HTML, scripts.
 
 **MIME**: the `Content-Type` must be absent, generic
@@ -113,7 +116,14 @@ before anything is extracted:
   images, executables, nested archives) never reach the disk;
 - archive names are never used as file system paths. Extracted files are
   named `NNNN-<stem><ext>` (index, the name reduced to `[A-Za-z0-9_-]`, and
-  the extension of the detected format).
+  the extension of the detected format);
+- every extracted file is *created*, never opened: exclusive creation
+  (`O_EXCL` on POSIX, `CREATE_NEW` with `FILE_FLAG_OPEN_REPARSE_POINT` on
+  Windows) fails if anything already has that name, so a hard link, a
+  symbolic link (also a dangling one) or a junction planted in the output
+  directory makes the extraction fail (`io_failure`) instead of being
+  written through. `CREATE_NEW` alone is not enough on Windows: it follows a
+  dangling symbolic link and creates its target.
 
 The first model in archive order is returned; its name in the archive is
 `FetchedModel::archive_member`. Companion files (`.mtl`, external glTF
@@ -140,7 +150,7 @@ Downloads are content-addressed by the SHA-256 of the downloaded bytes:
 ```
 <cache>/<sha256>/source<ext>      the download (extension from the content)
 <cache>/<sha256>/NNNN-<stem><ext> models extracted from a zip
-<cache>/<sha256>/entry.txt        format, model file name, SHA-256 of the model file
+<cache>/<sha256>/entry.txt        source and model file names, model format, archive member
 <cache>/urls/<sha256 of the URL>  content address last served by that URL
 <cache>/.staging/<random>/        temporary directory of a download in progress
 ```
@@ -153,13 +163,61 @@ overrides it).
 A download goes to a new staging directory inside the cache (the temporary
 directory, on the same volume so that the final step is a rename). The
 directory is renamed to its content address only when it is complete, and it
-is removed on any failure, so a rejected download leaves nothing behind. A
-URL that was fetched before is served from the cache without a request, but
-only after the model file is hashed again and matches the recorded SHA-256;
-a modified file is ignored and downloaded again. `use_cache = false` always
-downloads. The cache file names that are read back from `entry.txt` must be
-plain file names, and the URL index must hold a 64-digit hex digest, so a
-modified index cannot point outside the cache.
+is removed on any failure, so a rejected download leaves nothing behind.
+
+Nothing stored in the cache is trusted; the content address is the only
+binding. A URL that was fetched before is served from the cache without a
+request only if all of this holds again:
+
+- the source file hashes to the name of its directory. A digest recorded in
+  `entry.txt` would prove nothing, because whoever can replace a file can
+  rewrite `entry.txt` too;
+- the model is derived from that verified source again: for a plain download
+  the model *is* the source file; for a zip the archive is extracted afresh
+  into a staging directory and the cached model must be byte-identical to the
+  first model of that extraction (same file name, format and member);
+- the source passes **this request's** policy as a fresh download would: its
+  size is within `max_download_bytes`, its sniffed format matches, and a zip
+  passes the current `ArchiveLimits` (entry count, total size, ratio). A
+  model cached under permissive limits is not served under stricter ones.
+
+If any check fails the entry is ignored and the URL is downloaded again, so
+the result (the model, or the same policy error) is the one an uncached fetch
+gives. When a download is committed and an entry already exists under its
+address, the existing entry is kept only if its source and model are
+byte-identical to what was just staged; otherwise the fresh download replaces
+it, also with `use_cache = false`.
+
+Links are never followed. `urls/`, `.staging/` and every entry directory must
+be real directories: a symbolic link or a Windows junction there makes
+`prepare()` fail with `cache_failure` (for `urls/` and `.staging/`) or makes
+the entry a miss that is replaced (for an entry directory; the link itself is
+removed, never the directory it points to). Source and model files must be
+regular files, not links. The cache file names read back from `entry.txt`
+must be plain file names, and the URL index must hold a 64-digit hex digest,
+so a modified index cannot point outside the cache.
+
+What the cache does not claim, by design:
+
+- **The cache root itself may be a link.** A user may legitimately relocate
+  `~/.cache` or `%LOCALAPPDATA%` with a link, and whoever controls the root
+  path controls the whole cache anyway. Only the directories the loader
+  creates inside it are checked.
+- **The URL index is a hint.** Someone who can write the cache can point
+  `urls/<hash of a URL>` at another valid entry. That entry still passes every
+  check above (address, re-derived model, current limits), so the worst case
+  is a well-formed model from another download, never unchecked bytes; the
+  model is still untrusted input for the importer. Defending the mapping
+  itself would need a key the same local user could not read, which is out
+  of scope (see the threat model).
+- **The `Content-Type` is not re-checked on a hit.** It is a property of a
+  past HTTP response, not of the stored bytes; it was checked when the entry
+  was downloaded, and the content sniffing that it is compared against is
+  repeated on every hit.
+- **A hit that fails the current policy costs a request.** Instead of
+  failing from the cache, the loader downloads again so that the outcome is
+  exactly that of an uncached fetch; offline, the error is then a network
+  error rather than the policy error.
 
 ## Licence and source
 
@@ -201,11 +259,16 @@ the only protocol. The default is empty and production code never sets it.
 This keeps the real libcurl configuration under test: the https-only rule, the
 redirect checks, the size and time limits all run against a real TLS server,
 not a mock of libcurl. The same server, with the override cleared or pointing
-at another CA, proves that an untrusted certificate is refused.
+at another CA, proves that an untrusted certificate is refused. Those cases
+fail in the chain check, so they would still pass if host name verification
+were switched off; a separate case trusts a certificate whose only name is
+`DNS:other-host.invalid` and requests `https://127.0.0.1`, which only host
+name verification (`CURLOPT_SSL_VERIFYHOST = 2`) can refuse.
 
 Negative cases covered: `http`, `HTTP`, `ftp` and `file` URLs (and no request
 reaches a plain HTTP server); `https` to `http` and to `ftp` redirects (the
-`http` target is never contacted); a redirect loop; untrusted certificates;
+`http` target is never contacted); a redirect loop; untrusted certificates; a trusted certificate for another
+host name;
 a declared size over the cap, a 50 GiB `Content-Length`, an undeclared
 streamed body over the cap and an understated `Content-Length`; an executable
 served as `.stl`, HTML served as `text/html`, a valid model with an executable
@@ -213,7 +276,15 @@ MIME type and a mislabelled model type; a stalled server (total timeout) and a
 trickling server (low-speed guard); a non-200 status; zip bombs (ratio about
 1000, a lying size header, a total size over the cap), path traversal and
 absolute names, symlinks, encrypted entries, too many entries, archives
-without a model or with only a nested archive, corrupt archives; a tampered
-cache entry. Positive cases: an STL download with its hash, licence note and
-cache path; a cache hit that does not download again; https redirects; a zip
-download that yields its first model and is served from the cache.
+without a model or with only a nested archive, corrupt archives; a hard link,
+a symbolic link and a dangling symbolic link planted at an extraction name
+(the link target stays untouched, and a dangling target is not created); a
+tampered cache entry; a replaced model (plain and zip) whose recorded digest
+was rewritten to match, on a hit and on a forced refresh; a cached model under
+a tightened download size, entry count, total size and compression ratio
+limit; `urls/` and `.staging/` replaced by a link (junction on Windows), and
+an entry directory replaced by one. Positive cases: an STL download with its
+hash, licence note and cache path; a cache hit that does not download again;
+https redirects; a zip download that yields its first model and is served
+from the cache; little- and big-endian binary PLY with zero coordinates,
+detected, downloaded and extracted from a zip.
