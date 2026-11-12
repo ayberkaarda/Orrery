@@ -241,6 +241,20 @@ TEST_CASE("GPU: a uniform stream between co-moving walls stays uniform at any de
     CHECK(gl.context.debug_error_count() == 0);
 }
 
+TEST_CASE("The OpenGL backend refuses a uniform outside the binary32 range", "[aero][lbm][gl]") {
+    GlCompute gl = gl_compute_or_skip();
+    const std::array<aero::compute::Uniform, 1> huge{
+        aero::compute::Uniform{"u_tau", aero::compute::Float32Uniform{1e100}}};
+    // The unknown buffer keeps the kernel from running if the uniform passed.
+    const std::array<aero::compute::BufferBinding, 1> nothing{
+        aero::compute::BufferBinding{0, aero::compute::BufferId{4242}}};
+    const auto refused = gl.backend->dispatch({kernel_step, {1, 1, 1}, huge, nothing});
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("u_tau") != std::string::npos);
+    CHECK(refused.error().find("binary32") != std::string::npos);
+    CHECK(gl.context.debug_error_count() == 0);
+}
+
 TEST_CASE("GPU and CPU agree on the cylinder channel", "[aero][lbm][gl]") {
     GlCompute gl = gl_compute_or_skip();
     // Re 100, D = 10: Zou-He inlet, extrapolation outlet, slip sides, solid

@@ -23,7 +23,10 @@ settled when the interface was written:
   doubles and device binary32 is `float32_pack.cpp`, the single file of
   `orrery_aero` on the `FLOAT_ALLOWLIST`. Floating-point uniforms are
   `Float32Uniform{double}` values that the backend rounds once, when it hands
-  them to the device; integer uniforms are passed unchanged.
+  them to the device, with the same guarded rounding as the buffer packing
+  (`round_to_float32`: no out-of-range double-to-float conversion); a finite
+  value outside the binary32 range fails the dispatch. Integer uniforms are
+  passed unchanged.
 - A kernel is a name. The GL backend maps name `X` to the embedded shader
   `src/render/shaders/lbm/X.comp.glsl`, composed with the snippets of the same
   directory, compiles it on first use and caches it with its uniform table

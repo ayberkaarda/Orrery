@@ -1,15 +1,18 @@
 #include "orrery/render/gl_compute_backend.h"
 
 #include <array>
+#include <cmath>
 #include <cstdint>
 #include <limits>
 #include <map>
 #include <set>
+#include <string>
 #include <utility>
 #include <variant>
 
 #include "../gl_context_internal.h"
 #include "../gl_loader.h"
+#include "orrery/aero/compute/float32_pack.h"
 #include "orrery/render/embedded_lbm_shaders.h"
 #include "orrery/render/gl_resources.h"
 
@@ -289,6 +292,18 @@ Status GlComputeBackend::dispatch(const DispatchCommand& command) {
     const Kernel& kernel = *found.value();
     const GLuint program = kernel.program.id();
 
+    // Real uniforms go through the guarded binary32 rounding of the buffer
+    // packing; a finite value it would turn into an infinity is refused.
+    for (const aero::compute::Uniform& uniform : command.uniforms) {
+        if (const auto* real = std::get_if<Float32Uniform>(&uniform.value)) {
+            if (std::isfinite(real->value) &&
+                !std::isfinite(aero::compute::round_to_float32(real->value))) {
+                return failed("uniform '" + std::string(uniform.name) + "' of '" +
+                              std::string(command.kernel) +
+                              "' is outside the binary32 range: " + std::to_string(real->value));
+            }
+        }
+    }
     for (const aero::compute::Uniform& uniform : command.uniforms) {
         const auto slot = kernel.uniforms.find(uniform.name);
         if (slot == kernel.uniforms.end()) {
@@ -306,8 +321,11 @@ Status GlComputeBackend::dispatch(const DispatchCommand& command) {
         } else if (const auto* u = std::get_if<std::uint32_t>(&uniform.value)) {
             glProgramUniform1ui(program, location, *u);
         } else {
-            // The binary32 rounding of the GPU boundary.
-            const auto value = static_cast<float>(std::get<Float32Uniform>(uniform.value).value);
+            // The binary32 rounding of the GPU boundary; the rounded double
+            // is a binary32 value (or a non-finite one), so the conversion
+            // to float is exact.
+            const auto value = static_cast<float>(
+                aero::compute::round_to_float32(std::get<Float32Uniform>(uniform.value).value));
             glProgramUniform1f(program, location, value);
         }
     }

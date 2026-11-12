@@ -178,6 +178,10 @@ to exactly 1/2 (zero viscosity on the GPU while the CPU keeps a positive
 one; tau - 1/2 must exceed 2^-25, about 3e-8). Tau values that close to 1/2
 are far outside the stable range of BGK anyway (section 7 warns below 0.51).
 
+The OpenGL backend converts every `Float32Uniform` through the same guarded
+binary32 rounding as the buffer packing (`round_to_float32`) and refuses a
+finite value that would overflow it.
+
 ### Throughput
 
 2048 x 1024 cylinder channel (D = 64, Re 1000), hidden `[benchmark]` of

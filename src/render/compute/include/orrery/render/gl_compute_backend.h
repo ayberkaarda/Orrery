@@ -20,7 +20,9 @@
 // created: every call fails (or, for release_buffer, does nothing) while
 // another context is current, and it must be destroyed while its context is
 // current (GL objects of a context that is not current are not deleted; see
-// gl_resources.h). Floating-point uniforms are rounded to binary32 here.
+// gl_resources.h). Floating-point uniforms are rounded to binary32 here
+// (aero::compute::round_to_float32); dispatch fails for a finite value
+// outside the binary32 range.
 namespace orrery::render {
 
 class GlComputeBackend final : public aero::compute::IComputeBackend {
