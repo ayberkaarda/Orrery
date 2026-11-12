@@ -81,8 +81,8 @@ void apply_theme(const UiTheme& t) {
     c[ImGuiCol_ScrollbarGrabHovered] = im(t.control_active);
     c[ImGuiCol_ScrollbarGrabActive] = im(t.accent_active);
     c[ImGuiCol_CheckMark] = im(t.accent);
-    c[ImGuiCol_SliderGrab] = with_alpha(t.accent, 0.85F);
-    c[ImGuiCol_SliderGrabActive] = im(t.accent_hover);
+    c[ImGuiCol_SliderGrab] = im(t.slider_grab);
+    c[ImGuiCol_SliderGrabActive] = with_alpha(t.accent_hover, 0.8F);
     c[ImGuiCol_Button] = im(t.control);
     c[ImGuiCol_ButtonHovered] = im(t.control_hover);
     c[ImGuiCol_ButtonActive] = im(t.control_active);
@@ -376,6 +376,13 @@ UiRect UiContext::dockspace() {
         ImGui::DockBuilderDockWindow(std::string(kBodyInspectorWindow).c_str(), left);
         ImGui::DockBuilderDockWindow(std::string(kRenderSettingsWindow).c_str(), right);
         ImGui::DockBuilderDockWindow(std::string(kSystemMonitorWindow).c_str(), bottom);
+        // The layout is code-defined: the per-node window menu (the arrow in
+        // front of each panel tab) would only offer to undo it.
+        for (const ImGuiID id : {left, right, bottom}) {
+            if (ImGuiDockNode* node = ImGui::DockBuilderGetNode(id)) {
+                node->SetLocalFlags(node->LocalFlags | ImGuiDockNodeFlags_NoWindowMenuButton);
+            }
+        }
         ImGui::DockBuilderFinish(dock_id);
     }
     ImGui::DockSpaceOverViewport(dock_id, viewport, ImGuiDockNodeFlags_PassthruCentralNode);

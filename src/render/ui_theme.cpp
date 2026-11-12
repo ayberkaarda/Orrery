@@ -37,6 +37,7 @@ UiTheme default_theme() noexcept {
     t.accent_active = rgb(204, 146, 72);
     t.accent_secondary = rgb(116, 170, 204);
     t.warning = rgb(229, 115, 96);
+    t.slider_grab = rgb(226, 167, 92, 0.45F);
     return t;
 }
 
