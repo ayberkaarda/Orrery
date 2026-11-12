@@ -31,7 +31,8 @@ target_sources(orrery_test_geom PRIVATE
     geom/test_naca.cpp
     geom/test_import.cpp
     geom/test_repair.cpp
-    geom/test_voxel.cpp)
+    geom/test_voxel.cpp
+    geom/test_panel.cpp)
 target_compile_definitions(orrery_test_geom PRIVATE
     ORRERY_GEOM_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/geom/fixtures"
     ORRERY_GEOM_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/geom_output")
