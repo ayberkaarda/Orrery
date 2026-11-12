@@ -91,6 +91,10 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # render thread to the physics thread, private like in core.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_core": {"TBB::tbb"},
+    # orrery_geom (Phase 6a): assimp (BSD-3-Clause) imports OBJ, STL, glTF 2.0,
+    # PLY and FBX models; private, graphics-free, single precision only
+    # behind its API (converted to double on read).
+    "orrery_geom": {"assimp::assimp"},
     "orrery_sim": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",

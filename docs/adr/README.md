@@ -19,5 +19,6 @@
 | [015](015-roadmap-layers.md) | Three-layer roadmap with no future-domain code in v1 | Accepted |
 | [016](016-app-loop-timing.md) | Integral time accumulator with a dropping step budget | Accepted |
 | [017](017-black-hole-render-strategy.md) | Half-resolution geodesic trace with full-resolution sky lookup | Accepted |
+| [018](018-geometry-kernels.md) | Geometry kernels in orrery_geom, assimp behind a validation gate | Accepted |
 
 Each record has Context, Decision, Consequences (including rejected alternatives) and Status sections.
