@@ -2,7 +2,9 @@
 
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <filesystem>
 #include <limits>
 #include <numbers>
 #include <string>
@@ -13,6 +15,7 @@
 #include "orrery/geom/mesh_repair.h"
 #include "orrery/geom/mesh_validation.h"
 #include "orrery/geom/primitives.h"
+#include "orrery/geom/winding_number.h"
 
 using namespace orrery::geom;
 namespace t = orrery::geom::test;
@@ -318,10 +321,93 @@ TEST_CASE("external references stay inside the model directory", "[geom][import]
     t::write_text(dir / "model" / "escape.gltf", t::gltf_json(box, "../outside.bin"));
     CHECK_FALSE(import_mesh_file(dir / "model" / "escape.gltf").has_value());
 
-    // From memory, no file at all may be opened.
-    const auto memory =
-        import_mesh_memory(t::bytes_of(t::gltf_json(box, "inside.bin")), ModelFormat::gltf);
-    CHECK_FALSE(memory.has_value());
+    // From memory, no file at all may be opened - not even one the parser
+    // could resolve: an absolute path to the buffer that loaded above.
+    const std::filesystem::path buffer = dir / "model" / "inside.bin";
+    REQUIRE(buffer.is_absolute());
+    REQUIRE(std::filesystem::is_regular_file(buffer));
+    const std::string uri = buffer.generic_string();
+    const auto memory = import_mesh_memory(t::bytes_of(t::gltf_json(box, uri)), ModelFormat::gltf);
+    REQUIRE_FALSE(memory.has_value());
+    CHECK(memory.error().code == ImportErrorCode::parse_failed);
+    CHECK(memory.error().message.find("inside.bin") != std::string::npos);
+}
+
+TEST_CASE("referenced files count against the import size limit", "[geom][import][hostile]") {
+    const auto dir = t::output_dir("import_budget");
+    const TriangleMesh box = test_box();
+    const std::string json = t::gltf_json(box, "box.bin");
+    const std::vector<std::byte> buffer = t::gltf_buffer(box);
+    t::write_text(dir / "box.gltf", json);
+    t::write_bytes(dir / "box.bin", buffer);
+
+    // The JSON alone fits, the JSON and its buffer together do not.
+    ImportLimits limits;
+    limits.max_file_bytes = json.size() + buffer.size() - 1;
+    const ImportError e = expect_error(import_mesh_file(dir / "box.gltf", limits));
+    CHECK(e.code == ImportErrorCode::file_too_large);
+    // With room for both it loads.
+    limits.max_file_bytes = json.size() + buffer.size();
+    const auto ok = import_mesh_file(dir / "box.gltf", limits);
+    REQUIRE(ok.has_value());
+    check_box(ok.value());
+}
+
+TEST_CASE("a PLY comment cannot end the header for the prescan", "[geom][import][hostile]") {
+    const auto dir = t::output_dir("import_ply_comment");
+    // A complete, valid box PLY with a comment naming the header terminator
+    // before its element declarations: the prescan must still see the counts.
+    std::string ply = t::ply_text(test_box());
+    ply.insert(ply.find("element vertex"), "comment end_header\n");
+    t::write_text(dir / "box.ply", ply);
+    REQUIRE(import_mesh_file(dir / "box.ply").has_value());
+    ImportLimits limits;
+    limits.mesh.max_vertices = 4;
+    const ImportError e = expect_error(import_mesh_file(dir / "box.ply", limits));
+    CHECK(e.code == ImportErrorCode::parse_failed);
+    CHECK(e.message.find("PLY element 'vertex' declares 8 entries") != std::string::npos);
+    // The terminator must be a whole line, not a prefix.
+    std::string prefixed = t::ply_text(test_box());
+    prefixed.replace(prefixed.find("end_header"), 10, "end_headerX");
+    t::write_text(dir / "prefixed.ply", prefixed);
+    CHECK(expect_error(import_mesh_file(dir / "prefixed.ply")).message == "PLY header not found");
+}
+
+TEST_CASE("a mirroring node transform keeps the surface outward", "[geom][import]") {
+    const auto dir = t::output_dir("import_mirror");
+    const std::string json = t::gltf_embedded(test_box());
+    const std::string node = R"("nodes":[{"mesh":0}])";
+    REQUIRE(json.find(node) != std::string::npos);
+    auto with_nodes = [&](const std::string& nodes) {
+        std::string s = json;
+        s.replace(s.find(node), node.size(), nodes);
+        return s;
+    };
+    struct Case {
+        const char* name;
+        std::string nodes;
+    };
+    const Case cases[] = {
+        {"mirror.gltf", R"("nodes":[{"mesh":0,"scale":[-1,1,1]}])"},
+        {"nested_mirror.gltf",
+         R"("nodes":[{"children":[1],"scale":[1,-2,1]},{"mesh":0,"translation":[0,0,5]}])"},
+        {"double_mirror.gltf",
+         R"("nodes":[{"children":[1],"scale":[-1,1,1]},{"mesh":0,"scale":[1,1,-1]}])"},
+        {"matrix_mirror.gltf",
+         R"("nodes":[{"mesh":0,"matrix":[1,0,0,0,0,1,0,0,0,0,-1,0,0,0,0,1]}])"},
+    };
+    for (const Case& c : cases) {
+        INFO(c.name);
+        t::write_text(dir / c.name, with_nodes(c.nodes));
+        const auto result = import_mesh_file(dir / c.name);
+        REQUIRE(result.has_value());
+        const TriangleMesh& m = result.value().mesh;
+        const double expected =
+            std::string(c.name) == "nested_mirror.gltf" ? 12.0 : 6.0; // |det| = 2 there
+        CHECK(t::relative_error(signed_volume(m), expected) < 1e-12);
+        CHECK(analyze_mesh(m).outward());
+        CHECK(std::abs(winding_number(m, bounds(m).centre()) - 1.0) < 1e-12);
+    }
 }
 
 TEST_CASE("format names and extensions", "[geom][import]") {

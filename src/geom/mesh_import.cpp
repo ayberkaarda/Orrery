@@ -1,6 +1,5 @@
 #include "orrery/geom/mesh_import.h"
 
-#include <assimp/DefaultIOSystem.h>
 #include <assimp/IOStream.hpp>
 #include <assimp/IOSystem.hpp>
 #include <assimp/Importer.hpp>
@@ -15,14 +14,18 @@
 #include <cctype>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <exception>
 #include <fstream>
 #include <ios>
 #include <limits>
 #include <memory>
+#include <optional>
+#include <span>
 #include <stdexcept>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 namespace orrery::geom {
 
@@ -60,41 +63,153 @@ bool read_only_mode(const char* mode) {
     return m.find_first_of("wa+") == std::string_view::npos;
 }
 
-// Opens files only inside one directory (the model's own), read-only.
+std::size_t file_size_or_max(const std::filesystem::path& path, std::error_code& ec) {
+    const std::uintmax_t size = std::filesystem::file_size(path, ec);
+    if (ec || size > SIZE_MAX) {
+        return SIZE_MAX;
+    }
+    return static_cast<std::size_t>(size);
+}
+
+core::Result<std::vector<std::byte>, ImportError> read_file(const std::filesystem::path& path,
+                                                            std::size_t max_bytes) {
+    std::error_code ec;
+    const std::size_t size = file_size_or_max(path, ec);
+    if (size > max_bytes) {
+        return core::failure(
+            import_error(ImportErrorCode::file_too_large, "model file exceeds the size limit"));
+    }
+    std::ifstream in(path, std::ios::binary);
+    std::vector<char> chars(size);
+    if (!in.read(chars.data(), static_cast<std::streamsize>(size))) {
+        return core::failure(
+            import_error(ImportErrorCode::file_not_found, "model file cannot be read"));
+    }
+    std::vector<std::byte> bytes(size);
+    std::transform(chars.begin(), chars.end(), bytes.begin(),
+                   [](char c) { return static_cast<std::byte>(c); });
+    return bytes;
+}
+
+// Read-only stream over bytes in memory: owned (a referenced file read
+// whole) or borrowed (the model file, alive for the whole import).
+class BufferStream final : public Assimp::IOStream {
+public:
+    explicit BufferStream(std::vector<std::byte> owned) : owned_(std::move(owned)), data_(owned_) {}
+    explicit BufferStream(std::span<const std::byte> borrowed) : data_(borrowed) {}
+    BufferStream(const BufferStream&) = delete;
+    BufferStream& operator=(const BufferStream&) = delete;
+    BufferStream(BufferStream&&) = delete;
+    BufferStream& operator=(BufferStream&&) = delete;
+    ~BufferStream() override = default;
+
+    size_t Read(void* buffer, size_t size, size_t count) override {
+        if (size == 0 || buffer == nullptr) {
+            return 0;
+        }
+        const std::size_t n = std::min(count, (data_.size() - pos_) / size);
+        std::memcpy(buffer, data_.data() + pos_, n * size);
+        pos_ += n * size;
+        return n;
+    }
+    size_t Write(const void* /*buffer*/, size_t /*size*/, size_t /*count*/) override { return 0; }
+    aiReturn Seek(size_t offset, aiOrigin origin) override {
+        if (origin == aiOrigin_END) {
+            if (offset > data_.size()) {
+                return aiReturn_FAILURE;
+            }
+            pos_ = data_.size() - offset;
+            return aiReturn_SUCCESS;
+        }
+        const std::size_t base = origin == aiOrigin_CUR ? pos_ : 0;
+        if (offset > data_.size() - base) {
+            return aiReturn_FAILURE;
+        }
+        pos_ = base + offset;
+        return aiReturn_SUCCESS;
+    }
+    size_t Tell() const override { return pos_; }
+    size_t FileSize() const override { return data_.size(); }
+    void Flush() override {}
+
+private:
+    std::vector<std::byte> owned_;
+    std::span<const std::byte> data_;
+    std::size_t pos_ = 0;
+};
+
+// Opens files only inside one directory (the model's own), read-only. The
+// model file is served from the bytes already read and prescanned, never
+// reopened (it could have been replaced meanwhile). Every other file is read
+// whole into memory against a byte budget shared with the model file, so
+// references cannot make the import read more than max_file_bytes in total.
 class DirectoryIOSystem final : public Assimp::IOSystem {
 public:
-    explicit DirectoryIOSystem(std::filesystem::path root) : root_(std::move(root)) {}
+    DirectoryIOSystem(std::filesystem::path model, std::span<const std::byte> model_bytes,
+                      std::size_t max_bytes)
+        : root_(model.parent_path()), model_(std::move(model)), model_bytes_(model_bytes),
+          remaining_(max_bytes - std::min(max_bytes, model_bytes.size())) {}
 
     using Assimp::IOSystem::Exists;
     using Assimp::IOSystem::Open;
 
-    bool Exists(const char* file) const override { return allowed(file) && inner_.Exists(file); }
-    char getOsSeparator() const override { return inner_.getOsSeparator(); }
-    Assimp::IOStream* Open(const char* file, const char* mode) override {
-        if (!read_only_mode(mode) || !allowed(file)) {
-            return nullptr;
-        }
-        return inner_.Open(file, mode);
-    }
-    void Close(Assimp::IOStream* stream) override { inner_.Close(stream); }
-
-private:
-    bool allowed(const char* file) const {
-        if (file == nullptr) {
+    bool Exists(const char* file) const override {
+        const auto p = resolve(file);
+        if (!p) {
             return false;
         }
         std::error_code ec;
-        const std::filesystem::path p = std::filesystem::weakly_canonical(
+        return *p == model_ || std::filesystem::is_regular_file(*p, ec);
+    }
+    char getOsSeparator() const override { return '/'; }
+    Assimp::IOStream* Open(const char* file, const char* mode) override {
+        const auto p = resolve(file);
+        if (!read_only_mode(mode) || !p) {
+            return nullptr;
+        }
+        if (*p == model_) {
+            return std::make_unique<BufferStream>(model_bytes_).release();
+        }
+        auto bytes = read_file(*p, remaining_);
+        if (!bytes) {
+            budget_exceeded_ =
+                budget_exceeded_ || bytes.error().code == ImportErrorCode::file_too_large;
+            return nullptr;
+        }
+        remaining_ -= bytes.value().size();
+        return std::make_unique<BufferStream>(std::move(bytes.value())).release();
+    }
+    void Close(Assimp::IOStream* stream) override {
+        const std::unique_ptr<Assimp::IOStream> owned(stream);
+    }
+
+    // A referenced file did not fit in what was left of the byte budget.
+    [[nodiscard]] bool budget_exceeded() const noexcept { return budget_exceeded_; }
+
+private:
+    // Absolute, normalized path of `file` if it lies inside root_.
+    std::optional<std::filesystem::path> resolve(const char* file) const {
+        if (file == nullptr) {
+            return std::nullopt;
+        }
+        std::error_code ec;
+        std::filesystem::path p = std::filesystem::weakly_canonical(
             std::filesystem::absolute(path_from_utf8(file), ec), ec);
         if (ec) {
-            return false;
+            return std::nullopt;
         }
         const std::filesystem::path rel = p.lexically_relative(root_);
-        return !rel.empty() && *rel.begin() != ".." && rel.is_relative();
+        if (rel.empty() || *rel.begin() == ".." || !rel.is_relative()) {
+            return std::nullopt;
+        }
+        return p;
     }
 
     std::filesystem::path root_;
-    mutable Assimp::DefaultIOSystem inner_;
+    std::filesystem::path model_;
+    std::span<const std::byte> model_bytes_;
+    std::size_t remaining_;
+    bool budget_exceeded_ = false;
 };
 
 // Refuses every file: memory imports may not reach the file system.
@@ -109,7 +224,9 @@ public:
     void Close(Assimp::IOStream* /*stream*/) override {}
 };
 
-// assimp stores single-precision values (ai_real); widen on read.
+// APPROXIMATION (G7): assimp stores single-precision values (ai_real: the
+// vcpkg port builds it without ASSIMP_DOUBLE_PRECISION). Widening is exact
+// but cannot restore what the parser already rounded to float.
 double widen(ai_real value) {
     return static_cast<double>(value);
 }
@@ -188,6 +305,11 @@ std::optional<ImportError> append_mesh(TriangleMesh& out, const aiMesh& mesh, co
     if (mesh.mNumFaces > 0 && mesh.mFaces == nullptr) {
         return import_error(ImportErrorCode::parse_failed, "mesh without face array");
     }
+    // A transform with a negative determinant (a mirroring) turns the
+    // surface inside out: reverse each triangle to keep its orientation.
+    const double det = t[0] * (t[5] * t[10] - t[6] * t[9]) - t[1] * (t[4] * t[10] - t[6] * t[8]) +
+                       t[2] * (t[4] * t[9] - t[5] * t[8]);
+    const bool mirrored = det < 0.0;
     for (unsigned int f = 0; f < mesh.mNumFaces; ++f) {
         const aiFace& face = mesh.mFaces[f];
         if (face.mNumIndices != 3) {
@@ -209,6 +331,9 @@ std::optional<ImportError> append_mesh(TriangleMesh& out, const aiMesh& mesh, co
                 return e;
             }
             tri[k] = static_cast<std::uint32_t>(base + index);
+        }
+        if (mirrored) {
+            std::swap(tri[1], tri[2]);
         }
         out.triangles.push_back(tri);
     }
@@ -326,14 +451,6 @@ core::Result<ImportedMesh, ImportError> convert_scene(const aiScene* scene, Mode
     return out;
 }
 
-std::size_t file_size_or_max(const std::filesystem::path& path, std::error_code& ec) {
-    const std::uintmax_t size = std::filesystem::file_size(path, ec);
-    if (ec || size > SIZE_MAX) {
-        return SIZE_MAX;
-    }
-    return static_cast<std::size_t>(size);
-}
-
 ImportError mesh_failure(MeshErrorCode code, std::size_t element, std::string message) {
     ImportError e = import_error(ImportErrorCode::invalid_mesh, message);
     e.mesh_error = {code, element, std::move(message)};
@@ -443,26 +560,6 @@ core::Result<ImportedMesh, ImportError> parse_validated(Assimp::Importer& import
     return convert_scene(scene, format, limits, importer.GetErrorString());
 }
 
-core::Result<std::vector<std::byte>, ImportError> read_file(const std::filesystem::path& path,
-                                                            std::size_t max_bytes) {
-    std::error_code ec;
-    const std::size_t size = file_size_or_max(path, ec);
-    if (size > max_bytes) {
-        return core::failure(
-            import_error(ImportErrorCode::file_too_large, "model file exceeds the size limit"));
-    }
-    std::ifstream in(path, std::ios::binary);
-    std::vector<char> chars(size);
-    if (!in.read(chars.data(), static_cast<std::streamsize>(size))) {
-        return core::failure(
-            import_error(ImportErrorCode::file_not_found, "model file cannot be read"));
-    }
-    std::vector<std::byte> bytes(size);
-    std::transform(chars.begin(), chars.end(), bytes.begin(),
-                   [](char c) { return static_cast<std::byte>(c); });
-    return bytes;
-}
-
 // Formats whose files may reference others (glTF buffers, OBJ materials) are
 // read through the directory-confined file system; the rest from memory.
 bool needs_directory(ModelFormat format) {
@@ -535,10 +632,17 @@ core::Result<ImportedMesh, ImportError> import_mesh_file(const std::filesystem::
         }
         Assimp::Importer importer;
         // Ownership passes to the importer (assimp's C++ API takes a raw
-        // pointer and deletes it with the importer).
-        importer.SetIOHandler(
-            std::make_unique<DirectoryIOSystem>(absolute.parent_path()).release());
+        // pointer and deletes it with the importer); `bytes` outlives it.
+        auto io =
+            std::make_unique<DirectoryIOSystem>(absolute, bytes.value(), limits.max_file_bytes);
+        const DirectoryIOSystem& files = *io;
+        importer.SetIOHandler(io.release());
         const aiScene* parsed = importer.ReadFile(utf8_from_path(absolute), 0U);
+        if (files.budget_exceeded()) {
+            return core::failure(
+                import_error(ImportErrorCode::file_too_large,
+                             "the model and the files it references exceed the size limit"));
+        }
         return parse_validated(importer, parsed, format.value(), limits);
     } catch (const std::exception& e) {
         return core::failure(import_error(ImportErrorCode::parse_failed, e.what()));

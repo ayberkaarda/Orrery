@@ -77,13 +77,6 @@ std::optional<std::string> prescan_ply(std::span<const std::byte> data,
                                        const ImportLimits& limits) {
     const std::string head = text_prefix(data, max_ply_header + 64);
     const std::string_view text = head;
-    const std::size_t end = text.find("end_header");
-    if (end == std::string_view::npos || end > max_ply_header) {
-        return "PLY header not found";
-    }
-    std::size_t body = text.find('\n', end);
-    body = body == std::string_view::npos ? text.size() : body + 1;
-    const std::uint64_t available = data.size() - body;
 
     struct Element {
         std::string_view name;
@@ -92,18 +85,27 @@ std::optional<std::string> prescan_ply(std::span<const std::byte> data,
     };
     std::vector<Element> elements;
     bool ascii = true;
+    // The header ends at the first line that is exactly "end_header" (as the
+    // parser reads it), not at the first occurrence of the word: a comment or
+    // obj_info line may contain it before the element declarations.
+    std::size_t body = std::string_view::npos;
     std::size_t pos = 0;
-    while (pos < end) {
+    while (pos < text.size() && pos <= max_ply_header) {
         std::size_t eol = text.find('\n', pos);
-        eol = eol == std::string_view::npos || eol > end ? end : eol;
+        const bool last = eol == std::string_view::npos;
+        eol = last ? text.size() : eol;
         std::string_view line = text.substr(pos, eol - pos);
         if (!line.empty() && line.back() == '\r') {
             line.remove_suffix(1);
         }
-        pos = eol + 1;
+        pos = last ? text.size() : eol + 1;
         const std::vector<std::string_view> w = split(line);
         if (w.empty()) {
             continue;
+        }
+        if (w[0] == "end_header" && w.size() == 1) {
+            body = pos;
+            break;
         }
         if (w[0] == "format" && w.size() >= 2) {
             ascii = w[1] == "ascii";
@@ -121,6 +123,10 @@ std::optional<std::string> prescan_ply(std::span<const std::byte> data,
             elements.back().min_bytes += ascii ? 2 : size;
         }
     }
+    if (body == std::string_view::npos) {
+        return "PLY header not found";
+    }
+    const std::uint64_t available = data.size() - body;
     std::uint64_t needed = 0;
     for (const Element& e : elements) {
         const std::uint64_t cap =
