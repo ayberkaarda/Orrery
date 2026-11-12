@@ -7,8 +7,7 @@
 #include <utility>
 #include <vector>
 
-#include <Eigen/Dense>
-
+#include "linear_solve.h"
 #include "orrery/aero/panel_method.h"
 
 namespace orrery::aero {
@@ -186,7 +185,6 @@ bool PanelSolver2D::step() {
         throw std::logic_error("PanelSolver2D::step called before setup");
     }
     const std::vector<Panel2D> panels = make_panels(section_);
-    const auto n = static_cast<Eigen::Index>(panels.size());
     const std::size_t count = panels.size();
     const double alpha = conditions_.angle_of_attack;
     const Vec2 v_inf{std::cos(alpha), std::sin(alpha)}; // unit free stream
@@ -208,36 +206,35 @@ bool PanelSolver2D::step() {
     // normal -m) and the Kutta condition at the trailing edge, where the
     // tangential velocities of the first and last panels (traversed in
     // opposite directions) cancel.
-    Eigen::MatrixXd a = Eigen::MatrixXd::Zero(n + 1, n + 1);
-    Eigen::VectorXd rhs = Eigen::VectorXd::Zero(n + 1);
+    const std::size_t n = count;
+    detail::DenseSystem system(n + 1);
     const std::size_t first = 0;
     const std::size_t last = count - 1;
     for (std::size_t i = 0; i < count; ++i) {
-        const auto row = static_cast<Eigen::Index>(i);
         const Vec2 normal{-panels[i].m.x, -panels[i].m.z};
         double vortex_sum = 0.0;
         for (std::size_t j = 0; j < count; ++j) {
-            a(row, static_cast<Eigen::Index>(j)) = dot2(at(i, j).source, normal);
+            system.at(i, j) = dot2(at(i, j).source, normal);
             vortex_sum += dot2(at(i, j).vortex, normal);
         }
-        a(row, n) = vortex_sum;
-        rhs(row) = -dot2(v_inf, normal);
+        system.at(i, n) = vortex_sum;
+        system.b[i] = -dot2(v_inf, normal);
     }
     double kutta_vortex = 0.0;
     for (std::size_t j = 0; j < count; ++j) {
-        a(n, static_cast<Eigen::Index>(j)) =
+        system.at(n, j) =
             dot2(at(first, j).source, panels[first].t) + dot2(at(last, j).source, panels[last].t);
         kutta_vortex +=
             dot2(at(first, j).vortex, panels[first].t) + dot2(at(last, j).vortex, panels[last].t);
     }
-    a(n, n) = kutta_vortex;
-    rhs(n) = -(dot2(v_inf, panels[first].t) + dot2(v_inf, panels[last].t));
+    system.at(n, n) = kutta_vortex;
+    system.b[n] = -(dot2(v_inf, panels[first].t) + dot2(v_inf, panels[last].t));
 
-    const Eigen::PartialPivLU<Eigen::MatrixXd> lu(a);
-    const Eigen::VectorXd x = lu.solve(rhs);
-    const double residual = (a * x - rhs).norm() / std::max(rhs.norm(), 1e-300);
+    const detail::LinearSolution solution = detail::solve_lu(system);
+    const std::vector<double>& x = solution.x;
+    const double residual = solution.residual;
 
-    const double gamma = x(n);
+    const double gamma = x[n];
     const double q = conditions_.dynamic_pressure();
     AeroResult r;
     r.surface.points.reserve(count);
@@ -248,7 +245,7 @@ bool PanelSolver2D::step() {
     for (std::size_t i = 0; i < count; ++i) {
         double vt = dot2(v_inf, panels[i].t);
         for (std::size_t j = 0; j < count; ++j) {
-            vt += x(static_cast<Eigen::Index>(j)) * dot2(at(i, j).source, panels[i].t) +
+            vt += x[j] * dot2(at(i, j).source, panels[i].t) +
                   gamma * dot2(at(i, j).vortex, panels[i].t);
         }
         const double cp = 1.0 - vt * vt;

@@ -11,9 +11,7 @@
 #include <utility>
 #include <vector>
 
-#include <Eigen/Dense>
-#include <unsupported/Eigen/IterativeSolvers>
-
+#include "linear_solve.h"
 #include "orrery/aero/panel_method.h"
 
 namespace orrery::aero {
@@ -343,7 +341,6 @@ bool PanelSolver3D::step() {
     }
     const std::vector<geom::Panel>& panels = panels_.panels;
     const std::size_t count = panels.size();
-    const auto n = static_cast<Eigen::Index>(count);
     const Vector3 v_hat = conditions_.drag_direction(); // unit free stream
 
     std::vector<double> diameter;
@@ -383,11 +380,9 @@ bool PanelSolver3D::step() {
     // Dirichlet condition at each collocation point, approached from inside:
     // sum_j mu_j C_ij + sum_w (mu_u - mu_l) C_iw = -sum_j sigma_j B_ij,
     // sigma_j = -n_j . V (Katz and Plotkin, eq. 12.12, per unit speed).
-    Eigen::MatrixXd a(n, n);
-    Eigen::VectorXd rhs = Eigen::VectorXd::Zero(n);
+    detail::DenseSystem system(count);
     for (std::size_t i = 0; i < count; ++i) {
         const Vector3& p = panels[i].collocation;
-        const auto row = static_cast<Eigen::Index>(i);
         double b_sum = 0.0;
         for (std::size_t j = 0; j < count; ++j) {
             const geom::Panel& pj = panels[j];
@@ -405,42 +400,35 @@ bool PanelSolver3D::step() {
                 // Own panel, limit from inside.
                 inf.doublet = i == j ? -0.5 : t.doublet;
             }
-            a(row, static_cast<Eigen::Index>(j)) = inf.doublet;
+            system.at(i, j) = inf.doublet;
             b_sum += inf.source * -geom::dot(pj.normal, v_hat);
         }
-        rhs(row) = -b_sum;
+        system.b[i] = -b_sum;
         for (std::size_t w = 0; w < panels_.wake.size(); ++w) {
             const geom::WakePanel& wp = panels_.wake[w];
             const double c = wake_sign[w] * quad_doublet(p, wp.corners);
             for (const auto& [k, coef] : kutta[wp.segment]) {
-                a(row, static_cast<Eigen::Index>(k)) += c * coef;
+                system.at(i, k) += c * coef;
             }
         }
     }
 
     AeroResult r;
-    Eigen::VectorXd x;
-    if (count <= options_.dense_limit) {
-        const Eigen::PartialPivLU<Eigen::MatrixXd> lu(a);
-        x = lu.solve(rhs);
-        used_gmres_ = false;
-        r.iterations = 1;
+    used_gmres_ = count > options_.dense_limit;
+    detail::LinearSolution solution;
+    if (used_gmres_) {
+        solution = detail::solve_gmres(system, {options_.gmres_restart, options_.gmres_tolerance,
+                                                options_.gmres_max_iterations});
     } else {
-        Eigen::GMRES<Eigen::MatrixXd, Eigen::IdentityPreconditioner> gmres;
-        gmres.set_restart(options_.gmres_restart);
-        gmres.setTolerance(options_.gmres_tolerance);
-        gmres.setMaxIterations(options_.gmres_max_iterations);
-        gmres.compute(a);
-        x = gmres.solve(rhs);
-        used_gmres_ = true;
-        r.iterations = static_cast<std::size_t>(gmres.iterations());
+        solution = detail::solve_lu(system);
     }
-    const double residual = (a * x - rhs).norm() / std::max(rhs.norm(), 1e-300);
+    const double residual = solution.residual;
+    r.iterations = solution.iterations;
     r.residuals.push_back(residual);
     r.converged =
         std::isfinite(residual) && residual < std::max(1e-8, 10.0 * options_.gmres_tolerance);
 
-    doublets_.assign(x.data(), x.data() + x.size());
+    doublets_ = std::move(solution.x);
 
     // Surface velocity and pressure.
     const double q = conditions_.dynamic_pressure();

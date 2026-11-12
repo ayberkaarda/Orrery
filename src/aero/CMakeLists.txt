@@ -24,6 +24,8 @@ target_sources(orrery_aero PRIVATE
     panel2d.cpp
     panel3d.cpp
     panel_influence.cpp
+    linear_solve.cpp
+    linear_solve.h
     newtonian.cpp
     include/orrery/aero/panel_method.h
     include/orrery/aero/newtonian.h)
