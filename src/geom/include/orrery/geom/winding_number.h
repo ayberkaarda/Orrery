@@ -10,7 +10,8 @@ namespace orrery::geom {
 
 // Signed solid angle of triangle (a, b, c) seen from p (Van Oosterom and
 // Strackee 1983): positive when the triangle's right-hand normal points away
-// from p. In (-2 pi, 2 pi].
+// from p. In (-2 pi, 2 pi]; 0 when p is a corner. Evaluated on unit vectors,
+// so it does not depend on the triangle's scale.
 [[nodiscard]] double solid_angle(const Vector3& p, const Vector3& a, const Vector3& b,
                                  const Vector3& c) noexcept;
 
@@ -48,6 +49,7 @@ private:
     struct Node {
         Bounds box;
         Vector3 centre;
+        // Sum of the triangles' area vectors divided by scale_^2.
         Vector3 area_normal;
         double radius = 0.0;
         std::uint32_t first = 0;
@@ -61,12 +63,15 @@ private:
 
     const TriangleMesh* mesh_;
     double beta_;
+    // Power of two near the mesh extent (see winding_number.cpp).
+    double scale_;
     std::vector<std::uint32_t> order_;
     std::vector<Node> nodes_;
 };
 
 // Closest point of triangle (a, b, c) to p (Ericson, Real-Time Collision
-// Detection, 5.1.5).
+// Detection, 5.1.5). A triangle without area (repeated or collinear corners)
+// is treated as its edges, so the result is always a point of the triangle.
 [[nodiscard]] Vector3 closest_point_on_triangle(const Vector3& p, const Vector3& a,
                                                 const Vector3& b, const Vector3& c) noexcept;
 

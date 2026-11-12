@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
+#include <string>
 
 #include "orrery/geom/winding_number.h"
 
@@ -18,14 +19,45 @@ std::size_t VoxelGrid::solid_count() const noexcept {
     return static_cast<std::size_t>(std::count(solid.begin(), solid.end(), std::uint8_t{1}));
 }
 
+namespace {
+
+// Checked cell count: every dimension at least 1 and the product (computed
+// without wrapping) at most max_grid_cells.
+bool cell_count_ok(const GridSpec& spec) noexcept {
+    return spec.nx > 0 && spec.ny > 0 && spec.nz > 0 && spec.nx <= max_grid_cells / spec.ny &&
+           spec.nx * spec.ny <= max_grid_cells / spec.nz;
+}
+
+// A grid is usable when its cell count is in range, its origin is finite and
+// its spacing positive and finite; and so is every cell centre.
+void check_spec(const GridSpec& spec, const char* who) {
+    if (!cell_count_ok(spec)) {
+        throw std::invalid_argument(std::string(who) + ": grid empty or too large");
+    }
+    if (!isfinite(spec.origin) || !std::isfinite(spec.spacing) || !(spec.spacing > 0.0)) {
+        throw std::invalid_argument(std::string(who) +
+                                    ": grid origin must be finite and spacing positive and finite");
+    }
+    if (!isfinite(spec.centre(spec.nx - 1, spec.ny - 1, spec.nz - 1))) {
+        throw std::invalid_argument(std::string(who) + ": grid extends beyond finite coordinates");
+    }
+}
+
+} // namespace
+
 GridSpec grid_around(const Bounds& box, double spacing, std::size_t padding) {
     if (!std::isfinite(spacing) || !(spacing > 0.0)) {
         throw std::invalid_argument("grid_around: spacing must be positive and finite");
     }
+    if (!isfinite(box.min) || !isfinite(box.max) || !(box.min.x <= box.max.x) ||
+        !(box.min.y <= box.max.y) || !(box.min.z <= box.max.z)) {
+        throw std::invalid_argument("grid_around: bounds must be finite and ordered (min <= max)");
+    }
     const Vector3 e = box.extent();
     auto cells = [&](double extent) {
+        // extent >= 0 (ordered bounds), so n >= 0 before the conversion.
         const double n = std::ceil(extent / spacing) + 2.0 * static_cast<double>(padding);
-        if (!std::isfinite(n) || n > static_cast<double>(max_grid_cells)) {
+        if (!std::isfinite(n) || !(n >= 0.0) || n > static_cast<double>(max_grid_cells)) {
             throw std::invalid_argument("grid_around: grid too large");
         }
         return std::max<std::size_t>(1, static_cast<std::size_t>(n));
@@ -35,20 +67,21 @@ GridSpec grid_around(const Bounds& box, double spacing, std::size_t padding) {
     g.nx = cells(e.x);
     g.ny = cells(e.y);
     g.nz = cells(e.z);
-    if (g.nx > max_grid_cells / g.ny || g.nx * g.ny > max_grid_cells / g.nz) {
+    if (!cell_count_ok(g)) {
         throw std::invalid_argument("grid_around: grid too large");
     }
     // Centre the grid on the box.
     const Vector3 size{static_cast<double>(g.nx) * spacing, static_cast<double>(g.ny) * spacing,
                        static_cast<double>(g.nz) * spacing};
     g.origin = box.centre() - size * 0.5;
+    check_spec(g, "grid_around");
     return g;
 }
 
 VoxelGrid voxelize(const TriangleMesh& mesh, const GridSpec& spec, double threshold) {
-    if (spec.nx == 0 || spec.ny == 0 || spec.nz == 0 || spec.nx > max_grid_cells / spec.ny ||
-        spec.nx * spec.ny > max_grid_cells / spec.nz) {
-        throw std::invalid_argument("voxelize: grid empty or too large");
+    check_spec(spec, "voxelize");
+    if (!std::isfinite(threshold)) {
+        throw std::invalid_argument("voxelize: threshold must be finite");
     }
     const MeshTree tree(mesh);
     VoxelGrid grid;
@@ -74,13 +107,20 @@ SignedDistanceField signed_distance_band(const TriangleMesh& mesh, const VoxelGr
         throw std::invalid_argument("signed_distance_band: band must be positive");
     }
     const GridSpec& spec = voxels.spec;
+    // The cell count is checked before it is compared with the vectors: a
+    // wrapped product could otherwise match empty vectors.
+    check_spec(spec, "signed_distance_band");
     if (voxels.solid.size() != spec.cells()) {
         throw std::invalid_argument("signed_distance_band: voxel grid does not match its spec");
+    }
+    const double band = band_cells * spec.spacing;
+    if (!std::isfinite(band)) {
+        throw std::invalid_argument("signed_distance_band: band is not finite");
     }
     const MeshTree tree(mesh);
     SignedDistanceField sdf;
     sdf.spec = spec;
-    sdf.band = band_cells * spec.spacing;
+    sdf.band = band;
     sdf.distance.assign(spec.cells(), 0.0);
     sdf.in_band.assign(spec.cells(), 0);
     for (std::size_t k = 0; k < spec.nz; ++k) {

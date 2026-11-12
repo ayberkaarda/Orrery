@@ -34,6 +34,46 @@ Bounds point_bounds(const Vector3& p) {
     return {p, p};
 }
 
+// Closest point of segment a-b to p; a when the segment has no length.
+Vector3 closest_point_on_segment(const Vector3& p, const Vector3& a, const Vector3& b) noexcept {
+    const Vector3 ab = b - a;
+    const double length2 = squared_norm(ab);
+    if (!(length2 > 0.0)) {
+        return a;
+    }
+    const double t = std::clamp(dot(p - a, ab) / length2, 0.0, 1.0);
+    return a + ab * t;
+}
+
+// A triangle without area is the union of its three edges (segments or
+// points): the closest of their closest points.
+Vector3 closest_point_on_edges(const Vector3& p, const Vector3& a, const Vector3& b,
+                               const Vector3& c) noexcept {
+    Vector3 best = closest_point_on_segment(p, a, b);
+    double best2 = squared_norm(best - p);
+    for (const Vector3& q :
+         {closest_point_on_segment(p, b, c), closest_point_on_segment(p, c, a)}) {
+        const double d2 = squared_norm(q - p);
+        if (d2 < best2) {
+            best = q;
+            best2 = d2;
+        }
+    }
+    return best;
+}
+
+// Power of two near the largest extent of the mesh: the tree works with
+// vectors divided by it, so its products neither underflow for tiny meshes
+// nor overflow for huge ones (division by a power of two is exact).
+double tree_scale(const TriangleMesh& mesh) noexcept {
+    const Vector3 e = bounds(mesh).extent();
+    const double extent = std::max({e.x, e.y, e.z});
+    if (!(extent > 0.0) || !std::isfinite(extent)) {
+        return 1.0;
+    }
+    return std::ldexp(1.0, std::ilogb(extent));
+}
+
 } // namespace
 
 double solid_angle(const Vector3& p, const Vector3& a, const Vector3& b,
@@ -44,9 +84,17 @@ double solid_angle(const Vector3& p, const Vector3& a, const Vector3& b,
     const double la = norm(ra);
     const double lb = norm(rb);
     const double lc = norm(rc);
-    const double numerator = dot(ra, cross(rb, rc));
-    const double denominator =
-        la * lb * lc + dot(ra, rb) * lc + dot(rb, rc) * la + dot(rc, ra) * lb;
+    if (!(la > 0.0) || !(lb > 0.0) || !(lc > 0.0)) {
+        return 0.0; // p on a corner
+    }
+    // The formula on unit vectors (both arguments of atan2 divided by
+    // la lb lc > 0): products of three lengths would underflow or overflow
+    // for very small or very large triangles.
+    const Vector3 ua = ra / la;
+    const Vector3 ub = rb / lb;
+    const Vector3 uc = rc / lc;
+    const double numerator = dot(ua, cross(ub, uc));
+    const double denominator = 1.0 + dot(ua, ub) + dot(ub, uc) + dot(uc, ua);
     return 2.0 * std::atan2(numerator, denominator);
 }
 
@@ -62,6 +110,10 @@ Vector3 closest_point_on_triangle(const Vector3& p, const Vector3& a, const Vect
                                   const Vector3& c) noexcept {
     const Vector3 ab = b - a;
     const Vector3 ac = c - a;
+    // Without area the barycentric divisions below can be 0 / 0.
+    if (!(squared_norm(cross(ab, ac)) > 0.0)) {
+        return closest_point_on_edges(p, a, b, c);
+    }
     const Vector3 ap = p - a;
     const double d1 = dot(ab, ap);
     const double d2 = dot(ac, ap);
@@ -94,14 +146,14 @@ Vector3 closest_point_on_triangle(const Vector3& p, const Vector3& a, const Vect
     }
     const double sum = va + vb + vc;
     if (!(sum > 0.0)) {
-        // Degenerate triangle: fall back to its first corner.
-        return a;
+        // Nearly degenerate (the area underflowed in these products).
+        return closest_point_on_edges(p, a, b, c);
     }
     return a + ab * (vb / sum) + ac * (vc / sum);
 }
 
 MeshTree::MeshTree(const TriangleMesh& mesh, double beta, std::size_t leaf_size)
-    : mesh_(&mesh), beta_(beta) {
+    : mesh_(&mesh), beta_(beta), scale_(tree_scale(mesh)) {
     if (!std::isfinite(beta) || !(beta > 0.0) || leaf_size == 0) {
         throw std::invalid_argument("MeshTree: beta must be positive and leaf_size at least 1");
     }
@@ -139,7 +191,10 @@ std::uint32_t MeshTree::build(std::uint32_t first, std::uint32_t count, std::siz
         }
         const Vector3 c = centroid(order_[i]);
         centres = merge(centres, point_bounds(c));
-        const Vector3 n2 = triangle_cross(m, tri);
+        // Area vector in units of scale_^2.
+        const Vector3& v0 = m.vertices[tri[0]];
+        const Vector3 n2 =
+            cross((m.vertices[tri[1]] - v0) / scale_, (m.vertices[tri[2]] - v0) / scale_);
         const double a = 0.5 * norm(n2);
         node.area_normal += n2 * 0.5;
         weighted += c * a;
@@ -196,7 +251,13 @@ double MeshTree::winding_number(const Vector3& p) const noexcept {
         const Vector3 d = node.centre - p;
         const double dist = norm(d);
         if (dist > beta_ * node.radius) {
-            sum += dot(node.area_normal, d) / (dist * dist * dist);
+            // dot(A, d) / dist^3 with A = area_normal scale^2, evaluated in
+            // an order that stays within range at any scale.
+            const double flux = dot(node.area_normal, d / dist);
+            if (flux != 0.0) {
+                const double ratio = scale_ / dist;
+                sum += flux * ratio * ratio;
+            }
             continue;
         }
         if (node.leaf) {

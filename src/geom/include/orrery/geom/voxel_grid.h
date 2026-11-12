@@ -29,8 +29,8 @@ struct GridSpec {
 inline constexpr std::size_t max_grid_cells = std::size_t{1} << 27U;
 
 // Grid covering `box` with `padding` extra cells on every side. Throws
-// std::invalid_argument for a non-positive spacing or a grid above
-// max_grid_cells.
+// std::invalid_argument for a non-positive or non-finite spacing, bounds that
+// are not finite or not ordered (min <= max), or a grid above max_grid_cells.
 [[nodiscard]] GridSpec grid_around(const Bounds& box, double spacing, std::size_t padding);
 
 // Solid/fluid classification: a cell is solid when the generalized winding
@@ -46,13 +46,18 @@ struct VoxelGrid {
     [[nodiscard]] std::size_t solid_count() const noexcept;
 };
 
+// Throws std::invalid_argument unless every dimension is at least 1, the
+// cell count (computed without wrapping) is at most max_grid_cells, the origin
+// is finite, the spacing positive and finite, and the threshold finite.
 [[nodiscard]] VoxelGrid voxelize(const TriangleMesh& mesh, const GridSpec& spec,
                                  double threshold = 0.5);
 
 // Narrow-band signed distance (negative inside): cells within `band_cells`
 // cells of the surface hold the exact distance to the closest triangle with
 // the sign of the voxel classification; the others hold -band or +band and
-// in_band = 0.
+// in_band = 0. Throws std::invalid_argument for a grid spec voxelize would
+// reject, voxel vectors that do not match it, or a band that is not positive
+// and finite (also after scaling by the spacing).
 struct SignedDistanceField {
     GridSpec spec;
     double band = 0.0;
