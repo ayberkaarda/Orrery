@@ -3,12 +3,15 @@
 #include <cmath>
 #include <cstdint>
 #include <numbers>
+#include <stdexcept>
+#include <utility>
 #include <vector>
 
 #include "geom_test_support.h"
 #include "orrery/geom/mesh_import.h"
 #include "orrery/geom/mesh_repair.h"
 #include "orrery/geom/primitives.h"
+#include "orrery/geom/winding_number.h"
 
 using namespace orrery::geom;
 namespace t = orrery::geom::test;
@@ -139,4 +142,78 @@ TEST_CASE("a Moebius strip cannot be oriented", "[geom][repair]") {
     // One boundary curve, twice around; the seam breaks its direction.
     CHECK(r.before.boundary_edges == std::size_t{2} * n);
     CHECK(r.before.non_manifold_edges == 0);
+}
+
+namespace {
+
+// Cube of side `side` centred on the origin, outward or turned inward.
+TriangleMesh oriented_cube(double side, bool outward) {
+    TriangleMesh m = cube_mesh(side);
+    if (!outward) {
+        for (Triangle& tri : m.triangles) {
+            std::swap(tri[1], tri[2]);
+        }
+    }
+    return m;
+}
+
+} // namespace
+
+TEST_CASE("orientation repair keeps the cavity of a hollow solid", "[geom][repair]") {
+    // Outer wall facing out, cavity wall facing into the void: material
+    // volume 8 - 1, winding number 1 in the wall and 0 in the cavity.
+    TriangleMesh hollow = oriented_cube(2.0, true);
+    append(hollow, oriented_cube(1.0, false));
+    REQUIRE(std::abs(signed_volume(hollow) - 7.0) < 1e-14);
+    const RepairResult kept = repair_mesh(hollow);
+    CHECK(kept.flipped_triangles == 0);
+    CHECK(std::abs(signed_volume(kept.mesh) - 7.0) < 1e-14);
+    CHECK(std::abs(winding_number(kept.mesh, {0.1, 0.05, -0.02})) < 1e-12);
+    CHECK(std::abs(winding_number(kept.mesh, {0.75, 0.0, 0.1}) - 1.0) < 1e-12);
+
+    // A cavity wall written facing out is turned to face the void.
+    TriangleMesh wrong_cavity = oriented_cube(2.0, true);
+    append(wrong_cavity, oriented_cube(1.0, true));
+    const RepairResult fixed = repair_mesh(wrong_cavity);
+    CHECK(fixed.flipped_triangles == 12);
+    CHECK(std::abs(signed_volume(fixed.mesh) - 7.0) < 1e-14);
+
+    // Nesting parity: shell, cavity, island in the cavity, all inside out.
+    TriangleMesh nested = oriented_cube(4.0, false);
+    append(nested, oriented_cube(2.0, true));
+    append(nested, oriented_cube(1.0, false));
+    const RepairResult parity = repair_mesh(nested);
+    CHECK(std::abs(signed_volume(parity.mesh) - (64.0 - 8.0 + 1.0)) < 1e-12);
+    CHECK(std::abs(winding_number(parity.mesh, {0.1, 0.0, 0.0}) - 1.0) < 1e-12);
+    CHECK(std::abs(winding_number(parity.mesh, {0.75, 0.0, 0.0})) < 1e-12);
+    CHECK(std::abs(winding_number(parity.mesh, {1.5, 0.0, 0.0}) - 1.0) < 1e-12);
+
+    // Two separate solids side by side both face out.
+    TriangleMesh pair = oriented_cube(1.0, false);
+    TriangleMesh other = oriented_cube(1.0, true);
+    for (Vector3& v : other.vertices) {
+        v += Vector3{3.0, 0.0, 0.0};
+    }
+    append(pair, other);
+    const RepairResult apart = repair_mesh(pair);
+    CHECK(apart.flipped_triangles == 12);
+    CHECK(std::abs(signed_volume(apart.mesh) - 2.0) < 1e-14);
+}
+
+TEST_CASE("a weld tolerance too small for the coordinates is rejected", "[geom][repair]") {
+    // Strictly positive coordinates over a subnormal tolerance overflow to
+    // infinity: every vertex would land in the same cell.
+    TriangleMesh m = cube_mesh(1.0);
+    for (Vector3& v : m.vertices) {
+        v += Vector3{2.0, 2.0, 2.0};
+    }
+    CHECK_THROWS_AS(analyze_mesh(m, 1e-320), std::invalid_argument);
+    RepairOptions options;
+    options.weld_tolerance = 1e-320;
+    CHECK_THROWS_AS(repair_mesh(m, options), std::invalid_argument);
+    // A tiny tolerance that still quantizes finitely is accepted.
+    options.weld_tolerance = 1e-300;
+    const RepairResult r = repair_mesh(m, options);
+    CHECK(r.welded_vertices == 0);
+    CHECK(r.mesh.triangles == m.triangles);
 }

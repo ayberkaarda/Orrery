@@ -4,10 +4,13 @@
 #include <array>
 #include <cmath>
 #include <limits>
+#include <numbers>
 #include <numeric>
 #include <stdexcept>
 #include <tuple>
 #include <utility>
+
+#include "orrery/geom/winding_number.h"
 
 namespace orrery::geom {
 
@@ -29,6 +32,17 @@ struct Weld {
 };
 
 Weld weld(const std::vector<Vector3>& vertices, double tolerance) {
+    if (tolerance > 0.0) {
+        // Every quantized coordinate must stay finite: an infinite cell
+        // index would put unrelated vertices into one cell.
+        double largest = 0.0;
+        for (const Vector3& v : vertices) {
+            largest = std::max({largest, std::abs(v.x), std::abs(v.y), std::abs(v.z)});
+        }
+        if (!std::isfinite(largest / tolerance)) {
+            throw std::invalid_argument("weld tolerance too small for the coordinate range");
+        }
+    }
     auto key = [tolerance](const Vector3& v) {
         if (tolerance > 0.0) {
             return std::make_tuple(std::floor(v.x / tolerance), std::floor(v.y / tolerance),
@@ -320,6 +334,95 @@ void flip(Triangle& t) {
     std::swap(t[1], t[2]);
 }
 
+// Winding number of a closed component (its triangles listed in `members`)
+// at p: +-1 inside, 0 outside, whatever its orientation.
+double component_winding(const std::vector<Vector3>& vertices,
+                         const std::vector<Triangle>& triangles,
+                         const std::vector<std::uint32_t>& members, const Vector3& p) {
+    double sum = 0.0;
+    for (std::uint32_t t : members) {
+        const Triangle& tri = triangles[t];
+        sum += solid_angle(p, vertices[tri[0]], vertices[tri[1]], vertices[tri[2]]);
+    }
+    return sum / (4.0 * std::numbers::pi);
+}
+
+// Turns each closed component so that solid lies on the inside of the
+// surface: a component nested inside an even number of others (an outer
+// wall or an island in a cavity) gets a positive volume, one nested inside an
+// odd number (a cavity wall) a negative one. Returns the triangles flipped.
+std::size_t orient_closed_components(const std::vector<Vector3>& vertices,
+                                     std::vector<Triangle>& triangles) {
+    const std::vector<EdgeUse> uses = edge_uses(triangles);
+    const std::vector<std::uint32_t> root = components_of(triangles.size(), uses);
+    std::vector<bool> open(triangles.size(), false);
+    for_each_edge(uses, [&](std::size_t i, std::size_t j) {
+        if (j - i == 1) {
+            open[root[uses[i].triangle]] = true;
+        }
+    });
+    TriangleMesh view;
+    view.vertices = vertices;
+    const std::vector<double> v6 =
+        component_volumes6(vertices, triangles, root, bounds(view).centre());
+
+    struct Shell {
+        std::uint32_t root = 0;
+        std::vector<std::uint32_t> members;
+        Bounds box;
+    };
+    // A component's root is its lowest triangle index, so it is met first.
+    std::vector<Shell> shells;
+    std::vector<std::size_t> shell_of(triangles.size(), 0);
+    for (std::size_t t = 0; t < triangles.size(); ++t) {
+        if (open[root[t]]) {
+            continue;
+        }
+        if (root[t] == t) {
+            shell_of[t] = shells.size();
+            const Vector3& first = vertices[triangles[t][0]];
+            shells.push_back({root[t], {}, {first, first}});
+        }
+        Shell& s = shells[shell_of[root[t]]];
+        for (std::uint32_t v : triangles[t]) {
+            const Vector3& p = vertices[v];
+            s.box.min = {std::min(s.box.min.x, p.x), std::min(s.box.min.y, p.y),
+                         std::min(s.box.min.z, p.z)};
+            s.box.max = {std::max(s.box.max.x, p.x), std::max(s.box.max.y, p.y),
+                         std::max(s.box.max.z, p.z)};
+        }
+        s.members.push_back(to_index(t));
+    }
+    auto box_inside = [](const Bounds& inner, const Bounds& outer) {
+        return outer.min.x <= inner.min.x && outer.min.y <= inner.min.y &&
+               outer.min.z <= inner.min.z && inner.max.x <= outer.max.x &&
+               inner.max.y <= outer.max.y && inner.max.z <= outer.max.z;
+    };
+    std::size_t flipped = 0;
+    for (std::size_t i = 0; i < shells.size(); ++i) {
+        const Shell& s = shells[i];
+        // Shells do not intersect (a closed manifold mesh): one corner of s
+        // decides whether s lies inside another shell.
+        const Vector3& probe = vertices[triangles[s.members.front()][0]];
+        std::size_t depth = 0;
+        for (std::size_t j = 0; j < shells.size(); ++j) {
+            if (j != i && box_inside(s.box, shells[j].box) &&
+                std::abs(component_winding(vertices, triangles, shells[j].members, probe)) > 0.5) {
+                ++depth;
+            }
+        }
+        const double volume6 = v6[s.root];
+        const bool want_positive = depth % 2 == 0;
+        if ((want_positive && volume6 < 0.0) || (!want_positive && volume6 > 0.0)) {
+            for (std::uint32_t t : s.members) {
+                flip(triangles[t]);
+            }
+            flipped += s.members.size();
+        }
+    }
+    return flipped;
+}
+
 } // namespace
 
 WatertightReport analyze_mesh(const TriangleMesh& mesh, double weld_tolerance) {
@@ -475,25 +578,8 @@ RepairResult repair_mesh(const TriangleMesh& mesh, const RepairOptions& options)
     }
 
     if (options.fix_orientation) {
-        // Closed components with a negative volume face inward: flip them.
-        const std::vector<EdgeUse> uses = edge_uses(triangles);
-        const std::vector<std::uint32_t> root = components_of(triangles.size(), uses);
-        std::vector<bool> open(triangles.size(), false);
-        for_each_edge(uses, [&](std::size_t i, std::size_t j) {
-            if (j - i == 1) {
-                open[root[uses[i].triangle]] = true;
-            }
-        });
-        TriangleMesh view;
-        view.vertices = vertices;
-        const std::vector<double> v6 =
-            component_volumes6(vertices, triangles, root, bounds(view).centre());
-        for (std::size_t t = 0; t < triangles.size(); ++t) {
-            if (!open[root[t]] && v6[root[t]] < 0.0) {
-                flip(triangles[t]);
-                ++result.flipped_triangles;
-            }
-        }
+        // Closed components face away from the solid, cavities included.
+        result.flipped_triangles += orient_closed_components(vertices, triangles);
     }
 
     // Drop unreferenced vertices, keeping the order of the others.

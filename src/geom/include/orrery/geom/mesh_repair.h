@@ -50,7 +50,9 @@ struct WatertightReport {
 
 // weld_tolerance: absolute distance (mesh units); 0 merges only identical
 // positions. A positive tolerance merges points in the same cube cell of that
-// size (points up to sqrt(3) times the tolerance apart).
+// size (points up to sqrt(3) times the tolerance apart). Throws
+// std::invalid_argument for a negative or non-finite tolerance, or one so
+// small that a coordinate divided by it is not finite.
 [[nodiscard]] WatertightReport analyze_mesh(const TriangleMesh& mesh, double weld_tolerance = 0.0);
 
 struct RepairOptions {
@@ -82,8 +84,11 @@ struct RepairResult {
 
 // Repairs in a fixed order: weld, drop degenerate and duplicate triangles,
 // drop fins, make the orientation consistent per component, fill holes,
-// turn each closed component outward, drop unreferenced vertices. The input
-// must have passed validate_mesh.
+// turn each closed component to face away from the solid (outward for an
+// outer wall or an island, into the void for a cavity wall, decided by how
+// many other closed components enclose it), drop unreferenced vertices. The
+// input must have passed validate_mesh. Throws std::invalid_argument for a
+// weld tolerance analyze_mesh rejects.
 // APPROXIMATION (G4): holes are filled by a fan from the loop centroid -
 // simple and always closes the loop - fine for small, nearly planar holes;
 // large or curved holes get a flat or self-intersecting patch.
