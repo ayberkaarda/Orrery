@@ -112,6 +112,67 @@ Related project-level criteria: sphere Cd at Re 100 between 1.0 and 1.2; cylinde
 
 Core validation (analytic): two-body analytic orbits, energy drift, Barnes-Hut versus direct, IAS15 figure-eight orbit, ISCO stability, determinism hash, Kepler element round trip.
 
+## Lattice Boltzmann 2D (orrery_aero, Phase 7b)
+
+Method, not model: the D2Q9 BGK lattice Boltzmann scheme recovers the
+incompressible Navier-Stokes equations in the low Mach number limit. Full
+reference in `lbm.md`; decisions ADR-008, ADR-006 and ADR-019; sources
+`src/aero/lbm` and `src/render/shaders/lbm`; tests `tests/aero/lbm` and
+`tests/aero_validation/lbm2d`.
+
+### Formulas
+- Lattice units dx = dt = 1, rho_0 = 1, c_s^2 = 1/3; D2Q9 weights 4/9, 1/9,
+  1/36 (Qian, d'Humieres and Lallemand 1992).
+- f_eq,i = w_i rho (1 + 3 c_i.u + 9/2 (c_i.u)^2 - 3/2 u.u); BGK
+  f*_i = f_i - (f_i - f_eq,i) / tau; nu = (tau - 1/2) / 3 (Kruger et al.,
+  *The Lattice Boltzmann Method*, 2017).
+- Guo forcing (Guo, Zheng and Shi 2002): u = (sum c f + F/2) / rho,
+  F_i = (1 - 1/(2 tau)) w_i [3 (c_i - u).F + 9 (c_i.u)(c_i.F)].
+- Smagorinsky (Hou et al. 1996): tau_eff = (tau + sqrt(tau^2 + 18 sqrt(2)
+  C^2 |Pi_neq| / rho)) / 2.
+- Halfway bounce-back f_i(x) = f*_opp(i)(x); moving wall adds
+  6 w_i rho_w c_i.u_w; free slip by specular reflection.
+- Zou-He velocity inlet (Zou and He 1997), regularized (Latt et al. 2008):
+  f_i = f_eq,i + w_i / (2 c_s^4) (c_i c_i - c_s^2 I) : Pi_neq.
+- Convective outlet (Yang 2013): f(t+1) = (f(t) + U f_upstream(t+1)) /
+  (1 + U); or zero-gradient extrapolation.
+- Momentum exchange (Ladd 1994): F = sum over fluid-solid links of
+  2 c_o f*_o, o pointing into the wall; Cd = F_x / (rho U^2 L / 2).
+- Units: dx = L / N, dt = u_lat dx / U, nu_lat = nu dt / dx^2,
+  tau = 3 nu_lat + 1/2; Re identical in both systems; lattice Mach
+  u_lat sqrt(3) < 0.1 enforced (A3).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise; GPU AMD Radeon RX 9060 XT)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| Cylinder Re 100, CPU | D 20, 26000 steps (lbm.md section 8) | St 0.1674, mean Cd 1.468 | St 0.16 to 0.20, Cd 1.2 to 1.5 |
+| Cylinder Re 100, GPU | same | St 0.1674, mean Cd 1.468 | same |
+| GPU vs CPU | Poiseuille, Couette, Taylor-Green, cylinder with and without LES | velocity L2 at most 6.1e-5, drag 5.3e-5 | 1e-4 |
+| GPU vs CPU, shedding onset | 400 x 200 cylinder, no start perturbation | velocity L2 up to 7.1e-4 at steps 10000 to 18000, 9e-5 after lock-in | not met during the transient (lbm.md, "GPU precision") |
+| Poiseuille | tau = 1/2 + sqrt(3/16) / 0.8 / 0.6, H 32 | 5e-13 / 7e-4 / 1.3e-3 relative L2 | 1e-9 / 2e-3 / 2e-3 |
+| Couette | moving wall, H 16 | 3e-13 | 1e-9 |
+| Taylor-Green decay | 64 x 64, tau 0.65 | rate within 0.08 percent of 4 nu k^2 | 1 percent |
+| Mass conservation | periodic, slip, moving no-slip, 1500 steps | below 1e-12 relative | 1e-12 |
+| Momentum exchange | channel with a solid row, body force | equals the total body force to 1e-6 | 1e-6 |
+| GPU throughput | 2048 x 1024, BGK / with Smagorinsky | 1117 / 1113 steps/s | 200 steps/s |
+| CPU throughput | 600 x 400, 12 threads | 108 million updates/s | none |
+
+### Approximations (LBM 2D)
+A2 (Smagorinsky), A3 (weak compressibility) and A4 (staircase walls) in
+section 5 apply.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| L1 | Zou-He inlet node regularized (higher-order non-equilibrium dropped) | `zou_he_west`, `lbm_zou_he_west` | Smooth inflow; keeps rho, u and Pi_neq of the Zou-He set | Strong gradients at the inlet are smoothed; keep the body 5 or more lengths downstream |
+| L2 | Convective outlet with the inlet speed as convection speed | `Outlet::convective` | Wakes convected at about the free-stream speed | Recirculation at the outlet; the mean density drifts slowly (0.1 percent over 100000 steps at D 40) |
+| L3 | Moving no-slip wall with rho_w = 1 | `resolve_source` (wall) | Wall-parallel motion, density near 1 | Large density variation at a moving wall |
+| L4 | Smagorinsky Pi_neq taken without the forcing correction | `collide`, `lbm_collide` | Weak body forces | Strongly forced LES runs |
+| L5 | GPU populations in binary32, shifted by the weights | `lbm2d_gpu.cpp`, `src/render/shaders/lbm` | Agreement with the CPU within 1e-4 on laminar and locked-in periodic flow | Instability transients amplify rounding (up to 7e-4 measured) |
+| L6 | Momentum exchange for stationary bodies, force applied at the link midpoints | `add_link_force` | Bodies at rest | Moving bodies need the wall-velocity terms |
+| L7 | Wall pressure Cp from the node next to the wall against the mean density of the column next to the inlet; one sample per node with area dx | `LbmAeroSolver2D::update_result` | Qualitative Cp distribution | First-order in the resolution, like A4 |
+| L8 | 2D solver ignores sideslip; velocity field reported only at zero angle of attack | `LbmAeroSolver2D` | Plane sections | `lbm.sideslip` warning; field absent when the lattice is wind-aligned |
+
 ## Scenario format
 
 Scenarios are JSON documents loaded by `orrery_scene` (`orrery/scene/scenario.h`); bundled examples live in `assets/scenarios/`. Schema version 1:
