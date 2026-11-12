@@ -130,7 +130,8 @@ Camera looking_camera(const glm::dvec3& position, const glm::dvec3& direction, d
 double hdr_luminance_sum(const std::vector<float>& rgba) {
     double sum = 0.0;
     for (std::size_t i = 0; i + 3 < rgba.size(); i += 4) {
-        sum += 0.2126 * rgba[i] + 0.7152 * rgba[i + 1] + 0.0722 * rgba[i + 2];
+        sum += 0.2126 * static_cast<double>(rgba[i]) + 0.7152 * static_cast<double>(rgba[i + 1]) +
+               0.0722 * static_cast<double>(rgba[i + 2]);
     }
     return sum;
 }
