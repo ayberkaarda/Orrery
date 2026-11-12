@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <initializer_list>
 #include <optional>
 #include <string>
 #include <system_error>
@@ -23,8 +24,11 @@
 #include <mach-o/dyld.h>
 #endif
 
+#include "orrery/core/black_hole.h"
 #include "orrery/core/body.h"
+#include "orrery/core/schwarzschild_geodesic.h"
 #include "orrery/core/units.h"
+#include "orrery/render/black_hole.h"
 #include "orrery/render/body_visuals.h"
 #include "orrery/render/space_renderer.h"
 
@@ -38,6 +42,10 @@ constexpr double kFramingYaw = 72.0 * kDegree;
 constexpr double kFramingPitch = 30.0 * kDegree;
 // Fraction of the field of view left free around the framed radius.
 constexpr double kFramingMargin = 1.1;
+// A lone black hole is framed from just above its disk plane, with the disk
+// filling the view (docs/app.md, "Space view").
+constexpr double kBlackHolePitch = 12.0 * kDegree;
+constexpr double kBlackHoleMargin = 1.08;
 
 std::size_t heaviest_index(const core::SimSnapshot& snapshot) {
     std::size_t heaviest = 0;
@@ -47,6 +55,52 @@ std::size_t heaviest_index(const core::SimSnapshot& snapshot) {
         }
     }
     return heaviest;
+}
+
+// Impact parameter [M] of the highest image of the disk's far rim seen from
+// far away: the light from the rim point behind the hole (R cos i behind it,
+// R sin i above the line of sight) is bent over the hole, so the ray with
+// impact parameter b reaches it when b - R cos i alpha(b) = R sin i, with
+// the weak-field deflection alpha(b) = 4/b + 15 pi/(4 b^2) + 128/(3 b^3)
+// (physics.md, "Null geodesics"). From a finite distance the image sits
+// lower, so this bounds it.
+double lensed_rim_height(double radius, double pitch) {
+    const double behind = radius * std::cos(pitch);
+    const double above = radius * std::sin(pitch);
+    const auto excess = [&](double b) {
+        const double alpha = 4.0 / b + 15.0 * kPi / (4.0 * b * b) + 128.0 / (3.0 * b * b * b);
+        return b - behind * alpha - above;
+    };
+    // excess rises with b; it is negative at max(R sin i, b_c) and positive
+    // at R + 4 (for the 30 M disk seen from 12 degrees, b = 15.5 M).
+    double lo = std::max(above, core::geodesic::kCriticalImpactParameter);
+    double hi = radius + 4.0;
+    for (int i = 0; i < 60; ++i) {
+        const double mid = 0.5 * (lo + hi);
+        (excess(mid) < 0.0 ? lo : hi) = mid;
+    }
+    return hi;
+}
+
+// Camera distance [M] that frames the disk (radius R, seen from `pitch`
+// above its plane) with kBlackHoleMargin in both directions:
+// - width: a rim point at azimuth phi from the camera's side lies at
+//   R sin phi / (D - R cos i cos phi) to the side; the widest, at
+//   cos phi = R cos i / D, is R / sqrt(D^2 - R^2 cos^2 i);
+// - below the hole: the near rim, R sin i / (D - R cos i);
+// - above it: the lensed far rim, about lensed_rim_height / D.
+// The camera always stays outside the disk (D >= margin R), and so outside
+// the horizon.
+double black_hole_distance(double tan_half_v, double usable_aspect) {
+    const double r = render::kDiskOuterRadius;
+    const double in_plane = r * std::cos(kBlackHolePitch);
+    const double tan_half_h = tan_half_v * usable_aspect;
+    const double wide = kBlackHoleMargin * r / tan_half_h;
+    const double width = std::sqrt(in_plane * in_plane + wide * wide);
+    const double near_rim =
+        in_plane + kBlackHoleMargin * r * std::sin(kBlackHolePitch) / tan_half_v;
+    const double far_rim = kBlackHoleMargin * lensed_rim_height(r, kBlackHolePitch) / tan_half_v;
+    return std::max({width, near_rim, far_rim, kBlackHoleMargin * r});
 }
 
 } // namespace
@@ -89,6 +143,19 @@ render::OrbitMode framing_orbit(const core::SimSnapshot& snapshot, double aspect
         }
     }
     double radius = au;
+    const double tan_half_v = std::tan(0.5 * kSpaceFovDegrees * kDegree);
+    const double usable = render::Camera::usable_aspect(aspect);
+    if (distances.empty() && snapshot.kind_tag(heaviest) == core::BodyKindTag::black_hole) {
+        // The accretion disk drawn by the lensing pass reaches
+        // kDiskOuterRadius G M / c^2; seen from 12 degrees above its plane it
+        // is wide and flat, so its width sets the distance in most windows
+        // and its height in very wide ones.
+        const double rs =
+            core::to_si(core::schwarzschild_radius(snapshot.masses()[heaviest])).value();
+        orbit.pitch = kBlackHolePitch;
+        orbit.distance = black_hole_distance(tan_half_v, usable) * 0.5 * rs;
+        return orbit;
+    }
     if (!distances.empty()) {
         std::sort(distances.begin(), distances.end());
         radius = distances[distances.size() / 2];
@@ -98,8 +165,6 @@ render::OrbitMode framing_orbit(const core::SimSnapshot& snapshot, double aspect
             snapshot.names()[heaviest], snapshot.kinds()[heaviest], snapshot.masses()[heaviest]);
         radius = 4.0 * render::physical_radius(snapshot.radii()[heaviest], appearance);
     }
-    const double tan_half_v = std::tan(0.5 * kSpaceFovDegrees * kDegree);
-    const double usable = render::Camera::usable_aspect(aspect);
     const double tan_half = std::min(tan_half_v, tan_half_v * usable);
     orbit.distance = kFramingMargin * radius / tan_half;
     return orbit;

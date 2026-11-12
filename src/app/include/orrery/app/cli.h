@@ -33,7 +33,8 @@ struct CliOptions {
     std::optional<int> width;
     std::optional<int> height;
     // Window: render this many frames without vsync, print the mean frame
-    // time and exit (0: run until the window is closed).
+    // time and exit (0: run until the window is closed). Headless: after
+    // writing the image, time this many offscreen frames of the same view.
     std::int64_t benchmark_frames = 0;
 };
 

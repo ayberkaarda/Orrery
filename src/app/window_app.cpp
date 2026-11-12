@@ -287,7 +287,13 @@ void WindowApp::build_ui(double dt, int width, int height) {
         drift_.clear();
     }
 
-    if (const auto changed = render::draw_render_settings(settings_).changed) {
+    render::RenderSettingsContext panel_context;
+    if (snapshot_) {
+        for (std::size_t i = 0; i < snapshot_->size(); ++i) {
+            panel_context.black_hole |= snapshot_->kind_tag(i) == core::BodyKindTag::black_hole;
+        }
+    }
+    if (const auto changed = render::draw_render_settings(settings_, panel_context).changed) {
         const bool trails_changed = changed->trail_length != settings_.trail_length;
         settings_ = *changed;
         if (trails_changed) {

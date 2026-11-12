@@ -208,9 +208,6 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
             return core::failure("--out: the image is written as PNG; use a .png file name, got '" +
                                  options.out.string() + "'");
         }
-        if (seen.contains(Option::benchmark)) {
-            return core::failure(std::string("--benchmark is for the window, not --headless"));
-        }
     } else {
         if (seen.contains(Option::frame)) {
             return core::failure(std::string("--frame is only valid with --headless"));
@@ -226,7 +223,7 @@ std::string usage_text() {
     return "Usage:\n"
            "  orrery_app [--experiment <name-or-path>] [--size WxH] [--benchmark <frames>]\n"
            "  orrery_app --headless --experiment <name-or-path> --out <file.png>\n"
-           "             [--frame <N>] [--size WxH]\n"
+           "             [--frame <N>] [--size WxH] [--benchmark <frames>]\n"
            "  orrery_app --version | --help | --modules\n"
            "\n"
            "Options:\n"
@@ -239,7 +236,8 @@ std::string usage_text() {
            "      --size WxH        image or window size in pixels (default 1280x720 headless,\n"
            "                        1600x900 window)\n"
            "      --benchmark <N>   window: render N frames without vsync, print the mean\n"
-           "                        frame time and exit\n"
+           "                        frame time and exit; headless: also time N offscreen\n"
+           "                        frames of the written view (GPU work included)\n"
            "      --modules         print the linked module graph\n"
            "      --version         print the version\n"
            "  -h, --help            print this help\n"

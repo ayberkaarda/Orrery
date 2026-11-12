@@ -26,7 +26,9 @@ inline constexpr double kSpaceFovDegrees = 40.0;
 // azimuth 72 deg, elevation 30 deg. The framed radius is the median distance
 // of the other bodies from that centre, so a planetary system shows its inner
 // and middle orbits instead of shrinking them to a dot around the star to fit
-// the outermost one (the mouse wheel zooms out to the rest).
+// the outermost one (the mouse wheel zooms out to the rest). A black hole
+// alone is framed for its accretion disk instead: 12 deg above the disk
+// plane, the disk (render::kDiskOuterRadius) spanning the view's width.
 //
 // APPROXIMATION: framing heuristic, not a physical quantity - it is valid
 // for any distribution of bodies, only the composition varies.
