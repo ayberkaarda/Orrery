@@ -245,6 +245,17 @@ jobs:
         run: cmake --preset linux-ci-headless -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
       - name: Dependency boundaries (configured build tree)
         run: python tools/check_deps.py --build-dir build/linux-ci-headless
+      - name: Generate build-time headers
+        # Configuring alone does not run custom commands, but some translation
+        # units include headers generated at build time: the embedded render
+        # shaders and the shader-embedding test fixtures. Build only those
+        # outputs (Ninja file targets), not the libraries.
+        run: |
+          cmake --build build/linux-ci-headless -j "$(nproc)" --target \
+            src/render/generated/orrery/render/embedded_shaders.h \
+            tests/render_embed_fixture/include/orrery_test/embedded_fixture_shaders.h
+          test -f build/linux-ci-headless/src/render/generated/orrery/render/embedded_shaders.h
+          test -f build/linux-ci-headless/tests/render_embed_fixture/include/orrery_test/embedded_fixture_shaders.h
       - name: clang-tidy
         # Full-project runs (manual/scheduled) get a longer budget; PR and push
         # runs only analyse the changed first-party translation units.
@@ -303,11 +314,46 @@ jobs:
             echo "No first-party translation units to analyse with clang-tidy; skipping."
             exit 0
           fi
+          total=$(wc -l < tidy-files.txt)
+          echo "clang-tidy: analysing $total translation units with $(nproc) workers"
+          mkdir -p tidy-results
+          : > tidy-results/done.txt
+          : > tidy-results/failed.txt
+          # One clang-tidy process per TU. Each result is printed as soon as
+          # its TU finishes (under a lock so outputs do not interleave), and
+          # every TU runs even after a failure, so a timeout still leaves the
+          # findings gathered so far in the log.
+          tidy_one() {
+            out=$(clang-tidy-17 -p build/linux-ci-headless --quiet "--header-filter=^${GITHUB_WORKSPACE}/(src|tests)/.*" "$1" 2>&1)
+            rc=$?
+            rel=${1#"$GITHUB_WORKSPACE"/}
+            {
+              flock 9
+              if [ $rc -ne 0 ]; then
+                echo "FAIL $rel (exit $rc)"
+                printf '%s\n' "$out"
+                echo "$rel" >> tidy-results/failed.txt
+              else
+                echo "ok   $rel"
+              fi
+              echo "$rel" >> tidy-results/done.txt
+            } 9> tidy-results/lock
+          }
+          export -f tidy_one
           start=$(date +%s)
-          rc=0
-          xargs -a tidy-files.txt -P "$(nproc)" -n 2 clang-tidy-17 -p build/linux-ci-headless --quiet "--header-filter=^${GITHUB_WORKSPACE}/(src|tests)/.*" || rc=$?
-          echo "clang-tidy elapsed: $(( $(date +%s) - start ))s (exit $rc)"
-          exit $rc
+          xargs -a tidy-files.txt -P "$(nproc)" -I{} bash -c 'tidy_one "$1"' _ {} || :
+          done_count=$(wc -l < tidy-results/done.txt)
+          failed_count=$(wc -l < tidy-results/failed.txt)
+          echo "clang-tidy elapsed: $(( $(date +%s) - start ))s; TUs: $total, analysed: $done_count, failed: $failed_count"
+          if [ "$failed_count" -ne 0 ]; then
+            echo "clang-tidy failed translation units:"
+            sed 's/^/  /' tidy-results/failed.txt
+            exit 1
+          fi
+          if [ "$done_count" -ne "$total" ]; then
+            echo "clang-tidy: only $done_count of $total translation units completed"
+            exit 1
+          fi
       - name: cppcheck
         timeout-minutes: 10
         run: |
