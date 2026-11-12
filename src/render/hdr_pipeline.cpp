@@ -172,6 +172,15 @@ void HdrPipeline::present(int width, int height) const {
                            GL_COLOR_BUFFER_BIT, filter);
 }
 
+std::vector<float> HdrPipeline::read_hdr() const {
+    std::vector<float> pixels(static_cast<std::size_t>(width_) * static_cast<std::size_t>(height_) *
+                              4U);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glGetTextureImage(hdr_texture().id(), 0, GL_RGBA, GL_FLOAT,
+                      static_cast<GLsizei>(pixels.size() * sizeof(float)), pixels.data());
+    return pixels;
+}
+
 ImageRgba8 HdrPipeline::read_srgb() const {
     ImageRgba8 image;
     image.width = static_cast<std::uint32_t>(width_);

@@ -142,6 +142,10 @@ GLenum gl_internal_format(TextureFormat format) {
             return GL_SRGB8_ALPHA8;
         case TextureFormat::depth32f:
             return GL_DEPTH_COMPONENT32F;
+        case TextureFormat::rgba32f:
+            return GL_RGBA32F;
+        case TextureFormat::r11f_g11f_b10f:
+            return GL_R11F_G11F_B10F;
     }
     return GL_RGBA8;
 }
@@ -335,6 +339,10 @@ void Program::set(std::string_view name, int value) const {
     glProgramUniform1i(handle_.get(), uniform_location(name), value);
 }
 
+void Program::set(std::string_view name, const glm::ivec2& value) const {
+    glProgramUniform2iv(handle_.get(), uniform_location(name), 1, glm::value_ptr(value));
+}
+
 void Program::set(std::string_view name, float value) const {
     glProgramUniform1f(handle_.get(), uniform_location(name), value);
 }
@@ -480,6 +488,55 @@ core::Result<Texture, std::string> Texture::create_2d(int width, int height, Tex
         glTextureParameteri(id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
     }
     return Texture(std::move(handle), width, height, samples, format);
+}
+
+core::Result<Texture, std::string> Texture::create_cube(int size, TextureFormat format,
+                                                        int levels) {
+    const std::string size_text = std::to_string(size) + "x" + std::to_string(size);
+    const GLint max_size = gl_integer(GL_MAX_CUBE_MAP_TEXTURE_SIZE);
+    if (size < 1 || size > max_size) {
+        return core::failure("cube map: face size " + size_text + " is outside [1, " +
+                             std::to_string(max_size) + "]");
+    }
+    int max_levels = 1;
+    while ((size >> max_levels) > 0) {
+        ++max_levels;
+    }
+    if (levels < 1 || levels > max_levels) {
+        return core::failure("cube map: " + std::to_string(levels) + " levels is outside [1, " +
+                             std::to_string(max_levels) + "]");
+    }
+    if (format == TextureFormat::depth32f) {
+        return core::failure(std::string("cube map: depth formats are not supported"));
+    }
+    clear_gl_errors();
+    GLuint id = 0;
+    glCreateTextures(GL_TEXTURE_CUBE_MAP, 1, &id);
+    if (id == 0) {
+        return core::failure("cube map: glCreateTextures failed (" + gl_error_name(glGetError()) +
+                             ")");
+    }
+    detail::GlHandle handle(id, delete_texture);
+    glTextureStorage2D(id, levels, gl_internal_format(format), size, size);
+    const GLenum error = glGetError();
+    GLint immutable = GL_FALSE;
+    glGetTextureParameteriv(id, GL_TEXTURE_IMMUTABLE_FORMAT, &immutable);
+    GLint stored_size = 0;
+    glGetTextureLevelParameteriv(id, 0, GL_TEXTURE_WIDTH, &stored_size);
+    if (error != GL_NO_ERROR || immutable != GL_TRUE || stored_size != size ||
+        detail::allocation_failure_simulated()) {
+        return core::failure("cube map: allocating 6 faces of " + size_text + " with " +
+                             std::to_string(levels) + " level(s) failed (" +
+                             allocation_failure_reason(error) + ")");
+    }
+    glTextureParameteri(id, GL_TEXTURE_MIN_FILTER,
+                        levels > 1 ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR);
+    glTextureParameteri(id, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTextureParameteri(id, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(id, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(id, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glTextureParameteri(id, GL_TEXTURE_MAX_LEVEL, levels - 1);
+    return Texture(std::move(handle), size, size, 1, format);
 }
 
 void Texture::bind(std::uint32_t unit) const {

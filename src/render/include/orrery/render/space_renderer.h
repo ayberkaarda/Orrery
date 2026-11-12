@@ -13,6 +13,7 @@
 #include "orrery/core/body.h"
 #include "orrery/core/result.h"
 #include "orrery/core/sim_snapshot.h"
+#include "orrery/render/black_hole.h"
 #include "orrery/render/body_visuals.h"
 #include "orrery/render/camera.h"
 #include "orrery/render/gl_resources.h"
@@ -24,7 +25,10 @@
 // Space view (docs/rendering.md, "Bodies", "Starfield", "Trails"): draws a
 // simulation snapshot into the HDR scene target of the Phase 4a pipeline.
 //
-//   1. Milky Way band and starfield, at infinity (rotation only, no depth)
+//   1. Milky Way band and starfield, at infinity (rotation only, no depth);
+//      or, when a black hole lenses the view (black_hole.h), the lensing
+//      pass: the sky from an environment cube map along the bent rays, the
+//      shadow and the accretion disk, with depth where they cover the sky
 //   2. bodies: instanced icospheres, LOD per body from the projected size,
 //      floating origin, log depth, PBR-lite lighting, emissive stars
 //   3. orbit trails: anti-aliased screen-space lines, fading with age
@@ -77,7 +81,10 @@ struct PreparedBodies {
 // World position [m] of body `index` (AU -> metres in double).
 [[nodiscard]] glm::dvec3 world_position(const core::SimSnapshot& snapshot, std::size_t index);
 
-// CPU preparation of the bodies of one frame.
+// CPU preparation of the bodies of one frame. The black hole that the
+// lensing pass draws (select_lensed_black_hole) gets screen information but
+// no instance and no glow sprite, unless its shadow is below the clamped
+// minimum screen size: then its marker is drawn as for any unresolved body.
 [[nodiscard]] PreparedBodies prepare_bodies(const core::SimSnapshot& snapshot, const Camera& camera,
                                             const FrameInfo& frame, const RenderSettings& settings);
 
@@ -95,6 +102,7 @@ struct SpaceDrawStats {
     std::size_t trail_segments = 0;
     std::size_t stars = 0;
     std::size_t glows = 0;
+    bool lensing = false; // the black-hole lensing pass drew the sky
 };
 
 class SpaceRenderer {
@@ -116,6 +124,12 @@ public:
     SpaceDrawStats draw(const SpaceView& view, const FrameInfo& frame);
 
     [[nodiscard]] std::size_t star_count() const noexcept { return star_count_; }
+
+    // Test access to the lensing pass: traces the view's lensed black hole in
+    // geometry mode at half the resolution of `frame` and reads the result
+    // back. Fails when the view selects no black hole.
+    [[nodiscard]] core::Result<GeodesicTraceImage, std::string>
+    trace_geometry(const SpaceView& view, const FrameInfo& frame);
 
 private:
     struct Gpu;

@@ -140,7 +140,7 @@ std::vector<StarPoint> generate_starfield(const StarfieldParams& params) {
     SplitMix64 rng(params.seed);
     const glm::dmat3 galactic_to_ecliptic = glm::transpose(ecliptic_to_galactic());
     std::vector<StarPoint> stars;
-    stars.reserve(params.count);
+    stars.reserve(params.count + params.extra_stars.size());
     for (std::size_t i = 0; i < params.count; ++i) {
         const double magnitude = sample_magnitude(rng, params);
         const double disc_share = 0.30 + 0.45 * smoothstep(3.0, 10.0, magnitude);
@@ -158,6 +158,7 @@ std::vector<StarPoint> generate_starfield(const StarfieldParams& params) {
         star.color = glm::vec3(blackbody_linear_srgb(temperature));
         stars.push_back(star);
     }
+    stars.insert(stars.end(), params.extra_stars.begin(), params.extra_stars.end());
     return stars;
 }
 

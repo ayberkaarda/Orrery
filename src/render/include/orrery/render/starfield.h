@@ -13,6 +13,13 @@
 // galactic frame used by the Milky Way band. No catalogue data is used.
 namespace orrery::render {
 
+struct StarPoint {
+    glm::vec3 direction{0.0F, 0.0F, 1.0F}; // unit vector, world (ecliptic J2000) axes
+    float magnitude = 0.0F;                // apparent visual magnitude
+    float temperature = 5772.0F;           // effective temperature [K]
+    glm::vec3 color{1.0F};                 // linear sRGB, unit luminance
+};
+
 struct StarfieldParams {
     std::uint64_t seed = 0x0A11CE5EEDULL;
     std::size_t count = 100000;
@@ -21,17 +28,13 @@ struct StarfieldParams {
     // d log10 N(<m) / dm of the cumulative star counts. The whole-sky counts
     // (about 5e3 stars to V = 6 and 1.2e5 to V = 10) give about 0.35.
     double count_slope = 0.35;
-};
-
-struct StarPoint {
-    glm::vec3 direction{0.0F, 0.0F, 1.0F}; // unit vector, world (ecliptic J2000) axes
-    float magnitude = 0.0F;                // apparent visual magnitude
-    float temperature = 5772.0F;           // effective temperature [K]
-    glm::vec3 color{1.0F};                 // linear sRGB, unit luminance
+    // Stars appended after the generated ones, unchanged (test scenes, for
+    // example a single bright star behind a black hole).
+    std::vector<StarPoint> extra_stars;
 };
 
 // Same parameters, same stars on every platform (own random generator, no
-// standard-library distributions).
+// standard-library distributions); extra_stars follow the generated ones.
 [[nodiscard]] std::vector<StarPoint> generate_starfield(const StarfieldParams& params);
 
 // Rotation from world (ecliptic J2000) to galactic coordinates (IAU 1958
