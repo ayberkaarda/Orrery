@@ -41,13 +41,13 @@ glm::dvec3 pole_from_equatorial(double ra_degrees, double dec_degrees) noexcept 
 
 struct KnownBody {
     std::string_view key;
-    double radius_km;
+    double radius_km = 0.0;
     glm::dvec3 albedo;
     glm::dvec3 secondary;
     SurfaceStyle style;
-    double specular;
-    double pole_ra;
-    double pole_dec;
+    double specular = 0.0;
+    double pole_ra = 0.0;
+    double pole_dec = 0.0;
 };
 
 // APPROXIMATION: body colours - hand-chosen linear albedo pairs for the
@@ -202,6 +202,17 @@ BodyAppearance appearance_for(std::string_view name, const core::BodyKind& kind,
                 a.temperature = kSunTemperature;
                 a.luminosity = 1.0;
                 a.spin_axis = pole_from_equatorial(286.13, 63.87);
+            } else if (first_word_lower(name) == "s2") {
+                // S2 (S0-2) near Sgr A*: a B0-2.5 V star, T_eff = 28,500 K and
+                // R = 5.53 R_sun (Habibi et al. 2017, ApJ 847, 120). Scenarios
+                // enter it as a test star of zero mass, which the generic
+                // relations would draw as a cool red dwarf.
+                constexpr double kS2Radius = 5.53;
+                constexpr double kS2Temperature = 28500.0;
+                a.nominal_radius = kS2Radius * kSunRadius;
+                a.temperature = kS2Temperature;
+                a.luminosity =
+                    kS2Radius * kS2Radius * std::pow(kS2Temperature / kSunTemperature, 4.0);
             }
             // Photosphere radiance: well above every lit surface, so that the
             // star stays the brightest object after tone mapping.

@@ -272,11 +272,11 @@ TEST_CASE("Every LOD threshold keeps the measured silhouette error within a quar
 TEST_CASE("Projected sphere bounds and LOD follow the off-axis perspective ellipse",
           "[render][lod][prepare]") {
     struct Case {
-        int width;
-        int height;
-        double fov_degrees;
-        glm::dvec3 centre; // camera space [m], the camera looks along -Z
-        double radius;     // [m]
+        int width = 0;
+        int height = 0;
+        double fov_degrees = 0.0;
+        glm::dvec3 centre;   // camera space [m], the camera looks along -Z
+        double radius = 0.0; // [m]
     };
     const std::vector<Case> cases{
         {1080, 1080, 90.0, {90.0, 0.0, -100.0}, 1.5},  // near the right edge
@@ -404,6 +404,13 @@ TEST_CASE("Body appearance uses known radii and colours and falls back per kind"
     CHECK(sun.temperature == 5772.0);
     CHECK(sun.luminosity == 1.0);
     CHECK(luminance_of(sun.emission) > 10.0);
+    // S2 enters the Sgr A* scenario as a zero-mass test star, but is drawn as
+    // the hot B star it is: blue-white, not a clamped red dwarf.
+    const auto s2 = appearance_for("S2", core::Star{}, core::space::Mass(0.0));
+    CHECK(s2.temperature == 28500.0);
+    CHECK(s2.nominal_radius == Approx(5.53 * 6.957e8));
+    CHECK(s2.emission.b > s2.emission.r);
+    CHECK(appearance_for("Vega", core::Star{}, core::space::Mass(0.0)).temperature < 3000.0);
 
     // Unknown bodies: radius from mass and density.
     const auto rock = appearance_for("Rock", core::Planet{}, core::space::Mass(3.0e-6));
