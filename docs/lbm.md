@@ -219,7 +219,11 @@ velocity field on the lattice when the angle of attack is zero (the lattice
 is wind-aligned otherwise); residuals (relative change of the averaged Cd
 per call); `converged` when the run finished with a steady drag or a found
 shedding period. Instantaneous coefficients, the history and the Strouhal
-number are accessors of the adapter.
+number are accessors of the adapter; the instantaneous and history
+coefficients go through the same conversion as the result (SI force per
+unit span, `set_coefficients` with the reference area), so their window
+average equals the result's Cd and Cl also when the area is not the
+reference length times 1 m.
 
 Warnings (never blocking): the envelope of `check_validity`
 (`lbm.mach`, `lbm.reynolds`) plus `lbm.sideslip` (2D ignores it),

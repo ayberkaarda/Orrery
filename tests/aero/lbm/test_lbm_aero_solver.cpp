@@ -256,3 +256,19 @@ TEST_CASE("Averages do not depend on how the steps are split into calls", "[aero
         CHECK(run.average.drag == reference.average.drag);
     }
 }
+
+TEST_CASE("History and result coefficients share the reference area", "[aero][lbm][solver]") {
+    // The same flow with a reference area of twice the reference length:
+    // every coefficient halves, the history ones included.
+    const ShortRun unit = short_cylinder_run(800, 1.0);
+    const ShortRun doubled = short_cylinder_run(800, 2.0);
+    CHECK(doubled.result.cd == Approx(0.5 * unit.result.cd).epsilon(1e-12));
+    CHECK(doubled.average.drag == Approx(doubled.result.cd).epsilon(1e-12));
+    CHECK(unit.average.drag == Approx(unit.result.cd).epsilon(1e-12));
+    REQUIRE(doubled.drag.size() == unit.drag.size());
+    double worst = 0.0;
+    for (std::size_t k = 0; k < unit.drag.size(); ++k) {
+        worst = std::max(worst, std::abs(doubled.drag[k] / (0.5 * unit.drag[k]) - 1.0));
+    }
+    CHECK(worst < 1e-12);
+}

@@ -199,12 +199,9 @@ bool LbmAeroSolver2D::step() {
     if (!solver_ || !units_) {
         throw std::logic_error("lbm: step() called before setup()");
     }
-    const LatticeUnits units = *units_;
     const std::uint64_t target =
         solver_->steps() + std::min<std::uint64_t>(total_steps_ - solver_->steps(),
                                                    options_.steps_per_call);
-    const double cells = units.cells_per_length();
-    const double u = units.lattice_velocity();
     const std::uint64_t every = options_.sample_every;
     while (solver_->steps() < target) {
         // Forces are sampled on the absolute schedule (lattice steps that are
@@ -227,11 +224,25 @@ bool LbmAeroSolver2D::step() {
         // Moment about the moment centre instead of the lattice origin.
         f.moment -= centre_[0] * f.y - centre_[1] * f.x;
         samples_.push_back(f);
-        instantaneous_ = force_coefficients(f.x, f.y, u, cells);
+        AeroResult sample;
+        apply_force(sample, f);
+        instantaneous_ = Coefficients{sample.cd, sample.cl};
         history_.push(static_cast<double>(solver_->steps()), instantaneous_);
     }
     update_result();
     return result_.iterations >= total_steps_;
+}
+
+void LbmAeroSolver2D::apply_force(AeroResult& result, const Force2D& lattice) const {
+    const LatticeUnits& units = *units_;
+    const double drag = units.force_per_span_to_si(lattice.x);
+    const double lift = units.force_per_span_to_si(lattice.y);
+    result.force = drag * conditions_.drag_direction() + lift * conditions_.lift_direction();
+    // Lattice z moment (x right, y up) is minus the body pitching moment
+    // about +y (x downstream, z up); one more length unit than the force.
+    result.moment =
+        geom::Vector3{0.0, -units.force_per_span_to_si(lattice.moment) * units.dx(), 0.0};
+    set_coefficients(result, conditions_, reference_);
 }
 
 std::optional<double> LbmAeroSolver2D::strouhal() const {
@@ -271,13 +282,7 @@ void LbmAeroSolver2D::update_result() {
         mean.y /= static_cast<double>(n);
         mean.moment /= static_cast<double>(n);
     }
-    const double drag = units.force_per_span_to_si(mean.x);
-    const double lift = units.force_per_span_to_si(mean.y);
-    next.force = drag * conditions_.drag_direction() + lift * conditions_.lift_direction();
-    // Lattice z moment (x right, y up) is minus the body pitching moment
-    // about +y (x downstream, z up); one more length unit than the force.
-    next.moment = geom::Vector3{0.0, -units.force_per_span_to_si(mean.moment) * dx, 0.0};
-    set_coefficients(next, conditions_, reference_);
+    apply_force(next, mean);
 
     const double residual =
         next.cd != 0.0 ? std::abs(next.cd - previous_cd_) / std::abs(next.cd) : 0.0;

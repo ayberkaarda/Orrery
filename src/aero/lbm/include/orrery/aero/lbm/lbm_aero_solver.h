@@ -69,7 +69,9 @@ public:
     bool step() override;
     [[nodiscard]] const AeroResult& result() const noexcept override { return result_; }
 
-    // Diagnostics beyond AeroResult (valid after setup()).
+    // Diagnostics beyond AeroResult (valid after setup()). The history and
+    // the instantaneous coefficients are normalised exactly like result():
+    // set_coefficients with the reference area of the geometry.
     [[nodiscard]] const CoefficientHistory& history() const noexcept { return history_; }
     [[nodiscard]] Coefficients instantaneous() const noexcept { return instantaneous_; }
     // Strouhal number f L / U of the lift oscillation over the averaging
@@ -82,6 +84,9 @@ public:
 
 private:
     void update_result();
+    // SI force and moment (body axes, per unit span) and the coefficients of
+    // a lattice force: the one normalisation of the history and the result.
+    void apply_force(AeroResult& result, const Force2D& lattice) const;
 
     LbmSolverOptions options_;
     FlowConditions conditions_;
