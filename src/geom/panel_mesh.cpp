@@ -44,6 +44,10 @@ std::vector<std::uint32_t> faces_of(const std::vector<EdgeKey>& edges, std::uint
     return faces;
 }
 
+// Smallest wake panel area accepted, relative to the area of the rectangle
+// spanned by its trailing-edge segment and the wake step.
+constexpr double wake_area_ratio = 1e-9;
+
 Vector3 unit_normal(const TriangleMesh& mesh, const Triangle& t) {
     return normalized(triangle_cross(mesh, t));
 }
@@ -154,11 +158,18 @@ std::vector<std::uint32_t> detect_trailing_edge(const TriangleMesh& mesh,
 void add_wake(PanelMesh& panels, const TriangleMesh& mesh,
               const std::vector<std::uint32_t>& trailing_edge, const WakeOptions& options) {
     if (options.rows < 1 || !std::isfinite(options.length) || !(options.length > 0.0) ||
-        !(norm(options.direction) > 0.0)) {
-        throw std::invalid_argument("add_wake: need rows >= 1, a positive length and a direction");
+        !isfinite(options.direction) || !(norm(options.direction) > 0.0) || !isfinite(options.up)) {
+        throw std::invalid_argument(
+            "add_wake: need rows >= 1, a positive finite length and finite, "
+            "non-zero direction and up vectors");
     }
     const Vector3 step = normalized(options.direction) * (options.length / options.rows);
+    if (!isfinite(step) || !(norm(step) > 0.0)) {
+        throw std::invalid_argument("add_wake: wake step is not representable");
+    }
     const std::vector<EdgeKey> edges = sorted_edges(mesh);
+    // Built aside and appended only when every panel is usable.
+    std::vector<WakePanel> wake;
     for (std::size_t s = 0; s + 1 < trailing_edge.size(); ++s) {
         const std::uint32_t a = trailing_edge[s];
         const std::uint32_t b = trailing_edge[s + 1];
@@ -183,14 +194,21 @@ void add_wake(PanelMesh& panels, const TriangleMesh& mesh,
             // of its diagonals.
             const Vector3 n2 = cross(w.corners[2] - w.corners[0], w.corners[3] - w.corners[1]);
             w.area = 0.5 * norm(n2);
+            // A direction along the segment sweeps no area: no normal.
+            const double edge = norm(mesh.vertices[b] - mesh.vertices[a]);
+            if (!std::isfinite(w.area) || !(w.area > wake_area_ratio * edge * norm(step))) {
+                throw std::invalid_argument(
+                    "add_wake: wake panel without area (direction along the trailing edge)");
+            }
             w.normal = normalized(n2);
             w.upper_panel = upper;
             w.lower_panel = lower;
             w.segment = static_cast<std::uint32_t>(s);
             w.row = static_cast<std::uint32_t>(r);
-            panels.wake.push_back(w);
+            wake.push_back(w);
         }
     }
+    panels.wake.insert(panels.wake.end(), wake.begin(), wake.end());
 }
 
 } // namespace orrery::geom

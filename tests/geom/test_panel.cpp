@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <vector>
@@ -76,4 +77,36 @@ TEST_CASE("wing trailing edge is detected and sheds wake strips", "[geom][panel]
     CHECK_THROWS_AS(add_wake(p, wing.mesh, te, options), std::invalid_argument);
     options.rows = 1;
     CHECK_THROWS_AS(add_wake(p, wing.mesh, {0, 5}, options), std::invalid_argument);
+}
+
+TEST_CASE("a wake that would have no usable panels is rejected", "[geom][panel]") {
+    const NacaWing wing = naca_wing(*Naca4::from_designation("0012"), 1.0, 4.0, 40, 4);
+    PanelMesh p = build_panels(wing.mesh);
+    const double inf = std::numeric_limits<double>::infinity();
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    // An infinite direction normalizes to NaN; a direction along the
+    // trailing edge (the span, +y) sweeps panels of zero area.
+    for (const Vector3& direction : {Vector3{inf, 0.0, 0.0}, Vector3{nan, 0.0, 0.0},
+                                     Vector3{0.0, 1.0, 0.0}, Vector3{0.0, -2.0, 0.0}}) {
+        INFO("direction " << direction.x << ' ' << direction.y << ' ' << direction.z);
+        WakeOptions options;
+        options.direction = direction;
+        CHECK_THROWS_AS(add_wake(p, wing.mesh, wing.trailing_edge, options), std::invalid_argument);
+        CHECK(p.wake.empty());
+    }
+    WakeOptions options;
+    options.up = {0.0, nan, 1.0};
+    CHECK_THROWS_AS(add_wake(p, wing.mesh, wing.trailing_edge, options), std::invalid_argument);
+    options.up = {0.0, 0.0, 1.0};
+    options.length = inf;
+    CHECK_THROWS_AS(add_wake(p, wing.mesh, wing.trailing_edge, options), std::invalid_argument);
+    CHECK(p.wake.empty());
+    // A valid request still works.
+    options.length = 10.0;
+    add_wake(p, wing.mesh, wing.trailing_edge, options);
+    CHECK(p.wake.size() == 4);
+    for (const WakePanel& w : p.wake) {
+        CHECK(isfinite(w.normal));
+        CHECK(w.area > 0.0);
+    }
 }

@@ -70,7 +70,10 @@ struct WakeOptions {
 
 // Appends wake strips behind the trailing-edge polyline (vertex indices of
 // `mesh`, consecutive vertices joined by mesh edges). Throws
-// std::invalid_argument if a segment is not an edge with exactly two faces.
+// std::invalid_argument, appending nothing, if a segment is not an edge with
+// exactly two faces, the direction or up vector is not finite, or a wake
+// panel would have (nearly) no area, as for a direction along the trailing
+// edge.
 void add_wake(PanelMesh& panels, const TriangleMesh& mesh,
               const std::vector<std::uint32_t>& trailing_edge, const WakeOptions& options);
 
