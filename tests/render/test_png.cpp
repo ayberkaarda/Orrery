@@ -346,6 +346,8 @@ TEST_CASE("PNG reader undoes all five row filters", "[render][png]") {
             png.push_back(static_cast<std::uint8_t>(crc >> static_cast<unsigned>(shift)));
         }
     };
+    // The lambda only appends to `png`, which stays alive and valid for every call.
+    // cppcheck-suppress invalidContainer
     chunk("IHDR", {0, 0, 0, 3, 0, 0, 0, 2, 8, 6, 0, 0, 0});
     chunk("tEXt", {'a', 0, 'b'}); // ancillary, skipped
     chunk("IDAT", zlib);

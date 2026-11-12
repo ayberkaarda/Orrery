@@ -91,6 +91,8 @@ void* allocate_aligned(std::size_t size, std::align_val_t alignment) {
     const std::uintptr_t mask = align - 1;
     const std::uintptr_t aligned = (first + mask) & ~mask;
     auto* block = static_cast<unsigned char*>(raw) + (aligned - base);
+    // The stored back-pointer is exactly one pointer wide, so sizeof(void*) is intended.
+    // cppcheck-suppress pointerSize
     std::memcpy(block - sizeof(void*), static_cast<const void*>(&raw), sizeof(void*));
     return block;
 }
