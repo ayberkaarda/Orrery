@@ -8,6 +8,13 @@
     "assimp",
     "catch2",
     {
+      "name": "curl",
+      "default-features": false,
+      "features": [
+        "openssl"
+      ]
+    },
+    {
       "name": "glad",
       "features": [
         "gl-api-46"
@@ -24,7 +31,9 @@
       ]
     },
     "implot",
+    "miniz",
     "nlohmann-json",
+    "openssl",
     "tbb"
   ]
 }

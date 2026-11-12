@@ -65,6 +65,9 @@ ROOT = Path(__file__).resolve().parent.parent
 EXPECTED_GRAPH: dict[str, set[str]] = {
     "orrery_core": set(),
     "orrery_geom": {"orrery_core"},
+    # Phase 6b: the URL model loader (src/geom/net) downloads and unpacks
+    # files only; it never parses meshes, so it does not need orrery_geom.
+    "orrery_geom_net": {"orrery_core"},
     "orrery_atmo": {"orrery_core"},
     "orrery_aero": {"orrery_core", "orrery_geom"},
     "orrery_scene": {"orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo"},
@@ -89,7 +92,10 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # backends) and ImPlot for the UI layer, both private.
 # orrery_sim (Phase 4c): oneTBB's concurrent_queue carries SimCommands from the
 # render thread to the physics thread, private like in core.
+# orrery_geom_net (Phase 6b): libcurl (curl licence, https transport over
+# OpenSSL) and miniz (MIT, zip reading), both private and graphics-free.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
+    "orrery_geom_net": {"CURL::libcurl", "miniz::miniz"},
     "orrery_core": {"TBB::tbb"},
     # orrery_geom (Phase 6a): assimp (BSD-3-Clause) imports OBJ, STL, glTF 2.0,
     # PLY and FBX models; private, graphics-free, single precision only
@@ -101,7 +107,8 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
                       "implot::implot"},
 }
 
-GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim")
+GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim",
+                         "orrery_geom_net")
 PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
 
 # Graphics libraries, matched against each link name after the linker-flag

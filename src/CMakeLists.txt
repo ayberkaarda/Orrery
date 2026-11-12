@@ -1,6 +1,7 @@
 # Target graph (direct dependencies):
 #   core   -> (none)
 #   geom   -> core
+#   geom_net -> core                 (URL model loader; src/geom/net)
 #   atmo   -> core
 #   aero   -> core, geom
 #   scene  -> core, geom, aero, atmo
@@ -9,11 +10,12 @@
 #   app_core -> sim, render          (command line, headless renderer)
 #   app      -> app_core             (the orrery_app executable)
 #
-# core, geom, atmo and sim must never link against OpenGL, GLFW or ImGui;
+# core, geom, geom_net, atmo and sim must never link against OpenGL, GLFW or ImGui;
 # tools/check_deps.py enforces this.
 
 add_subdirectory(core)
 add_subdirectory(geom)
+add_subdirectory(geom/net)
 add_subdirectory(atmo)
 add_subdirectory(aero)
 add_subdirectory(scene)
