@@ -272,3 +272,27 @@ TEST_CASE("History and result coefficients share the reference area", "[aero][lb
     }
     CHECK(worst < 1e-12);
 }
+
+TEST_CASE("A start-up transient is not reported as converged", "[aero][lbm][solver]") {
+    // 10 convective times of a cylinder started from the free stream: the
+    // drag still decays and the lift is the round-off of a symmetric wake,
+    // growing and irregular. A Strouhal estimate from its mean crossings is
+    // no proof of periodic shedding.
+    LbmSolverOptions options;
+    options.resolution = LatticeResolution{10.0, 0.05};
+    options.height = 12.0;
+    options.downstream = 10.0;
+    options.duration = 10.0;
+    options.average_window = 6.0;
+    options.steps_per_call = 1000;
+    LbmAeroSolver2D solver(options);
+    solver.setup(cylinder_geometry(0.02), flow_at(100.0, 0.02));
+    while (!solver.step()) {
+    }
+    const AeroResult& r = solver.result();
+    const auto st = solver.strouhal();
+    INFO("Strouhal estimate " << (st ? *st : -1.0) << ", cd " << r.cd);
+    CHECK(r.iterations == 2000);
+    CHECK_FALSE(r.converged);
+    CHECK(r.has_warning("lbm.unconverged"));
+}

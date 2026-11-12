@@ -40,6 +40,7 @@ struct CylinderResult {
     double drag_moving_average = 0.0; // over the last shedding period
     std::size_t cycles = 0;
     double period_spread = 0.0;
+    bool settled = false; // settled_oscillation: periodic and stationary
     double max_mach = 0.0;
     double seconds = 0.0;
     std::size_t nx = 0;
@@ -105,12 +106,15 @@ inline CylinderResult run_cylinder(Lbm2DSolver& solver, const CylinderCase& c,
         result.cycles = shedding->cycles;
         result.period_spread = shedding->period_spread;
     }
+    result.settled =
+        settled_oscillation(history.time(), history.drag(), history.lift(), from).has_value();
     std::cout << "measured: cylinder " << label << " Re " << c.reynolds << " D " << c.diameter
               << " grid " << result.nx << "x" << result.ny << " steps " << c.steps << ": St "
               << result.strouhal << ", mean Cd " << result.mean_drag << ", Cd moving average "
               << result.drag_moving_average << ", Cl amplitude " << result.lift_amplitude
               << ", cycles " << result.cycles << ", period spread " << result.period_spread
-              << ", max lattice Mach " << result.max_mach << ", " << result.seconds << " s\n";
+              << ", settled " << result.settled << ", max lattice Mach " << result.max_mach << ", "
+              << result.seconds << " s\n";
     return result;
 }
 

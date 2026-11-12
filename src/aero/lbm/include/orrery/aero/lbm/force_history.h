@@ -61,4 +61,36 @@ struct Oscillation {
 [[nodiscard]] std::optional<Oscillation>
 dominant_oscillation(std::span<const double> time, std::span<const double> values, double from);
 
+// When a drag and lift history counts as settled (converged).
+struct SettledCriteria {
+    // Steady: the ranges (max - min) of drag and of lift at most this
+    // fraction of the magnitude of the mean drag.
+    double steady_tolerance = 1e-3;
+    // Periodic: the largest (longest - shortest period) / mean period of
+    // the lift, the bound of the cylinder validation.
+    double max_period_spread = 0.05;
+    // Periodic: the largest relative change of the lift amplitude and of the
+    // mean drag between the first and the last lift period.
+    double stationarity = 0.02;
+};
+
+// True when the drag and lift samples with time >= from (at least two)
+// are steady by `criteria.steady_tolerance`.
+[[nodiscard]] bool steady_since(std::span<const double> time, std::span<const double> drag,
+                                std::span<const double> lift, double from,
+                                const SettledCriteria& criteria = {});
+
+// The dominant lift oscillation over the samples with time >= from when it
+// is settled periodic shedding: consistent periods (period_spread at most
+// `max_period_spread`), and the same lift amplitude (max - min) and mean
+// drag over the first and the last period of the analysed span (within
+// `stationarity`, relative). Empty for a growing, decaying or irregular
+// transient and for a drifting mean drag, even when dominant_oscillation
+// finds a period.
+[[nodiscard]] std::optional<Oscillation> settled_oscillation(std::span<const double> time,
+                                                             std::span<const double> drag,
+                                                             std::span<const double> lift,
+                                                             double from,
+                                                             const SettledCriteria& criteria = {});
+
 } // namespace orrery::aero::lbm

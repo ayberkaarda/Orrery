@@ -39,6 +39,7 @@ void check_literature(const CylinderResult& r) {
     INFO("St " << r.strouhal << " mean Cd " << r.mean_drag << " cycles " << r.cycles);
     CHECK(r.cycles >= 5);
     CHECK(r.period_spread < 0.05);
+    CHECK(r.settled); // the adapter's convergence test
     CHECK(r.strouhal >= 0.16);
     CHECK(r.strouhal <= 0.20);
     CHECK(r.mean_drag >= 1.2);

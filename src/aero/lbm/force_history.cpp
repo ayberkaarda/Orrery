@@ -1,6 +1,8 @@
 #include "orrery/aero/lbm/force_history.h"
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 
 namespace orrery::aero::lbm {
 
@@ -95,6 +97,99 @@ std::optional<Oscillation> dominant_oscillation(std::span<const double> time,
     result.amplitude = 0.5 * (hi - lo);
     result.period_spread = (longest - shortest) / result.period;
     return result;
+}
+
+namespace {
+
+// Mean of `drag` and range (max - min) of `lift` over the samples with
+// time in [from, to].
+struct SpanStats {
+    std::size_t count = 0;
+    double drag_mean = 0.0;
+    double lift_range = 0.0;
+    double drag_range = 0.0;
+};
+
+SpanStats span_stats(std::span<const double> time, std::span<const double> drag,
+                     std::span<const double> lift, double from, double to) noexcept {
+    const std::size_t n = std::min({time.size(), drag.size(), lift.size()});
+    SpanStats stats;
+    double sum = 0.0;
+    double lift_lo = 0.0;
+    double lift_hi = 0.0;
+    double drag_lo = 0.0;
+    double drag_hi = 0.0;
+    for (std::size_t k = 0; k < n; ++k) {
+        if (time[k] < from || time[k] > to) {
+            continue;
+        }
+        const bool first = stats.count == 0;
+        lift_lo = first ? lift[k] : std::min(lift_lo, lift[k]);
+        lift_hi = first ? lift[k] : std::max(lift_hi, lift[k]);
+        drag_lo = first ? drag[k] : std::min(drag_lo, drag[k]);
+        drag_hi = first ? drag[k] : std::max(drag_hi, drag[k]);
+        sum += drag[k];
+        ++stats.count;
+    }
+    if (stats.count > 0) {
+        stats.drag_mean = sum / static_cast<double>(stats.count);
+        stats.lift_range = lift_hi - lift_lo;
+        stats.drag_range = drag_hi - drag_lo;
+    }
+    return stats;
+}
+
+// |a - b| at most `tolerance` times the larger magnitude.
+bool agree(double a, double b, double tolerance) noexcept {
+    return std::abs(a - b) <= tolerance * std::max(std::abs(a), std::abs(b));
+}
+
+} // namespace
+
+bool steady_since(std::span<const double> time, std::span<const double> drag,
+                  std::span<const double> lift, double from, const SettledCriteria& criteria) {
+    const SpanStats stats = span_stats(time, drag, lift, from, std::numeric_limits<double>::max());
+    if (stats.count < 2) {
+        return false;
+    }
+    const double bound = criteria.steady_tolerance * std::abs(stats.drag_mean);
+    return stats.drag_range <= bound && stats.lift_range <= bound;
+}
+
+std::optional<Oscillation> settled_oscillation(std::span<const double> time,
+                                               std::span<const double> drag,
+                                               std::span<const double> lift, double from,
+                                               const SettledCriteria& criteria) {
+    const auto shedding = dominant_oscillation(time, lift, from);
+    if (!shedding || !(shedding->period_spread <= criteria.max_period_spread)) {
+        return std::nullopt;
+    }
+    // First and last sample times of the analysed span.
+    const std::size_t n = std::min({time.size(), drag.size(), lift.size()});
+    double start = 0.0;
+    double end = 0.0;
+    bool any = false;
+    for (std::size_t k = 0; k < n; ++k) {
+        if (time[k] >= from) {
+            start = any ? start : time[k];
+            end = time[k];
+            any = true;
+        }
+    }
+    const double period = shedding->period;
+    if (!any || !(end - start >= 2.0 * period)) {
+        return std::nullopt;
+    }
+    // A full period averages the periodic part of the drag out, wherever it
+    // starts, so the two means differ only through a drift.
+    const SpanStats head = span_stats(time, drag, lift, start, start + period);
+    const SpanStats tail = span_stats(time, drag, lift, end - period, end);
+    if (head.count == 0 || tail.count == 0 ||
+        !agree(head.drag_mean, tail.drag_mean, criteria.stationarity) ||
+        !agree(head.lift_range, tail.lift_range, criteria.stationarity)) {
+        return std::nullopt;
+    }
+    return shedding;
 }
 
 } // namespace orrery::aero::lbm

@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <map>
+#include <span>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -16,7 +17,9 @@ constexpr double kMinCellsPerLength = 20.0; // below: resolution warning
 constexpr double kMarginalTau = 0.51;       // below: BGK stability warning
 constexpr double kLocalMachWarning = 0.2;   // largest lattice Mach in the flow
 constexpr double kBlockageWarning = 0.1;    // body height / channel height
-constexpr double kSteadyResidual = 1e-3;    // relative change of the averaged cd
+constexpr double kSteadyResidual = 1e-3;    // steady: force ranges / mean drag
+constexpr double kMaxPeriodSpread = 0.05;   // periodic: period spread (cylinder validation)
+constexpr double kStationarity = 0.02;      // periodic: amplitude and mean drag drift
 // Largest step count (and averaging window in samples): 2^53, below which
 // every integer is a double, far above any run that fits in memory and time.
 constexpr double kMaxSteps = 9007199254740992.0;
@@ -200,8 +203,8 @@ bool LbmAeroSolver2D::step() {
         throw std::logic_error("lbm: step() called before setup()");
     }
     const std::uint64_t target =
-        solver_->steps() + std::min<std::uint64_t>(total_steps_ - solver_->steps(),
-                                                   options_.steps_per_call);
+        solver_->steps() +
+        std::min<std::uint64_t>(total_steps_ - solver_->steps(), options_.steps_per_call);
     const std::uint64_t every = options_.sample_every;
     while (solver_->steps() < target) {
         // Forces are sampled on the absolute schedule (lattice steps that are
@@ -352,13 +355,33 @@ void LbmAeroSolver2D::update_result() {
             {"lbm.local_mach", "largest lattice Mach number in the flow " + format(local_mach) +
                                    " (compressibility error of order Ma^2, A3)"});
     }
+    // Converged: the force history over the last half of the run (or the
+    // averaging window, if longer) is steady, or settled periodic shedding
+    // (consistent periods, stationary lift amplitude and mean drag). A
+    // Strouhal estimate alone proves nothing: three mean crossings of a
+    // growing or irregular transient give one too.
     const bool finished = next.iterations >= total_steps_;
-    const auto shedding = strouhal();
-    next.converged = finished && (residual < kSteadyResidual || shedding.has_value());
-    if (finished && !next.converged) {
-        next.warnings.push_back(
-            {"lbm.unconverged", "the averaged drag still changes by " + format(residual) +
-                                    " per call and no periodic shedding was found"});
+    if (finished) {
+        const std::span<const double> time = history_.time();
+        double from = 0.5 * static_cast<double>(next.iterations);
+        if (history_.size() > window_samples_) {
+            from = std::min(from, time[history_.size() - window_samples_]);
+        }
+        const SettledCriteria criteria{kSteadyResidual, kMaxPeriodSpread, kStationarity};
+        const bool steady = steady_since(time, history_.drag(), history_.lift(), from, criteria);
+        const bool periodic =
+            settled_oscillation(time, history_.drag(), history_.lift(), from, criteria).has_value();
+        next.converged = steady || periodic;
+        if (!next.converged) {
+            next.warnings.push_back(
+                {"lbm.unconverged",
+                 "the force history of the last half of the run is neither steady (drag and lift "
+                 "ranges within " +
+                     format(kSteadyResidual) +
+                     " of the mean drag) nor settled periodic shedding (period spread within " +
+                     format(kMaxPeriodSpread) + ", lift amplitude and mean drag within " +
+                     format(kStationarity) + " between the first and the last period)"});
+        }
     }
     if (!std::isfinite(next.cd) || !std::isfinite(next.cl)) {
         next.warnings.push_back(

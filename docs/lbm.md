@@ -91,7 +91,11 @@ per unit span: C_d = F_x / (rho U^2 L / 2), C_l = F_y / (rho U^2 L / 2) in
 lattice units. `CoefficientHistory` keeps the instantaneous values and a
 moving average over a window; `dominant_oscillation` finds the lift period
 from upward mean crossings (linear interpolation, hysteresis of a quarter of
-the peak-to-peak range), St = f L / U.
+the peak-to-peak range), St = f L / U. `settled_oscillation` accepts that
+period only for settled shedding (consistent periods, the same lift
+amplitude and mean drag over the first and the last period; a full period
+averages the periodic part of the drag out wherever it starts), and
+`steady_since` tests a steady history (section 7).
 
 ## 4. Units and the Mach guard
 
@@ -217,8 +221,16 @@ fluid node next to the body, normal from its links, area dx per metre of
 span, Cp against the mean density of the column next to the inlet); the
 velocity field on the lattice when the angle of attack is zero (the lattice
 is wind-aligned otherwise); residuals (relative change of the averaged Cd
-per call); `converged` when the run finished with a steady drag or a found
-shedding period. Instantaneous coefficients, the history and the Strouhal
+per call, reported only); `converged` when the run finished and the force
+history over the last half of the run (or the averaging window, if longer)
+is settled, either steady (`steady_since`: drag and lift ranges within 1e-3
+of the mean drag) or periodic shedding (`settled_oscillation`: lift period
+spread within 0.05, the bound of the cylinder validation, and lift
+amplitude and mean drag within 2 percent between the first and the last
+period). A Strouhal estimate alone is not accepted: `dominant_oscillation`
+returns a period after three mean crossings, which the round-off lift of a
+symmetric start-up wake also produces (measured: St 1.86 after 10 L / U of a
+cylinder at Re 100, while the drag was still falling). Instantaneous coefficients, the history and the Strouhal
 number are accessors of the adapter; the instantaneous and history
 coefficients go through the same conversion as the result (SI force per
 unit span, `set_coefficients` with the reference area), so their window
@@ -239,7 +251,8 @@ and `lbm.diverged`.
 Re = 100 in a channel with free-slip sides, started from the free stream with
 a transverse bump of 0.1 U one diameter behind the cylinder (so the wake
 leaves its unstable symmetric state early), forces sampled every 10 steps,
-the last half of the run analysed.
+the last half of the run analysed. Besides the literature ranges the run
+must pass `settled_oscillation`, the convergence test of the adapter.
 
 Literature at Re = 100 (unconfined): St 0.164 (Williamson 1996, Annu. Rev.
 Fluid Mech. 28:477), 0.165 (Park, Kwon and Choi 1998, KSME Int. J. 12:1200),
