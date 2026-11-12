@@ -90,6 +90,8 @@ bool Octree::build(std::span<const Vec3<space::Length>> positions, std::span<con
     double lo_x = std::numeric_limits<double>::infinity();
     double lo_y = lo_x;
     double lo_z = lo_x;
+    // The three upper bounds start from the same value on purpose.
+    // cppcheck-suppress duplicateAssignExpression
     double hi_x = -lo_x;
     double hi_y = -lo_x;
     double hi_z = -lo_x;

@@ -372,11 +372,13 @@ jobs:
           fi
       - name: cppcheck
         timeout-minutes: 10
+        # passedByValue is suppressed: cppcheck 2.7 reports std::string_view
+        # parameters, which the project passes by value on purpose.
         run: |
           start=$(date +%s)
           rc=0
           cppcheck --std=c++20 --enable=warning,performance,portability --error-exitcode=1 \
-            -j "$(nproc)" --inline-suppr --suppress=missingIncludeSystem \
+            -j "$(nproc)" --inline-suppr --suppress=missingIncludeSystem --suppress=passedByValue \
             --suppress='*:*vcpkg*' --suppress='*:*build/*' -I src -q src tests || rc=$?
           echo "cppcheck elapsed: $(( $(date +%s) - start ))s (exit $rc)"
           exit $rc
