@@ -1,5 +1,7 @@
 #include "orrery/geom/net/zip_extract.h"
 
+#include "exclusive_file.h"
+
 #include <miniz/miniz.h>
 
 #include <algorithm>
@@ -94,7 +96,7 @@ struct EntrySink {
     std::uint64_t declared_size = 0;
     std::uint64_t written = 0;
     std::vector<std::byte> head;
-    std::ofstream out;
+    detail::ExclusiveFile out;
     ModelFormat format = ModelFormat::unknown;
     bool decided = false;
     bool oversized = false;
@@ -108,10 +110,9 @@ struct EntrySink {
             skipped = true;
             return false;
         }
-        out.open(path, std::ios::binary | std::ios::trunc);
-        out.write(reinterpret_cast<const char*>(head.data()),
-                  static_cast<std::streamsize>(head.size()));
-        io_error = !out;
+        // Created, never opened: a name planted in out_dir (a link to a file
+        // elsewhere) makes the extraction fail instead of being written through.
+        io_error = !out.create(path) || !out.write(head);
         return !io_error;
     }
 
@@ -122,9 +123,7 @@ struct EntrySink {
         }
         written += data.size();
         if (decided) {
-            out.write(reinterpret_cast<const char*>(data.data()),
-                      static_cast<std::streamsize>(data.size()));
-            io_error = !out;
+            io_error = !out.write(data);
             return io_error ? 0 : data.size();
         }
         head.insert(head.end(), data.begin(), data.end());
@@ -330,8 +329,11 @@ extract_archive_models(const std::filesystem::path& archive, const std::filesyst
             }
             continue;
         }
-        sink.out.close();
-        if (!sink.out || sink.written != entry.declared_size) {
+        if (!sink.out.close()) {
+            return failure(error(FetchErrorKind::io_failure,
+                                 "cannot write the extracted entry '" + entry.name + "'"));
+        }
+        if (sink.written != entry.declared_size) {
             return failure(error(FetchErrorKind::archive_invalid,
                                  "archive entry '" + entry.name + "' has the wrong size"));
         }

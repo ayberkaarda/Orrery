@@ -167,3 +167,52 @@ TEST_CASE("Corrupt zip data is rejected", "[net][zip]") {
     REQUIRE_FALSE(result.has_value());
     CHECK(result.error().kind == FetchErrorKind::archive_invalid);
 }
+
+TEST_CASE("A binary PLY member is extracted", "[net][zip][ply]") {
+    Extraction extraction{build_zip(
+        {{"mesh/little.ply", binary_ply(false), true}, {"mesh/big.ply", binary_ply(true)}})};
+    const auto result = extraction.run();
+    REQUIRE(result.has_value());
+    REQUIRE(result.value().size() == 2);
+    CHECK(result.value()[0].format == ModelFormat::ply);
+    CHECK(read_file(result.value()[0].file) == binary_ply(false));
+    CHECK(result.value()[1].format == ModelFormat::ply);
+    CHECK(read_file(result.value()[1].file) == binary_ply(true));
+}
+
+TEST_CASE("Extraction never writes through a file already in the output directory",
+          "[net][zip][link]") {
+    // A hard link (no privilege needed) at the first temporary name: opening
+    // that name for writing would overwrite the file outside out_dir.
+    Extraction extraction{build_zip({{"wing.obj", obj_text()}})};
+    const auto sentinel = extraction.dir.path() / "sentinel.txt";
+    write_file(sentinel, "keep me");
+    std::filesystem::create_hard_link(sentinel, extraction.out / "0000.part");
+
+    const auto result = extraction.run();
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().kind == FetchErrorKind::io_failure);
+    CHECK(read_file(sentinel) == "keep me");
+}
+
+TEST_CASE("Extraction never writes through a symbolic link in the output directory",
+          "[net][zip][link]") {
+    Extraction extraction{build_zip({{"wing.obj", obj_text()}})};
+    const auto sentinel = extraction.dir.path() / "sentinel.txt";
+    write_file(sentinel, "keep me");
+    if (!make_file_symlink(sentinel, extraction.out / "0000.part")) {
+        SKIP("this account cannot create symbolic links");
+    }
+    const auto dangling = extraction.dir.path() / "created-through-link.txt";
+    Extraction second{build_zip({{"wing.obj", obj_text()}})};
+    const bool dangling_link = make_file_symlink(dangling, second.out / "0000.part");
+
+    const auto result = extraction.run();
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().kind == FetchErrorKind::io_failure);
+    CHECK(read_file(sentinel) == "keep me");
+    // A dangling link must not create its target either.
+    REQUIRE(dangling_link);
+    CHECK_FALSE(second.run().has_value());
+    CHECK_FALSE(std::filesystem::exists(dangling));
+}

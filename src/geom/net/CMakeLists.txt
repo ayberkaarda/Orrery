@@ -9,6 +9,8 @@ add_library(orrery_geom_net STATIC
     sha256.cpp
     url_policy.cpp
     model_format.cpp
+    exclusive_file.cpp
+    exclusive_file.h
     zip_extract.cpp
     https_download.cpp
     https_download.h
