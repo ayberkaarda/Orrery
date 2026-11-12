@@ -11,9 +11,11 @@ target_sources(orrery_geom PRIVATE
     triangle_mesh.cpp
     mesh_validation.cpp
     mesh_repair.cpp
+    primitives.cpp
     include/orrery/geom/vector3.h
     include/orrery/geom/triangle_mesh.h
     include/orrery/geom/mesh_validation.h
-    include/orrery/geom/mesh_repair.h)
+    include/orrery/geom/mesh_repair.h
+    include/orrery/geom/primitives.h)
 
 orrery_configure_target(orrery_geom)

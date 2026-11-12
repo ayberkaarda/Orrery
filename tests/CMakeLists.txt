@@ -23,6 +23,15 @@ foreach(module IN ITEMS geom atmo aero render)
     orrery_add_module_test(${module})
 endforeach()
 
+# Phase 6a: geometry pipeline tests. Fixtures live in geom/fixtures;
+# model files written by the tests go to the build tree.
+target_sources(orrery_test_geom PRIVATE
+    geom/geom_test_support.h
+    geom/test_primitives.cpp)
+target_compile_definitions(orrery_test_geom PRIVATE
+    ORRERY_GEOM_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/geom/fixtures"
+    ORRERY_GEOM_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/geom_output")
+
 # Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
 # shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
 # context and are reported as skipped when none can be created (set
