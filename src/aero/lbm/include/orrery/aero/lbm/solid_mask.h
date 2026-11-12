@@ -61,7 +61,8 @@ struct SectionPlacement {
 // A plane of voxels: lattice x is grid i; lattice y is grid j (xy plane at
 // k = index) or grid k (xz plane at j = index, the plane of the NACA wing
 // sections of orrery_geom). Throws std::invalid_argument for an index outside
-// the grid or a voxel vector that does not match its spec.
+// the grid, a zero dimension, a cell count (computed without wrapping) above
+// geom::max_grid_cells, or a voxel vector that does not match its spec.
 enum class VoxelSlice : std::uint8_t { xy, xz };
 [[nodiscard]] SolidMask2D mask_from_voxels(const geom::VoxelGrid& voxels, VoxelSlice plane,
                                            std::size_t index);

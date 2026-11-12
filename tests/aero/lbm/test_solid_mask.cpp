@@ -3,6 +3,7 @@
 
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <numbers>
 #include <stdexcept>
 
@@ -81,6 +82,27 @@ TEST_CASE("A voxelized cylinder slice agrees with the analytic circle", "[aero][
     CHECK(side.at(20, 1));
     CHECK_THROWS_AS(mask_from_voxels(voxels, VoxelSlice::xy, 3), std::invalid_argument);
     CHECK_THROWS_AS(mask_from_voxels(voxels, VoxelSlice::xz, 40), std::invalid_argument);
+}
+
+TEST_CASE("A voxel grid whose cell count wraps is rejected before indexing", "[aero][lbm][mask]") {
+    // 4 x 4 x (2^60 + 1) cells: the unchecked product nx ny nz wraps to 16 on
+    // a 64-bit size_t, which a 16-element vector would match.
+    static_assert(sizeof(std::size_t) >= 8);
+    geom::VoxelGrid voxels;
+    voxels.spec.nx = 4;
+    voxels.spec.ny = 4;
+    voxels.spec.nz = (std::size_t{1} << 60U) + 1;
+    voxels.solid.assign(16, std::uint8_t{0});
+    CHECK_THROWS_AS(mask_from_voxels(voxels, VoxelSlice::xy, 0), std::invalid_argument);
+    // Same with the wrap in the x-y product.
+    voxels.spec.nx = (std::size_t{1} << 62U) + 4;
+    voxels.spec.ny = 4;
+    voxels.spec.nz = 1;
+    CHECK_THROWS_AS(mask_from_voxels(voxels, VoxelSlice::xz, 0), std::invalid_argument);
+    // A zero dimension.
+    voxels.spec.nx = 0;
+    voxels.solid.clear();
+    CHECK_THROWS_AS(mask_from_voxels(voxels, VoxelSlice::xy, 0), std::invalid_argument);
 }
 
 TEST_CASE("Boundary links are the fluid-to-solid lattice links", "[aero][lbm][mask]") {

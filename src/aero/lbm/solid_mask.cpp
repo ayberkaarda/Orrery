@@ -94,7 +94,14 @@ SolidMask2D naca_mask(std::size_t nx, std::size_t ny, const geom::Naca4& airfoil
 
 SolidMask2D mask_from_voxels(const geom::VoxelGrid& voxels, VoxelSlice plane, std::size_t index) {
     const geom::GridSpec& spec = voxels.spec;
-    if (voxels.solid.size() != spec.cells() || spec.cells() == 0) {
+    // Checked product: GridSpec::cells() wraps for dimensions whose product
+    // exceeds size_t, and a wrapped count could match a short vector.
+    if (spec.nx == 0 || spec.ny == 0 || spec.nz == 0 || spec.nx > geom::max_grid_cells / spec.ny ||
+        spec.nx * spec.ny > geom::max_grid_cells / spec.nz) {
+        throw std::invalid_argument("solid mask: voxel grid dimensions must be at least 1 and the "
+                                    "cell count at most geom::max_grid_cells");
+    }
+    if (voxels.solid.size() != spec.cells()) {
         throw std::invalid_argument("solid mask: voxel vector does not match its grid spec");
     }
     const std::size_t limit = plane == VoxelSlice::xy ? spec.nz : spec.ny;
