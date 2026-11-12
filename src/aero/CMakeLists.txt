@@ -16,4 +16,14 @@ target_sources(orrery_aero PRIVATE
     include/orrery/aero/regime.h
     include/orrery/aero/aero_solver.h)
 
+# Phase 7a: panel methods (2D Hess-Smith, 3D source + doublet) with Eigen, a
+# private header-only dependency (tools/check_deps.py THIRD_PARTY_DEPS).
+find_package(Eigen3 CONFIG REQUIRED)
+target_sources(orrery_aero PRIVATE
+    panel2d.cpp
+    panel3d.cpp
+    panel_influence.cpp
+    include/orrery/aero/panel_method.h)
+target_link_libraries(orrery_aero PRIVATE Eigen3::Eigen)
+
 orrery_configure_target(orrery_aero)
