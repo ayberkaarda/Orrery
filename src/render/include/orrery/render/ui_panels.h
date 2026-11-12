@@ -100,7 +100,13 @@ struct RenderSettingsIntent {
     std::optional<RenderSettings> changed; // the edited settings, when anything changed
 };
 
-[[nodiscard]] RenderSettingsIntent draw_render_settings(const RenderSettings& settings);
+// Sections that depend on the scene.
+struct RenderSettingsContext {
+    bool black_hole = false; // the scene holds a black hole: show the BLACK HOLE section
+};
+
+[[nodiscard]] RenderSettingsIntent draw_render_settings(const RenderSettings& settings,
+                                                        const RenderSettingsContext& context = {});
 
 // Labels next to bodies in the scene, drawn behind the panels.
 struct SceneLabel {

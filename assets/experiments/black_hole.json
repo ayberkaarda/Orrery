@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../scenarios/black_hole.json" },
+  "conditions": { "time_warp": 1 },
+  "solver": {
+    "name": "leapfrog_kdk",
+    "version": "1",
+    "settings": { "dt_days": 1.0, "force": "auto" }
+  },
+  "result": {}
+}

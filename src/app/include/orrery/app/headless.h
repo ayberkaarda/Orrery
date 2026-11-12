@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <iosfwd>
@@ -57,6 +58,29 @@ advance_headless(const sim::SpaceExperiment& experiment, std::int64_t frames);
 
 [[nodiscard]] core::Result<HeadlessFrame, HeadlessError>
 render_headless(const sim::SpaceExperiment& experiment, const HeadlessRequest& request);
+
+// Frame-time measurement of the headless view (--headless --benchmark N):
+// after advancing the experiment like render_headless, the same frame is
+// drawn `frames` times after kHeadlessBenchmarkWarmup warm-up frames (scene,
+// resolve and tone map; no readback, no window). Each frame is timed on the
+// CPU from the first command until the GPU timer query of the frame has
+// completed, so the wall time includes the GPU work.
+inline constexpr std::int64_t kHeadlessBenchmarkWarmup = 10;
+
+struct HeadlessBenchmark {
+    std::int64_t frames = 0;
+    double wall_mean_ms = 0.0; // submission until the frame's GPU work is done
+    double fps = 0.0;          // 1000 / wall_mean_ms
+    double gpu_median_ms = 0.0;
+    double gpu_p95_ms = 0.0;
+    bool lensing = false; // the black-hole lensing pass ran
+    std::size_t bodies = 0;
+    std::string renderer; // GL_RENDERER
+};
+
+[[nodiscard]] core::Result<HeadlessBenchmark, HeadlessError>
+benchmark_headless(const sim::SpaceExperiment& experiment, const HeadlessRequest& request,
+                   std::int64_t frames);
 
 // Directories searched for experiment names: <asset dir>/experiments for each
 // of asset_directories(executable).

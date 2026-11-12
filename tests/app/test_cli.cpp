@@ -50,6 +50,12 @@ TEST_CASE("Command line: modes", "[app][cli]") {
     const auto bench = parse({"--benchmark=300"});
     REQUIRE(bench.has_value());
     CHECK(bench.value().benchmark_frames == 300);
+
+    // Headless: time offscreen frames after writing the image.
+    const auto headless_bench = parse({"--headless", "-e", "x", "-o", "a.png", "--benchmark", "5"});
+    REQUIRE(headless_bench.has_value());
+    CHECK(headless_bench.value().mode == RunMode::headless);
+    CHECK(headless_bench.value().benchmark_frames == 5);
 }
 
 TEST_CASE("Command line: headless", "[app][cli]") {
@@ -94,7 +100,6 @@ TEST_CASE("Command line: errors are one clear line", "[app][cli]") {
     expect_error({"--headless", "-e", "x", "-o", "a.png", "--frame", "1000001"}, "[0, 1000000]");
     expect_error({"--headless", "-e", "x", "-o", "a.png", "--size", "10x10"}, "WIDTHxHEIGHT");
     expect_error({"--headless", "-e", "x", "-o", "a.png", "--size", "800"}, "WIDTHxHEIGHT");
-    expect_error({"--headless", "-e", "x", "-o", "a.png", "--benchmark", "5"}, "--benchmark");
     expect_error({"--frame", "10"}, "only valid with --headless");
     expect_error({"--out", "a.png"}, "only valid with --headless");
     expect_error({"-e", "a", "-e", "b"}, "more than once");

@@ -502,7 +502,8 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
     return intent;
 }
 
-RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
+RenderSettingsIntent draw_render_settings(const RenderSettings& settings,
+                                          const RenderSettingsContext& context) {
     RenderSettingsIntent intent;
     if (!ImGui::Begin(std::string(kRenderSettingsWindow).c_str())) {
         ImGui::End();
@@ -591,6 +592,41 @@ RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
         changed = true;
     }
     ImGui::EndDisabled();
+
+    if (context.black_hole) {
+        section("BLACK HOLE");
+        row_label("Lensing");
+        changed |= ImGui::Checkbox("##lensing", &s.black_hole_lensing);
+        ImGui::SetItemTooltip("Bend the sky and draw the shadow and the accretion disk by\n"
+                              "tracing light rays through the Schwarzschild geometry");
+        ImGui::BeginDisabled(!s.black_hole_lensing);
+        row_label("Disk");
+        changed |= ImGui::Checkbox("##disk", &s.accretion_disk);
+        ImGui::BeginDisabled(!s.accretion_disk);
+        auto disk_brightness = static_cast<float>(s.disk_brightness);
+        row_label("Brightness");
+        if (ImGui::SliderFloat("##disk_brightness", &disk_brightness, 0.0F, 4.0F, "%.2f")) {
+            s.disk_brightness = static_cast<double>(disk_brightness);
+            changed = true;
+        }
+        auto temperature = static_cast<float>(s.disk_temperature);
+        row_label("Temp.");
+        if (ImGui::SliderFloat("##disk_temperature", &temperature, 2000.0F, 20000.0F, "%.0f K",
+                               ImGuiSliderFlags_Logarithmic)) {
+            s.disk_temperature = static_cast<double>(temperature);
+            changed = true;
+        }
+        ImGui::SetItemTooltip("Peak temperature of the disk in its rest frame; the observed\n"
+                              "colour also carries the Doppler and gravitational shifts");
+        ImGui::EndDisabled();
+        row_label("Steps");
+        if (ImGui::SliderInt("##geodesic_steps", &s.geodesic_steps, 64, 512, "%d per ray")) {
+            changed = true;
+        }
+        ImGui::SetItemTooltip("Integration steps per light ray: fewer are faster and coarser\n"
+                              "close to the photon ring");
+        ImGui::EndDisabled();
+    }
 
     section("EXPOSURE");
     auto ev = static_cast<float>(std::log2(std::max(s.exposure, 1.0e-6)));

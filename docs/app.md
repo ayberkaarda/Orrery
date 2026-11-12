@@ -126,6 +126,7 @@ Bundled experiments (`assets/experiments`):
 | `sun_earth_moon` | Sun, Earth, Moon | leapfrog, 0.02 d | 2e5 |
 | `figure_eight` | three-body choreography | Yoshida4, 0.5 d | 2e6 |
 | `sgr_a_s2` | Sgr A* and S2 | IAS15, 2 d | 1e7 |
+| `black_hole` | a lone 4.3e6 Msun Schwarzschild hole (its thin disk is a rendering model, `rendering.md` section 17) | leapfrog, 1 d | 1 |
 
 A name given on the command line is looked up as `<assets>/experiments/<name>.json`,
 where `<assets>` is `assets/` next to the executable if present (located
@@ -139,6 +140,7 @@ used as is.
 ```
 orrery_app [--experiment <name-or-path>] [--size WxH] [--benchmark <frames>]
 orrery_app --headless --experiment <name-or-path> --out <file.png> [--frame <N>] [--size WxH]
+           [--benchmark <frames>]
 orrery_app --version | --help | --modules
 ```
 
@@ -149,6 +151,15 @@ or misplaced options are errors. Every error is one line on stderr prefixed
 scenario, invalid experiment, render or write failure), 2 invalid command
 line, 3 no OpenGL 4.6 context. A headless build (`ORRERY_HEADLESS`) has no
 window and answers the windowed form with exit code 2.
+
+`--benchmark N` measures frame times. In the window it renders N frames
+without vsync (after 30 warm-up frames) and prints the mean. With
+`--headless` it first writes the image as usual, then draws the same view N
+more times offscreen (after 10 warm-up frames; scene, resolve and tone map,
+no readback) and prints the mean wall time per frame from the first command
+until the frame's GPU timer query completes, the fps that follows, and the
+GPU median and 95th percentile. This is the measurement that never opens a
+window (`app::benchmark_headless`).
 
 ## 6. Headless rendering
 
@@ -176,8 +187,12 @@ Shared by the window and the headless renderer (`space_view.h`):
   vertical field of view) around the dominant body (one with at least half
   of the mass), else around the fixed centre of mass. The framed radius is
   the median distance of the other bodies (APPROXIMATION: framing heuristic),
-  so the solar system opens on the inner planets; the wheel zooms out. In
-  the window the framing is computed for the scene area left by the panels.
+  so the solar system opens on the inner planets; the wheel zooms out. A
+  black hole alone (the `black_hole` experiment) is framed for its accretion
+  disk instead: 12 deg above the disk plane, at the distance where the disk
+  (30 G M / c^2) fits the view, limited by width up to about 2.35:1 and by height for wider
+  views, and never closer than 1.08 disk radii. In the window the framing is
+  computed for the scene area left by the panels.
 - Trails: `trail_length` samples per body, each spanning about 85 percent of
   its orbit (`min_step_angle = 2 pi 0.85 / length`), recorded from every new
   snapshot and cleared on load and reset.
@@ -226,3 +241,10 @@ warm-up frames) on an AMD Radeon RX 9060 XT, Release MSVC: 600 frames at
 mean 2.0 ms, 499 fps (spec target: 60 fps at 1080p). The benchmark averages
 the measured frame times; interactive updates use the same delta clamped to
 250 ms (`frame_stats.h`).
+
+**Measured (headless, black hole):** `orrery_app --headless --experiment
+black_hole --size 1920x1080 --out bh.png --benchmark 300`, Release MSVC, AMD
+Radeon RX 9060 XT: mean 1.51 ms per frame (663 fps), GPU median 1.29 ms,
+p95 1.40 ms, lensing on (spec target: at least 30 fps at 1080p). The same
+command gives 0.91 ms (1098 fps) for `sgr_a_s2` (hole far away, lensing on)
+and 2.67 ms (374 fps) for `solar_system` (no hole).

@@ -14,6 +14,7 @@
 #include <glm/ext/vector_float2.hpp>
 #include <glm/ext/vector_float3.hpp>
 #include <glm/ext/vector_float4.hpp>
+#include <glm/ext/vector_int2.hpp>
 
 #include "orrery/core/result.h"
 #include "orrery/render/shader_compose.h"
@@ -115,6 +116,7 @@ public:
 
     // Setters ignore uniforms that do not exist (location -1), as OpenGL does.
     void set(std::string_view name, int value) const;
+    void set(std::string_view name, const glm::ivec2& value) const;
     void set(std::string_view name, float value) const;
     void set(std::string_view name, const glm::vec2& value) const;
     void set(std::string_view name, const glm::vec3& value) const;
@@ -179,10 +181,12 @@ private:
 };
 
 enum class TextureFormat : std::uint8_t {
-    rgba16f,      // HDR colour
-    rgba8,        // linear 8-bit colour
-    srgb8_alpha8, // sRGB-encoded 8-bit colour
-    depth32f,     // 32-bit float depth (log depth)
+    rgba16f,        // HDR colour
+    rgba8,          // linear 8-bit colour
+    srgb8_alpha8,   // sRGB-encoded 8-bit colour
+    depth32f,       // 32-bit float depth (log depth)
+    rgba32f,        // full-precision float colour (compute targets, lookup tables)
+    r11f_g11f_b10f, // packed unsigned float colour (environment maps)
 };
 
 class Texture {
@@ -195,6 +199,12 @@ public:
     // allocate the storage.
     [[nodiscard]] static core::Result<Texture, std::string>
     create_2d(int width, int height, TextureFormat format, int samples = 1);
+    // Cube map of `levels` mipmap levels with size x size faces, trilinear
+    // filtering and seamless sampling (GL_TEXTURE_CUBE_MAP_SEAMLESS is a
+    // context state; the users enable it). Same failure rules as create_2d,
+    // against GL_MAX_CUBE_MAP_TEXTURE_SIZE and levels in [1, log2(size) + 1].
+    [[nodiscard]] static core::Result<Texture, std::string>
+    create_cube(int size, TextureFormat format, int levels);
 
     void bind(std::uint32_t unit) const;
     [[nodiscard]] std::uint32_t id() const noexcept { return handle_.get(); }

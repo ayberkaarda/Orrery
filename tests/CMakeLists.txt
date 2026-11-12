@@ -63,6 +63,15 @@ target_sources(orrery_test_render PRIVATE
     render/test_ui.cpp
     render/test_space_golden.cpp
     render/test_space_render.cpp)
+
+# Phase 5: black-hole lensing. CPU tests (black-body spectrum, lens selection,
+# settings) always run; the GPU-against-CPU geodesic comparison, the golden
+# snapshots (Einstein ring and shadow, Doppler-asymmetric disk) and the
+# 1080p frame time are tagged [gl].
+target_sources(orrery_test_render PRIVATE
+    render/black_hole_test_support.h
+    render/test_black_hole.cpp
+    render/test_black_hole_render.cpp)
 target_link_libraries(orrery_test_render PRIVATE orrery_scene)
 target_compile_definitions(orrery_test_render PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
@@ -156,6 +165,10 @@ target_sources(orrery_test_core PRIVATE
 # Phase 4b: immutable simulation snapshot read by the renderer.
 target_sources(orrery_test_core PRIVATE
     core/test_sim_snapshot.cpp)
+
+# Phase 5: Schwarzschild null geodesics (reference of the black-hole shader).
+target_sources(orrery_test_core PRIVATE
+    core/test_schwarzschild_geodesic.cpp)
 
 # Phase 3a embedded scenarios: loaded with orrery_scene, integrated with core.
 add_executable(orrery_test_phase3a_scenarios
@@ -263,6 +276,15 @@ add_test(NAME app.headless_png
         -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
         -P ${ORRERY_EXPECT_EXIT})
 set_tests_properties(app.headless_png PROPERTIES SKIP_RETURN_CODE 77)
+# Phase 5: the black-hole experiment end to end, with the headless frame-time
+# measurement (--benchmark) after the image.
+add_test(NAME app.headless_black_hole_benchmark
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=0
+        "-DEXPECT_STDOUT=benchmark: 20 frames at 480x270 .*lensing on"
+        "-DARGS=--headless;--experiment;black_hole;--size;480x270;--benchmark;20;--out;${CMAKE_CURRENT_BINARY_DIR}/app_output/cli_black_hole.png"
+        -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
+        -P ${ORRERY_EXPECT_EXIT})
+set_tests_properties(app.headless_black_hole_benchmark PROPERTIES SKIP_RETURN_CODE 77)
 # Started by its bare name through PATH from another directory, the
 # executable still finds the assets next to itself.
 add_test(NAME app.bare_name_finds_its_assets
@@ -273,6 +295,7 @@ add_test(NAME app.bare_name_finds_its_assets
 set_tests_properties(app.bare_name_finds_its_assets PROPERTIES SKIP_RETURN_CODE 77)
 if(ORRERY_SANITIZE AND NOT MSVC)
     # The executable calls glfwInit without a display; see lsan.supp.
-    set_tests_properties(app.headless_png app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
+    set_tests_properties(app.headless_png app.headless_black_hole_benchmark
+        app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
         "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
 endif()

@@ -25,6 +25,15 @@ struct RenderSettings {
     double milky_way_brightness = 1.0; // [0, 4]
     bool star_glow = true;
 
+    // Black hole (docs/rendering.md, "Black hole"): Schwarzschild lensing of
+    // the sky by the most prominent black hole, with a thin accretion disk.
+    // (Booleans and the step count sit next to star_glow to avoid padding.)
+    bool black_hole_lensing = true;
+    bool accretion_disk = true;
+    int geodesic_steps = 512;         // step budget per ray, [64, 512]
+    double disk_brightness = 1.0;     // radiance factor, [0, 4]
+    double disk_temperature = 4500.0; // peak disk temperature [K], [2000, 20000]
+
     double exposure = 1.0; // tone-map exposure, [1/64, 64]
     // Irradiance falls off as (1 AU / d)^exponent from each star, [0, 2].
     // 2 is physical; the default compresses the range so that the outer

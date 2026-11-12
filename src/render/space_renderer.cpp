@@ -12,6 +12,7 @@
 #include <glm/geometric.hpp>
 #include <glm/gtc/quaternion.hpp>
 
+#include "black_hole_pass.h"
 #include "gl_loader.h"
 #include "orrery/core/units.h"
 #include "orrery/render/embedded_shaders.h"
@@ -157,9 +158,30 @@ glm::vec4 trail_color(const BodyAppearance& appearance, double brightness) noexc
     return vec4_of(color, 0.9);
 }
 
+namespace {
+
+// prepare_bodies, leaving out the instance and glow of body `lensed` (the
+// black hole drawn by the lensing pass).
+PreparedBodies prepare_bodies_except(const core::SimSnapshot& snapshot, const Camera& camera,
+                                     const FrameInfo& frame, const RenderSettings& settings,
+                                     std::optional<std::size_t> lensed);
+
+} // namespace
+
 PreparedBodies prepare_bodies(const core::SimSnapshot& snapshot, const Camera& camera,
                               const FrameInfo& frame, const RenderSettings& raw_settings) {
     const RenderSettings settings = sanitized(raw_settings);
+    const std::optional<LensingTarget> lensed =
+        select_lensed_black_hole(snapshot, camera, frame, settings);
+    return prepare_bodies_except(snapshot, camera, frame, settings,
+                                 lensed ? std::optional<std::size_t>(lensed->index) : std::nullopt);
+}
+
+namespace {
+
+PreparedBodies prepare_bodies_except(const core::SimSnapshot& snapshot, const Camera& camera,
+                                     const FrameInfo& frame, const RenderSettings& settings,
+                                     std::optional<std::size_t> lensed) {
     const double aspect = Camera::usable_aspect(frame.aspect());
     const double pps = pixel_scale(camera.lens().vertical_fov, frame.height);
     const ViewFrustum frustum = frustum_of(camera, aspect);
@@ -216,6 +238,16 @@ PreparedBodies prepare_bodies(const core::SimSnapshot& snapshot, const Camera& c
         const ProjectedSphere projected = project_sphere(info.visual_radius, distance, depth, pps);
         info.radius_px = projected.radius_px;
         info.lod = select_lod(projected.lod_scale_px, settings.lod_bias);
+        // The lensing pass draws the shadow and the disk of the lensed hole.
+        // While its shadow is smaller than the clamped minimum size, the
+        // marker is kept as well, so that an unresolved hole stays visible
+        // (the pass still bends the sky around it).
+        if (lensed && *lensed == i &&
+            (settings.scale_mode == ScaleMode::true_scale ||
+             projected_radius_px(info.physical_radius, distance, pps) >= min_px)) {
+            out.screen.push_back(info);
+            continue;
+        }
         // Sprites stay finite when the sphere reaches the eye plane.
         const double disc_px = std::min(
             info.radius_px, 4.0 * static_cast<double>(std::max(frame.width, frame.height)));
@@ -294,6 +326,8 @@ PreparedBodies prepare_bodies(const core::SimSnapshot& snapshot, const Camera& c
     return out;
 }
 
+} // namespace
+
 struct SpaceRenderer::Gpu {
     Program body;
     Program glow;
@@ -313,6 +347,8 @@ struct SpaceRenderer::Gpu {
     std::optional<Buffer> glow_instances;
     std::optional<Buffer> trail_instances;
     std::vector<TrailInstance> trail_scratch;
+    detail::BlackHolePass black_hole;
+    std::string black_hole_error; // last failure of the lensing pass (logged once)
 };
 
 SpaceRenderer::SpaceRenderer(std::unique_ptr<Gpu> gpu, std::size_t star_count) noexcept
@@ -344,6 +380,10 @@ core::Result<SpaceRenderer, std::string> SpaceRenderer::create(const StarfieldPa
     auto trail = build_program(shaders::trail_vert, shaders::trail_frag, {log_depth});
     if (!trail) {
         return core::failure("space renderer: " + trail.error());
+    }
+    auto black_hole = detail::BlackHolePass::create();
+    if (!black_hole) {
+        return core::failure("space renderer: " + black_hole.error());
     }
 
     // All LOD meshes in one vertex and one index buffer.
@@ -413,6 +453,8 @@ core::Result<SpaceRenderer, std::string> SpaceRenderer::create(const StarfieldPa
                                          std::nullopt,
                                          std::nullopt,
                                          std::nullopt,
+                                         {},
+                                         std::move(black_hole).value(),
                                          {}});
 
     // Bodies: binding 0 = unit sphere, binding 1 = instances.
@@ -459,8 +501,31 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
     glDisable(GL_CULL_FACE);
     glDisable(GL_BLEND);
 
-    // 1. Sky at infinity, additive over the clear colour, no depth.
-    if (settings.show_starfield) {
+    // 1a. Lensing pass: the sky along the bent rays, the shadow and the disk.
+    const std::optional<LensingTarget> lensed =
+        select_lensed_black_hole(snapshot, camera, frame, settings);
+    std::optional<std::size_t> lensed_index;
+    if (lensed) {
+        const detail::SkySource sky{&gpu.milky_way,
+                                    &gpu.star_vao,
+                                    star_count_,
+                                    &gpu.empty_vao,
+                                    kMilkyWayIntensity * settings.milky_way_brightness,
+                                    settings.star_brightness};
+        auto drawn = gpu.black_hole.draw(*lensed, camera, frame, settings, sky);
+        if (drawn) {
+            stats.lensing = true;
+            lensed_index = lensed->index;
+            gpu.black_hole_error.clear();
+        } else if (drawn.error() != gpu.black_hole_error) {
+            gpu.black_hole_error = drawn.error();
+            log_message(LogLevel::error,
+                        "space renderer: " + drawn.error() + " (drawing the unlensed sky instead)");
+        }
+    }
+
+    // 1b. Otherwise the sky at infinity, additive over the clear colour, no depth.
+    if (settings.show_starfield && !stats.lensing) {
         glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
         glEnable(GL_BLEND);
@@ -491,7 +556,8 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
     }
 
     // 2. Bodies.
-    const PreparedBodies prepared = prepare_bodies(snapshot, camera, frame, settings);
+    const PreparedBodies prepared =
+        prepare_bodies_except(snapshot, camera, frame, settings, lensed_index);
     stats.bodies_culled = prepared.culled;
     glEnable(GL_DEPTH_TEST);
     glDepthFunc(GL_LESS);
@@ -602,6 +668,20 @@ SpaceDrawStats SpaceRenderer::draw(const SpaceView& view, const FrameInfo& frame
     glBindVertexArray(0);
     glUseProgram(0);
     return stats;
+}
+
+core::Result<GeodesicTraceImage, std::string>
+SpaceRenderer::trace_geometry(const SpaceView& view, const FrameInfo& frame) {
+    if (view.snapshot == nullptr || view.camera == nullptr || !gpu_) {
+        return core::failure(std::string("trace_geometry: no snapshot or camera"));
+    }
+    const RenderSettings settings = sanitized(view.settings);
+    const std::optional<LensingTarget> lensed =
+        select_lensed_black_hole(*view.snapshot, *view.camera, frame, settings);
+    if (!lensed) {
+        return core::failure(std::string("trace_geometry: the view lenses no black hole"));
+    }
+    return gpu_->black_hole.trace_geometry(*lensed, *view.camera, frame, settings);
 }
 
 } // namespace orrery::render

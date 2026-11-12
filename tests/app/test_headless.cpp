@@ -15,7 +15,9 @@
 #include "orrery/app/cli.h"
 #include "orrery/app/headless.h"
 #include "orrery/app/space_view.h"
+#include "orrery/core/schwarzschild_geodesic.h"
 #include "orrery/core/state_hash.h"
+#include "orrery/render/black_hole.h"
 #include "orrery/render/png.h"
 #include "orrery/render/ssim.h"
 #include "orrery/sim/space_experiment.h"
@@ -208,6 +210,112 @@ TEST_CASE("Framing camera centres the dominant body", "[app][headless]") {
     CHECK_FALSE(around.target.has_value());
     CHECK(std::abs(around.focus.x) < 1.0e-6 * au);
     CHECK(std::abs(around.focus.y) < 1.0e-6 * au);
+}
+
+// Phase 5: the black_hole experiment opens on its accretion disk, 12 degrees
+// above the disk plane, lensed by the black-hole pass, and the headless
+// benchmark times that view.
+TEST_CASE("Headless black hole experiment frames the disk and lenses it", "[app][headless][gl]") {
+    auto experiment = sim::load_space_experiment(app_test::experiment_dir() / "black_hole.json");
+    REQUIRE(experiment.has_value());
+    const auto snapshot = core::SimSnapshot::capture(experiment.value().scene.state);
+    const render::OrbitMode orbit = app::framing_orbit(*snapshot, 16.0 / 9.0);
+    const double pi = 3.141592653589793;
+    CHECK(orbit.pitch == Catch::Approx(12.0 * pi / 180.0));
+    // G M / c^2 of 4.3e6 Msun is 6.35e9 m; at 16:9 the 30 M disk spans the
+    // width: its widest rim points, seen in perspective, lie at
+    // 30 / sqrt(D^2 - (30 cos 12 deg)^2), 1 / 1.08 of the half field of view.
+    const double m = 0.5 * 2953.25 * 4.3e6;
+    const double in_plane = 30.0 * std::cos(12.0 * pi / 180.0);
+    const double wide = 1.08 * 30.0 / (std::tan(20.0 * pi / 180.0) * 16.0 / 9.0);
+    CHECK(orbit.distance / m ==
+          Catch::Approx(std::sqrt(in_plane * in_plane + wide * wide)).epsilon(1e-3));
+
+    app::HeadlessRequest request;
+    request.width = 480;
+    request.height = 270;
+    const app::HeadlessFrame frame = render_or_skip(experiment.value(), request);
+    const render::ImageRgba8& image = frame.image;
+    const auto luma = [&](std::uint32_t x, std::uint32_t y) {
+        const std::size_t o = image.offset(x, y);
+        return 0.2126 * image.pixels[o] + 0.7152 * image.pixels[o + 1] +
+               0.0722 * image.pixels[o + 2];
+    };
+    // The shadow above the image centre is black; the disk around it bright,
+    // brighter on the approaching (left) side.
+    CHECK(luma(240, 115) < 3.0);
+    double left = 0.0;
+    double right = 0.0;
+    for (std::uint32_t y = 140; y < 170; ++y) {
+        for (std::uint32_t x = 40; x < 140; ++x) {
+            left += luma(x, y);
+            right += luma(479 - x, y);
+        }
+    }
+    CHECK(left > 1.5 * right);
+    CHECK(right > 3000.0); // the receding side still shows
+
+    const auto bench = app::benchmark_headless(experiment.value(), request, 5);
+    REQUIRE(bench.has_value());
+    CHECK(bench.value().frames == 5);
+    CHECK(bench.value().lensing);
+    CHECK(bench.value().fps > 0.0);
+    CHECK(bench.value().gpu_median_ms > 0.0);
+}
+
+// Review fix: the black-hole framing fits the lensed disk in both directions
+// and keeps the camera outside it (and so outside the horizon) at any aspect
+// ratio. Rays through the border of the frame, traced with the
+// double-precision geodesics, must miss the disk, while rays through a
+// rectangle at 65 percent of the frame must meet it (the disk still fills
+// the view in its limiting direction).
+TEST_CASE("Black hole framing fits the disk at wide and portrait aspect ratios",
+          "[app][headless]") {
+    namespace geo = core::geodesic;
+    auto experiment = sim::load_space_experiment(app_test::experiment_dir() / "black_hole.json");
+    REQUIRE(experiment.has_value());
+    const auto snapshot = core::SimSnapshot::capture(experiment.value().scene.state);
+    const geo::DiskModel disk = render::lensing_disk();
+    struct Size {
+        int width;
+        int height;
+    };
+    constexpr std::array<Size, 6> kSizes{
+        {{8192, 64}, {3840, 1080}, {2560, 1080}, {1920, 1080}, {1080, 1920}, {256, 1024}}};
+    for (const Size& size : kSizes) {
+        INFO("frame " << size.width << "x" << size.height);
+        const render::FrameInfo frame{size.width, size.height};
+        const render::Camera camera = app::framing_camera(*snapshot, frame.aspect());
+        const auto target =
+            render::select_lensed_black_hole(*snapshot, camera, frame, render::RenderSettings{});
+        REQUIRE(target.has_value());
+        CHECK(target->observer_radius > render::kDiskOuterRadius);
+        const glm::dvec3 origin = -target->hole_render / target->mass_length;
+        const auto hits_disk_on_rectangle = [&](double scale) {
+            const glm::dvec2 centre{0.5 * size.width, 0.5 * size.height};
+            const glm::dvec2 half = 0.5 * scale * glm::dvec2(size.width, size.height);
+            constexpr int kSamples = 96;
+            for (int k = 0; k <= kSamples; ++k) {
+                const double t = 2.0 * static_cast<double>(k) / kSamples - 1.0;
+                const std::array<glm::dvec2, 4> points{centre + glm::dvec2(t * half.x, -half.y),
+                                                       centre + glm::dvec2(t * half.x, half.y),
+                                                       centre + glm::dvec2(-half.x, t * half.y),
+                                                       centre + glm::dvec2(half.x, t * half.y)};
+                for (const glm::dvec2& p : points) {
+                    const glm::dvec3 d = render::pixel_ray(camera, frame, p);
+                    const geo::RayTrace trace =
+                        geo::trace_ray({origin.x, origin.y, origin.z}, {d.x, d.y, d.z}, disk);
+                    if (std::any_of(trace.crossings.begin(), trace.crossings.end(),
+                                    [](const geo::PlaneCrossing& c) { return c.on_disk; })) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        };
+        CHECK_FALSE(hits_disk_on_rectangle(1.0));
+        CHECK(hits_disk_on_rectangle(0.65));
+    }
 }
 
 // Review fix: the asset directories come from where the executable really

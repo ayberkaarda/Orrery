@@ -2,6 +2,7 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include <glm/ext/vector_double3.hpp>
 
@@ -62,6 +63,9 @@ public:
     void begin_overlay() const;
     // Reads the sRGB target, rows top to bottom.
     [[nodiscard]] ImageRgba8 read_srgb() const;
+    // Reads the resolved scene-linear colour (valid after resolve()) as
+    // RGBA floats, rows bottom to top (tests: finiteness, radiometry).
+    [[nodiscard]] std::vector<float> read_hdr() const;
     // Copies the sRGB target (after resolve() and any overlay) to the default
     // framebuffer of the current context, scaled to width x height (nearest
     // when the sizes match, linear otherwise). The stored sRGB-encoded bytes

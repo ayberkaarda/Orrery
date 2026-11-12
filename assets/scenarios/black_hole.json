@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "name": "Lone Schwarzschild black hole with a thin disk",
+  "units": { "length": "AU", "mass": "Msun", "time": "day", "angle": "deg" },
+  "metadata": {
+    "source": "Constructed scene for the black-hole renderer (docs/rendering.md, Black hole): a non-rotating hole of 4.3e6 Msun, about the mass of Sgr A* (4.297e6 Msun, GRAVITY Collaboration 2022, A&A 657, L12), at rest at the origin. Its thin accretion disk is a rendering model (ISCO to 30 GM/c^2 in the plane normal to +z), not a body.",
+    "epoch": "t = 0, arbitrary",
+    "description": "A single black hole. The image does not depend on the mass when lengths are measured in units of GM/c^2 (r_s = 2 GM/c^2 = 0.0849 AU here); the framing camera orbits it 12 degrees above the disk plane."
+  },
+  "time": 0.0,
+  "bodies": [
+    {
+      "name": "Black hole",
+      "kind": "blackhole",
+      "mass": 4300000.0,
+      "spin": 0.0,
+      "state": { "position": [0.0, 0.0, 0.0], "velocity": [0.0, 0.0, 0.0] }
+    }
+  ]
+}

@@ -30,6 +30,9 @@ RenderSettings sanitized(const RenderSettings& settings) noexcept {
     s.exposure = clamp_or(s.exposure, 1.0 / 64.0, 64.0, defaults.exposure);
     s.light_falloff_exponent =
         clamp_or(s.light_falloff_exponent, 0.0, 2.0, defaults.light_falloff_exponent);
+    s.disk_brightness = clamp_or(s.disk_brightness, 0.0, 4.0, defaults.disk_brightness);
+    s.disk_temperature = clamp_or(s.disk_temperature, 2000.0, 20000.0, defaults.disk_temperature);
+    s.geodesic_steps = std::clamp(s.geodesic_steps, 64, 512);
     return s;
 }
 

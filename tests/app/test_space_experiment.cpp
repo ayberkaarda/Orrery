@@ -24,7 +24,8 @@ bool contains(const std::string& text, const char* part) {
 } // namespace
 
 TEST_CASE("Every bundled experiment loads", "[app][sim][experiment]") {
-    for (const char* name : {"solar_system", "sun_earth_moon", "figure_eight", "sgr_a_s2"}) {
+    for (const char* name :
+         {"solar_system", "sun_earth_moon", "figure_eight", "sgr_a_s2", "black_hole"}) {
         INFO(name);
         const std::array<std::filesystem::path, 1> dirs{app_test::experiment_dir()};
         const auto path = resolve_experiment(name, dirs);

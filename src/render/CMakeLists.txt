@@ -82,6 +82,17 @@ target_sources(orrery_render PRIVATE
     ui_app_bar.cpp
     include/orrery/render/ui_app_bar.h)
 
+# Phase 5: black-hole lensing pass (Schwarzschild ray marching in a compute
+# shader, environment cube map, thin accretion disk with black-body colour).
+# The double-precision reference of the geodesics lives in orrery_core.
+target_sources(orrery_render PRIVATE
+    black_hole.cpp
+    black_hole_pass.cpp
+    black_hole_pass.h
+    blackbody_spectrum.cpp
+    include/orrery/render/black_hole.h
+    include/orrery/render/blackbody_spectrum.h)
+
 # Shaders: src/render/shaders/*.glsl are embedded at build time into one
 # generated header (no runtime file reads). The header is private to the
 # library sources and to the render tests, which check the embedding.
