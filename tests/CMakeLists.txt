@@ -43,6 +43,7 @@ target_sources(orrery_test_aero PRIVATE
     aero/test_regime.cpp
     aero/test_panel.cpp
     aero/test_newtonian.cpp)
+add_subdirectory(aero_validation)
 
 # Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
 # shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
