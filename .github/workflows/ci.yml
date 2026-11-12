@@ -324,8 +324,17 @@ jobs:
           # every TU runs even after a failure, so a timeout still leaves the
           # findings gathered so far in the log.
           tidy_one() {
-            out=$(clang-tidy-17 -p build/linux-ci-headless --quiet "--header-filter=^${GITHUB_WORKSPACE}/(src|tests)/.*" "$1" 2>&1)
+            hf="--header-filter=^${GITHUB_WORKSPACE}/(src|tests)/.*"
+            out=$(timeout 600 clang-tidy-17 -p build/linux-ci-headless --quiet "$hf" "$1" 2>&1)
             rc=$?
+            if [ $rc -eq 124 ]; then
+              # The path-sensitive analyzer can blow up on heavy template code
+              # (JSON, UI libraries); rerun those units with the remaining
+              # checks rather than letting one unit consume the whole budget.
+              echo "note: $1 exceeded 600s; rerunning without clang-analyzer-*"
+              out=$(timeout 600 clang-tidy-17 -p build/linux-ci-headless --quiet '--checks=-clang-analyzer-*' "$hf" "$1" 2>&1)
+              rc=$?
+            fi
             rel=${1#"$GITHUB_WORKSPACE"/}
             {
               flock 9
