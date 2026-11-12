@@ -107,6 +107,13 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
                       "implot::implot"},
 }
 
+# Imported targets created by CMake's own Find modules (FindZLIB, FindOpenSSL)
+# are UNKNOWN_LIBRARY targets whose file the code model does not report on
+# Linux, so the artifact check cannot inspect them. They are plain system
+# compression and TLS libraries reached through assimp, curl and miniz; the
+# names are matched exactly so any other artifact-less import still fails.
+UNVERIFIABLE_IMPORTED_OK = frozenset({"ZLIB::ZLIB", "OpenSSL::SSL", "OpenSSL::Crypto"})
+
 GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim",
                          "orrery_geom_net")
 PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
@@ -677,7 +684,7 @@ def check_configuration(config: dict, reply: Path, source_root: Path, tag: str,
             if node is None:
                 continue
             if (node.get("imported") and node.get("type") != "INTERFACE_LIBRARY"
-                    and not node.get("artifacts")):
+                    and not node.get("artifacts") and name not in UNVERIFIABLE_IMPORTED_OK):
                 errors.append(
                     f"[{tag}] {target}{via}: imported {node.get('type', 'target')} {name} "
                     f"has no artifact in the code model; its library file cannot be verified"
