@@ -97,7 +97,7 @@ bool is_real_file(const std::filesystem::path& file) {
 std::optional<std::string> read_small_file(const std::filesystem::path& file) {
     std::error_code ec;
     const std::uintmax_t size = std::filesystem::file_size(file, ec);
-    if (ec || size > 64 * 1024) {
+    if (ec || size > std::uintmax_t{64} * 1024U) {
         return std::nullopt;
     }
     std::ifstream in(file, std::ios::binary);

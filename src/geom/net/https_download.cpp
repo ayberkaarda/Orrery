@@ -21,7 +21,7 @@ using core::failure;
 using Clock = std::chrono::steady_clock;
 
 // Redirect responses are discarded; their bodies are capped separately.
-constexpr std::uint64_t kMaxRedirectBody = 64 * 1024;
+constexpr std::uint64_t kMaxRedirectBody = std::uint64_t{64} * 1024U;
 
 FetchError error(FetchErrorKind kind, std::string message) {
     return FetchError{kind, std::move(message)};

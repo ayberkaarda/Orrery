@@ -37,7 +37,7 @@ enum class ModelFormat : std::uint8_t {
 [[nodiscard]] bool is_model_format(ModelFormat format) noexcept;
 
 // Number of leading bytes the detector inspects.
-inline constexpr std::size_t kSniffBytes = 64 * 1024;
+inline constexpr std::size_t kSniffBytes = std::size_t{64} * 1024U;
 
 // Detects the format from the first bytes of a file (`head`, at most
 // kSniffBytes) and its total size.
