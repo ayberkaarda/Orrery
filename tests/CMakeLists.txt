@@ -40,7 +40,9 @@ target_compile_definitions(orrery_test_geom PRIVATE
 
 # Phase 7a: aero solver interface, regime selection and analytic solver tests.
 target_sources(orrery_test_aero PRIVATE
-    aero/test_regime.cpp)
+    aero/test_regime.cpp
+    aero/test_panel.cpp
+    aero/test_newtonian.cpp)
 
 # Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
 # shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
