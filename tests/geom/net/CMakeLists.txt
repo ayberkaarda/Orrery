@@ -9,6 +9,7 @@ find_package(miniz CONFIG REQUIRED)
 add_executable(orrery_test_geom_net
     net_test_support.h
     zip_builder.cpp
+    fs_links.cpp
     mock_server.h
     mock_server.cpp
     test_sha256.cpp

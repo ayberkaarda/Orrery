@@ -187,7 +187,8 @@ const char* reason_phrase(int status) {
 
 } // namespace
 
-TestCertificate make_test_certificate(const std::filesystem::path& dir) {
+TestCertificate make_test_certificate(const std::filesystem::path& dir,
+                                      std::string_view subject_alt_names) {
     const std::unique_ptr<EVP_PKEY_CTX, KeyContextDeleter> key_ctx{
         EVP_PKEY_CTX_new_from_name(nullptr, "EC", nullptr)};
     require(key_ctx != nullptr, "key context");
@@ -216,7 +217,7 @@ TestCertificate make_test_certificate(const std::filesystem::path& dir) {
     require(X509_set_issuer_name(cert.get(), name) == 1, "issuer");
     add_extension(cert.get(), NID_basic_constraints, "critical,CA:TRUE");
     add_extension(cert.get(), NID_key_usage, "critical,keyCertSign,digitalSignature");
-    add_extension(cert.get(), NID_subject_alt_name, "IP:127.0.0.1,DNS:localhost");
+    add_extension(cert.get(), NID_subject_alt_name, std::string{subject_alt_names}.c_str());
     add_extension(cert.get(), NID_subject_key_identifier, "hash");
     require(X509_sign(cert.get(), key.get(), EVP_sha256()) > 0, "signature");
 

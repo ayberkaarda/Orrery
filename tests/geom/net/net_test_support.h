@@ -85,6 +85,39 @@ inline std::string obj_text() {
            "usemtl skin\ns off\nf 1//1 2//1 3//1\n";
 }
 
+// A binary PLY triangle with a real binary body: float coordinates (zeros
+// and ones, so NUL bytes appear) and one face as uchar count + int indices.
+inline std::string binary_ply(bool big_endian) {
+    std::string ply = std::string{"ply\nformat "} +
+                      (big_endian ? "binary_big_endian" : "binary_little_endian") +
+                      " 1.0\ncomment made by the tests\nelement vertex 3\n"
+                      "property float x\nproperty float y\nproperty float z\n"
+                      "element face 1\nproperty list uchar int vertex_indices\nend_header\n";
+    const auto put32 = [&](std::uint32_t value) {
+        for (unsigned i = 0; i < 4; ++i) {
+            const unsigned shift = 8U * (big_endian ? 3U - i : i);
+            ply.push_back(static_cast<char>((value >> shift) & 0xFFU));
+        }
+    };
+    constexpr std::uint32_t kOne = 0x3F800000U; // 1.0f
+    for (const std::uint32_t value : {0U, 0U, 0U, kOne, 0U, 0U, 0U, kOne, 0U}) {
+        put32(value);
+    }
+    ply.push_back('\x03');
+    for (const std::uint32_t index : {0U, 1U, 2U}) {
+        put32(index);
+    }
+    return ply;
+}
+
+// Makes `link` a directory link to `target`: a junction on Windows (no
+// privilege needed), a symbolic link elsewhere. False if it cannot.
+bool make_directory_link(const std::filesystem::path& target, const std::filesystem::path& link);
+
+// Makes `link` a symbolic link to the file `target`. False if the platform
+// or the account does not allow it (Windows without the symlink privilege).
+bool make_file_symlink(const std::filesystem::path& target, const std::filesystem::path& link);
+
 // The start of a Windows executable: an "MZ" header and a PE signature.
 inline std::string executable_bytes() {
     std::string exe = "MZ";

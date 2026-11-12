@@ -28,9 +28,12 @@ struct TestCertificate {
     std::filesystem::path ca_file; // the certificate, written as a PEM file
 };
 
-// Self-signed certificate for IP 127.0.0.1 and DNS localhost, valid for a
-// day, with its PEM file written into `dir`.
-TestCertificate make_test_certificate(const std::filesystem::path& dir);
+// Self-signed certificate valid for a day, with its PEM file written into
+// `dir`. Its subject alternative names default to IP 127.0.0.1 and DNS
+// localhost; host name verification tests pass names that exclude them.
+TestCertificate
+make_test_certificate(const std::filesystem::path& dir,
+                      std::string_view subject_alt_names = "IP:127.0.0.1,DNS:localhost");
 
 struct MockResponse {
     int status = 200;
