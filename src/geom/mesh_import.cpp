@@ -44,7 +44,7 @@ std::filesystem::path path_from_utf8(const char* text) {
     for (const char* c = text; *c != '\0'; ++c) {
         u8.push_back(static_cast<char8_t>(*c));
     }
-    return std::filesystem::path(u8);
+    return {u8};
 }
 
 std::string utf8_from_path(const std::filesystem::path& path) {

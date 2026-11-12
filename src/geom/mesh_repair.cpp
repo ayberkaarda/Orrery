@@ -185,6 +185,7 @@ BoundaryLoops boundary_loops(const std::vector<EdgeUse>& uses) {
     });
     std::sort(edges.begin(), edges.end());
     std::vector<std::uint32_t> heads;
+    heads.reserve(edges.size());
     for (const auto& e : edges) {
         heads.push_back(e.second);
     }

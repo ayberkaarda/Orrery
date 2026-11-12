@@ -20,7 +20,7 @@ template <std::size_t Order> struct GaussLegendre {
     std::array<double, Order> weights{};
 
     GaussLegendre() {
-        constexpr double n = static_cast<double>(Order);
+        constexpr auto n = static_cast<double>(Order);
         for (std::size_t i = 0; i < Order; ++i) {
             double x = std::cos(pi * (static_cast<double>(i) + 0.75) / (n + 0.5));
             double derivative = 1.0;
@@ -28,7 +28,7 @@ template <std::size_t Order> struct GaussLegendre {
                 double p0 = 1.0;
                 double p1 = x;
                 for (std::size_t k = 2; k <= Order; ++k) {
-                    const double kd = static_cast<double>(k);
+                    const auto kd = static_cast<double>(k);
                     const double p2 = ((2.0 * kd - 1.0) * x * p1 - (kd - 1.0) * p0) / kd;
                     p0 = p1;
                     p1 = p2;
@@ -200,7 +200,10 @@ NacaWing naca_wing(const Naca4& airfoil, double chord, double span, int n, int s
         }
         wing.trailing_edge.push_back(to_index(j * ring));
     }
-    auto at = [ring](std::size_t j, std::size_t k) { return to_index(j * ring + k % ring); };
+    // k <= ring: index ring wraps to the trailing edge (0).
+    auto at = [ring](std::size_t j, std::size_t k) {
+        return to_index(j * ring + (k == ring ? 0 : k));
+    };
     for (std::size_t j = 0; j < strips; ++j) {
         for (std::size_t k = 0; k < ring; ++k) {
             const std::uint32_t a = at(j, k);
@@ -214,7 +217,10 @@ NacaWing naca_wing(const Naca4& airfoil, double chord, double span, int n, int s
     // Tip caps: strips between the upper and lower point of each station.
     const auto stations = static_cast<std::size_t>(n);
     auto upper = [stations](std::size_t s) { return stations - s; };
-    auto lower = [stations, ring](std::size_t s) { return (stations + s) % ring; };
+    // s <= n, so stations + s <= ring; the trailing edge (s = n) is index 0.
+    auto lower = [stations, ring](std::size_t s) {
+        return stations + s == ring ? 0 : stations + s;
+    };
     for (std::size_t s = 0; s < stations; ++s) {
         std::vector<std::array<std::size_t, 3>> cap;
         if (s > 0) {

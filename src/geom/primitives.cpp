@@ -208,7 +208,7 @@ std::vector<ProfilePoint> RevolutionProfile::polyline(const RevolutionResolution
 
 double RevolutionProfile::polyhedral_volume(const RevolutionResolution& res) const {
     const std::vector<ProfilePoint> p = polyline(res);
-    const double n = static_cast<double>(res.around);
+    const auto n = static_cast<double>(res.around);
     // Area of a regular N-gon of circumradius r is k r^2.
     const double k = 0.5 * n * std::sin(2.0 * pi / n);
     double v = 0.0;
@@ -222,7 +222,7 @@ double RevolutionProfile::polyhedral_volume(const RevolutionResolution& res) con
 
 double RevolutionProfile::polyhedral_area(const RevolutionResolution& res) const {
     const std::vector<ProfilePoint> p = polyline(res);
-    const double n = static_cast<double>(res.around);
+    const auto n = static_cast<double>(res.around);
     const double half = pi / n;
     double a = 0.0;
     for (std::size_t i = 0; i + 1 < p.size(); ++i) {
