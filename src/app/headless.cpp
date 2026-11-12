@@ -112,7 +112,8 @@ core::Result<HeadlessFrame, HeadlessError> render_headless(const sim::SpaceExper
                                                            const HeadlessRequest& request) {
     auto prepared = prepare_scene(experiment, request);
     if (!prepared) {
-        return core::failure(prepared.error());
+        const HeadlessError& cause = prepared.error();
+        return core::failure(HeadlessError{cause.kind, cause.message});
     }
     HeadlessScene& prepared_scene = *prepared.value();
     HeadlessFrame result;
