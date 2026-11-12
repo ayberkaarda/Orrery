@@ -185,13 +185,14 @@ void LbmAeroSolver2D::setup(const AeroGeometry& geometry, const FlowConditions& 
 }
 
 bool LbmAeroSolver2D::step() {
-    if (!solver_) {
+    if (!solver_ || !units_) {
         throw std::logic_error("lbm: step() called before setup()");
     }
+    const LatticeUnits units = *units_;
     const std::uint64_t target =
         std::min<std::uint64_t>(total_steps_, solver_->steps() + options_.steps_per_call);
-    const double cells = units_->cells_per_length();
-    const double u = units_->lattice_velocity();
+    const double cells = units.cells_per_length();
+    const double u = units.lattice_velocity();
     while (solver_->steps() < target) {
         const std::uint64_t left = target - solver_->steps();
         const std::size_t chunk = left < options_.sample_every ? left : options_.sample_every;
@@ -228,7 +229,10 @@ std::optional<double> LbmAeroSolver2D::strouhal() const {
 }
 
 void LbmAeroSolver2D::update_result() {
-    const LatticeUnits& units = *units_;
+    if (!solver_ || !units_) {
+        return;
+    }
+    const LatticeUnits units = *units_;
     const double dx = units.dx();
     AeroResult next;
     next.iterations = solver_->steps();
@@ -288,8 +292,10 @@ void LbmAeroSolver2D::update_result() {
     next.surface.areas.reserve(wall.size());
     next.surface.cp.reserve(wall.size());
     for (const auto& [cell, sum] : wall) {
-        const double xw = origin_[0] + static_cast<double>(cell % config.nx) * dx;
-        const double zw = origin_[1] + static_cast<double>(cell / config.nx) * dx;
+        const std::size_t column = cell % config.nx;
+        const std::size_t row = cell / config.nx;
+        const double xw = origin_[0] + static_cast<double>(column) * dx;
+        const double zw = origin_[1] + static_cast<double>(row) * dx;
         const double norm = std::hypot(sum[0], sum[1]);
         const double nxw = norm > 0.0 ? sum[0] / norm : 0.0;
         const double nzw = norm > 0.0 ? sum[1] / norm : 0.0;
