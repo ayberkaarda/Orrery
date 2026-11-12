@@ -64,4 +64,10 @@ target_sources(orrery_core PRIVATE
     sim_snapshot.cpp
     include/orrery/core/sim_snapshot.h)
 
+# Phase 5: Schwarzschild null geodesics, the double-precision reference of the
+# black-hole ray marcher (graphics-free; the shader lives in orrery_render).
+target_sources(orrery_core PRIVATE
+    schwarzschild_geodesic.cpp
+    include/orrery/core/schwarzschild_geodesic.h)
+
 orrery_configure_target(orrery_core)
