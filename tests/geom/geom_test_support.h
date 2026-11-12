@@ -11,6 +11,7 @@
 #include <ios>
 #include <sstream>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "orrery/geom/triangle_mesh.h"
@@ -46,10 +47,19 @@ inline void write_bytes(const std::filesystem::path& path, const std::vector<std
 }
 
 inline std::vector<std::byte> read_bytes(const std::filesystem::path& path) {
+    // Sized read rather than stream iterators: GCC 13 reports a false
+    // null dereference in istreambuf_iterator at -O3.
+    std::error_code ec;
+    const std::uintmax_t size = std::filesystem::file_size(path, ec);
+    if (ec) {
+        return {};
+    }
     std::ifstream in(path, std::ios::binary);
-    std::vector<char> chars((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
-    std::vector<std::byte> bytes(chars.size());
-    std::transform(chars.begin(), chars.end(), bytes.begin(),
+    std::string text(static_cast<std::size_t>(size), '\0');
+    in.read(text.data(), static_cast<std::streamsize>(text.size()));
+    text.resize(static_cast<std::size_t>(in.gcount()));
+    std::vector<std::byte> bytes(text.size());
+    std::transform(text.begin(), text.end(), bytes.begin(),
                    [](char c) { return static_cast<std::byte>(c); });
     return bytes;
 }

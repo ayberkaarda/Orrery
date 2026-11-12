@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
-#include <iterator>
 #include <optional>
 #include <random>
 #include <span>
@@ -50,8 +49,18 @@ inline void write_file(const std::filesystem::path& file, std::string_view conte
 }
 
 inline std::string read_file(const std::filesystem::path& file) {
+    // Sized read rather than stream iterators: GCC 13 reports a false
+    // null dereference in istreambuf_iterator at -O3.
+    std::error_code ec;
+    const std::uintmax_t size = std::filesystem::file_size(file, ec);
+    if (ec) {
+        return {};
+    }
     std::ifstream in(file, std::ios::binary);
-    return std::string{std::istreambuf_iterator<char>(in), std::istreambuf_iterator<char>()};
+    std::string text(static_cast<std::size_t>(size), '\0');
+    in.read(text.data(), static_cast<std::streamsize>(text.size()));
+    text.resize(static_cast<std::size_t>(in.gcount()));
+    return text;
 }
 
 inline std::size_t count_files(const std::filesystem::path& dir) {
