@@ -5,9 +5,11 @@
 #   aero   -> core, geom
 #   scene  -> core, geom, aero, atmo
 #   render -> core, geom, aero
-#   app    -> scene, render
+#   sim      -> core, scene          (physics thread, commands; src/app/sim)
+#   app_core -> sim, render          (command line, headless renderer)
+#   app      -> app_core             (the orrery_app executable)
 #
-# core, geom and atmo must never link against OpenGL, GLFW or ImGui;
+# core, geom, atmo and sim must never link against OpenGL, GLFW or ImGui;
 # tools/check_deps.py enforces this.
 
 add_subdirectory(core)
