@@ -36,11 +36,13 @@ target_sources(orrery_aero PRIVATE
     lbm/lbm2d_cpu.cpp
     lbm/lbm2d_gpu.cpp
     lbm/lbm2d_internal.h
+    lbm/lbm_aero_solver.cpp
     lbm/solid_mask.cpp
     lbm/include/orrery/aero/lbm/d2q9.h
     lbm/include/orrery/aero/lbm/force_history.h
     lbm/include/orrery/aero/lbm/lattice_units.h
     lbm/include/orrery/aero/lbm/lbm2d.h
+    lbm/include/orrery/aero/lbm/lbm_aero_solver.h
     lbm/include/orrery/aero/lbm/solid_mask.h)
 target_include_directories(orrery_aero PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/compute/include
