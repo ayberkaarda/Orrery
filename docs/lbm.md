@@ -155,7 +155,7 @@ Gekle 2022). Measured on the RX 9060 XT (tests in
 | Case | Steps | Velocity L2 | Populations L2 | Drag |
 |---|---|---|---|---|
 | Poiseuille 8 x 64, tau 0.8, body force | 4000 | 4.3e-5 | 1.0e-7 | |
-| Couette 8 x 32, moving wall | 4000 | 5.1e-6 | 8.8e-8 | |
+| Couette 8 x 32, moving wall | 4000 | 4.7e-6 | 8.1e-8 | |
 | Taylor-Green 64 x 64, tau 0.6 | 2000 | 6.1e-5 | 3.6e-7 | |
 | Cylinder 200 x 100, Re 100, D 10 | 4000 | 4.0e-5 | 3.5e-5 | 4.2e-5 |
 | same with the Smagorinsky closure | 4000 | 4.0e-5 | 3.5e-5 | 5.3e-5 |
@@ -306,11 +306,17 @@ upper acceptance bound; D = 40 in a wider channel gives 1.42.
   relative L2, the BGK wall slip), Couette (3e-13), momentum exchange
   against the body force (1e-6), mass conservation (1e-12 over 1500 steps
   with periodic, slip and moving walls), Taylor-Green decay rate (within
-  0.1 percent of 4 nu k^2), determinism, the GPU driver on the Null backend,
-  and the `IAeroSolver` adapter.
+  0.1 percent of 4 nu k^2), uniform translation between co-moving walls at
+  densities 0.7, 1 and 2 (1e-12), determinism, the GPU driver on the Null
+  backend (including the binary32 parameter checks), settled and steady
+  force histories, and the `IAeroSolver` adapter (step-count guards, call
+  size independence, reference-area normalisation, a start-up transient
+  that must not count as converged).
 - `orrery_test_aero_lbm_gl` (`[gl]`, OpenGL 4.6, hidden window): backend
   buffers, kernels and uniform type checks, embedded shaders, GLSL tables
-  against the C++ lattice, GPU against CPU on every boundary type, the
-  adapter on the GPU; hidden `[benchmark]` and `[.measure]`.
+  against the C++ lattice, GPU against CPU on every boundary type, uniform
+  translation between co-moving walls on the GPU (5e-6 at density 2), the
+  refusal of a uniform outside the binary32 range, the adapter on the GPU;
+  hidden `[benchmark]` and `[.measure]`.
 - `orrery_test_lbm2d_validation`: the cylinder on CPU and GPU, hidden
   `[.study]`.
