@@ -166,7 +166,7 @@ section 5 apply.
 |---|---|---|---|---|
 | L1 | Zou-He inlet node regularized (higher-order non-equilibrium dropped) | `zou_he_west`, `lbm_zou_he_west` | Smooth inflow; keeps rho, u and Pi_neq of the Zou-He set | Strong gradients at the inlet are smoothed; keep the body 5 or more lengths downstream |
 | L2 | Convective outlet with the inlet speed as convection speed | `Outlet::convective` | Wakes convected at about the free-stream speed | Recirculation at the outlet; the mean density drifts slowly (0.1 percent over 100000 steps at D 40) |
-| L3 | Moving no-slip wall with rho_w = 1 | `resolve_source` (wall) | Wall-parallel motion, density near 1 | Large density variation at a moving wall |
+| L3 | Moving no-slip wall: momentum correction scaled by the density of the fluid node next to the wall | `resolve_source` (wall) | Wall-parallel motion, smooth density near the wall | Strong density jumps across the wall-adjacent layer (compressibility error of order Ma^2) |
 | L4 | Smagorinsky Pi_neq taken without the forcing correction | `collide`, `lbm_collide` | Weak body forces | Strongly forced LES runs |
 | L5 | GPU populations in binary32, shifted by the weights | `lbm2d_gpu.cpp`, `src/render/shaders/lbm` | Agreement with the CPU within 1e-4 on laminar and locked-in periodic flow | Instability transients amplify rounding (up to 7e-4 measured) |
 | L6 | Momentum exchange for stationary bodies, force applied at the link midpoints | `add_link_force` | Bodies at rest | Moving bodies need the wall-velocity terms |
