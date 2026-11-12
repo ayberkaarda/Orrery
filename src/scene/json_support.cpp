@@ -348,14 +348,14 @@ Document parse_or_throw(std::string_view text) {
     }
     StrictBuilder builder;
     const bool parsed = Json::sax_parse(text.begin(), text.end(), &builder);
-    if (builder.error()) {
-        throw SceneFailure{*builder.error()};
+    if (const std::optional<SceneError>& error = builder.error()) {
+        throw SceneFailure{*error};
     }
     if (!parsed) {
         fail(SceneErrorCode::syntax_error, {}, "the document could not be parsed");
     }
-    if (builder.duplicate()) {
-        throw SceneFailure{*builder.duplicate()};
+    if (const std::optional<SceneError>& duplicate = builder.duplicate()) {
+        throw SceneFailure{*duplicate};
     }
     return Document(std::move(builder.root()));
 }
