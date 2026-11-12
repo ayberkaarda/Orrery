@@ -179,3 +179,24 @@ TEST_CASE("The LBM solver rejects unusable problems", "[aero][lbm][solver]") {
     LbmAeroSolver2D refused(fast);
     CHECK_THROWS_AS(refused.setup(geometry, flow_at(100.0, 1.0)), std::invalid_argument);
 }
+
+TEST_CASE("The LBM solver refuses step counts no integer can hold", "[aero][lbm][solver]") {
+    const AeroGeometry geometry = cylinder_geometry(1.0);
+    LbmSolverOptions options;
+    options.resolution = LatticeResolution{10.0, 0.05};
+    options.height = 8.0;
+    options.downstream = 4.0;
+    options.upstream = 2.0;
+    // Finite and positive, but 200 steps per convective time make 2e102
+    // steps: converting that to an integer is undefined behaviour.
+    LbmSolverOptions long_run = options;
+    long_run.duration = 1e100;
+    LbmAeroSolver2D endless(long_run);
+    CHECK_THROWS_AS(endless.setup(geometry, flow_at(100.0, 1.0)), std::invalid_argument);
+    CHECK(endless.lattice() == nullptr);
+    LbmSolverOptions wide = options;
+    wide.average_window = 1e100;
+    LbmAeroSolver2D window(wide);
+    CHECK_THROWS_AS(window.setup(geometry, flow_at(100.0, 1.0)), std::invalid_argument);
+    CHECK(window.lattice() == nullptr);
+}

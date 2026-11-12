@@ -17,6 +17,9 @@ constexpr double kMarginalTau = 0.51;       // below: BGK stability warning
 constexpr double kLocalMachWarning = 0.2;   // largest lattice Mach in the flow
 constexpr double kBlockageWarning = 0.1;    // body height / channel height
 constexpr double kSteadyResidual = 1e-3;    // relative change of the averaged cd
+// Largest step count (and averaging window in samples): 2^53, below which
+// every integer is a double, far above any run that fits in memory and time.
+constexpr double kMaxSteps = 9007199254740992.0;
 
 bool positive_finite(double v) noexcept {
     return std::isfinite(v) && v > 0.0;
@@ -110,6 +113,18 @@ void LbmAeroSolver2D::setup(const AeroGeometry& geometry, const FlowConditions& 
         throw std::invalid_argument("lbm: the section covers no lattice node (resolution too low)");
     }
 
+    // Step counts, checked before they are converted to integers (a double
+    // outside the integer range does not convert) and before allocating.
+    const double cells = units_->cells_per_length();
+    const double steps_per_time = cells / units_->lattice_velocity();
+    const double total_real = std::ceil(options_.duration * steps_per_time);
+    const double window_real =
+        options_.average_window * steps_per_time / static_cast<double>(options_.sample_every);
+    if (!(total_real < kMaxSteps) || !(window_real < kMaxSteps)) {
+        throw std::invalid_argument("lbm: duration and averaging window must stay below " +
+                                    format(kMaxSteps) + " lattice steps");
+    }
+
     Lbm2DConfig config;
     config.nx = nx;
     config.ny = ny;
@@ -136,12 +151,8 @@ void LbmAeroSolver2D::setup(const AeroGeometry& geometry, const FlowConditions& 
 
     conditions_ = conditions;
     reference_ = reference;
-    const double cells = units_->cells_per_length();
-    const double steps_per_time = cells / units_->lattice_velocity();
-    total_steps_ = static_cast<std::uint64_t>(std::ceil(options_.duration * steps_per_time));
-    window_samples_ = std::max<std::size_t>(
-        1, static_cast<std::size_t>(options_.average_window * steps_per_time /
-                                    static_cast<double>(options_.sample_every)));
+    total_steps_ = static_cast<std::uint64_t>(total_real);
+    window_samples_ = std::max<std::size_t>(1, static_cast<std::size_t>(window_real));
     history_ = CoefficientHistory(window_samples_);
     samples_.clear();
     instantaneous_ = Coefficients{};

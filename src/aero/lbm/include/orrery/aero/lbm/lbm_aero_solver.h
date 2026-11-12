@@ -60,7 +60,9 @@ public:
     // Throws std::invalid_argument for a section with fewer than 3 points,
     // non-finite or non-positive conditions or reference values, lattice
     // units that cannot be built (lattice Mach number of 0.1 or more), a
-    // domain beyond geom::max_grid_cells, or a backend that cannot run it.
+    // domain beyond geom::max_grid_cells, a duration or averaging window of
+    // 2^53 lattice steps or more (checked before anything is allocated), or a
+    // backend that cannot run it.
     void setup(const AeroGeometry& geometry, const FlowConditions& conditions) override;
     bool step() override;
     [[nodiscard]] const AeroResult& result() const noexcept override { return result_; }
