@@ -146,7 +146,7 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
     // Rejected URLs never touch the cache or the network.
     auto checked = check_https_url(url);
     if (!checked) {
-        return failure(checked.error());
+        return failure(copy_error(checked.error()));
     }
     const detail::ModelCache cache{options.cache_dir.empty() ? default_model_cache_dir()
                                                              : options.cache_dir};
@@ -162,7 +162,7 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
 
     auto staging = cache.make_staging();
     if (!staging) {
-        return failure(staging.error());
+        return failure(copy_error(staging.error()));
     }
     const std::filesystem::path dir = staging.value();
     const StagingGuard guard{dir};
@@ -170,13 +170,13 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
     const std::filesystem::path download_file = dir / kDownloadName;
     auto download = detail::download_https(url, download_file, options);
     if (!download) {
-        return failure(download.error());
+        return failure(copy_error(download.error()));
     }
     const detail::Download& got = download.value();
 
     auto detected = detect_file_format(download_file);
     if (!detected) {
-        return failure(detected.error());
+        return failure(copy_error(detected.error()));
     }
     const ModelFormat format = detected.value();
     if (format == ModelFormat::unknown) {
@@ -205,7 +205,7 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
     if (format == ModelFormat::zip) {
         auto models = extract_archive_models(dir / source_name, dir, options.limits.archive);
         if (!models) {
-            return failure(models.error());
+            return failure(copy_error(models.error()));
         }
         const ExtractedModel& first = models.value().front();
         model_name = first.file.filename();
@@ -215,7 +215,7 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
 
     auto entry = cache.commit(dir, got.sha256, source_name, model_format, model_name, member);
     if (!entry) {
-        return failure(entry.error());
+        return failure(copy_error(entry.error()));
     }
     if (auto problem = cache.remember_url(url, got.sha256)) {
         return failure(*std::move(problem));

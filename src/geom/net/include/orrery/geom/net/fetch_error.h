@@ -34,6 +34,13 @@ struct FetchError {
     std::string message;
 };
 
+// Field-by-field copy for forwarding an error out of a core::Result. The
+// implicit copy constructor trips a clang-analyzer false positive on the
+// Result's variant storage (uninitialized field), so callers use this.
+[[nodiscard]] inline FetchError copy_error(const FetchError& error) {
+    return FetchError{error.kind, error.message};
+}
+
 [[nodiscard]] std::string_view fetch_error_kind_name(FetchErrorKind kind) noexcept;
 
 } // namespace orrery::geom::net

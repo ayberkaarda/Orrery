@@ -295,7 +295,7 @@ extract_archive_models(const std::filesystem::path& archive, const std::filesyst
     }
     auto entries = validate(reader, limits);
     if (!entries) {
-        return failure(entries.error());
+        return failure(copy_error(entries.error()));
     }
 
     std::vector<ExtractedModel> models;

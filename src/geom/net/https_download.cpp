@@ -227,7 +227,7 @@ core::Result<Download, FetchError> download_https(std::string_view url,
                                                   const FetchOptions& options) {
     auto checked = check_https_url(url);
     if (!checked) {
-        return failure(checked.error());
+        return failure(copy_error(checked.error()));
     }
     if (!curl_ready()) {
         return failure(error(FetchErrorKind::network, "libcurl initialisation failed"));
