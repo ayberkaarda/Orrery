@@ -92,6 +92,9 @@ void lbm_gather(int x, int y, out float f[9]) {
     int ny = int(u_ny);
     uint here = uint(x) + u_nx * uint(y);
     bool inner = x > 0 && x < nx - 1 && y > 0 && y < ny - 1;
+    // Density of this node at the previous step (collision keeps it): the
+    // wall density of the moving-wall term, summed on first use.
+    float wall_rho = -1.0;
     for (int i = 0; i < 9; ++i) {
         int sx = x - LBM_CX[i];
         int sy = y - LBM_CY[i];
@@ -107,8 +110,15 @@ void lbm_gather(int x, int y, out float f[9]) {
                     direction = LBM_MIRROR_Y[i];
                 } else {
                     float wall_ux = sy < 0 ? u_bottom_ux : u_top_ux;
+                    if (wall_rho < 0.0) {
+                        float drho = 0.0;
+                        for (int k = 0; k < 9; ++k) {
+                            drho += lbm_source(k, here);
+                        }
+                        wall_rho = 1.0 + drho;
+                    }
                     f[i] = lbm_source(LBM_OPPOSITE[i], here) +
-                           6.0 * LBM_W[i] * float(LBM_CX[i]) * wall_ux;
+                           6.0 * LBM_W[i] * wall_rho * float(LBM_CX[i]) * wall_ux;
                     resolved = true;
                 }
             }

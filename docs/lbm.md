@@ -55,7 +55,7 @@ The pull step asks, for population i of node x, where it comes from:
 | solid node (mask) | halfway bounce-back: f_i(x) = f*_opp(i)(x); wall halfway between the nodes |
 | below y = 0 / above y = ny - 1, periodic | wrap around |
 | same, free slip | specular reflection: f_i(x) = f*_mirror(i)(x - c_ix, y) |
-| same, no-slip wall (at y = -1/2 or ny - 1/2) | bounce-back plus the moving-wall term 6 w_i rho_w c_i.u_w (Ladd 1994), rho_w = 1 |
+| same, no-slip wall (at y = -1/2 or ny - 1/2) | bounce-back plus the moving-wall term 6 w_i rho_w c_i.u_w (Ladd 1994), rho_w the density of the wall node at the previous step |
 | x < 0, inflow | unknown; Zou-He velocity inlet (below) |
 | x > nx - 1, outflow | outlet rule (below) |
 

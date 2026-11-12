@@ -225,6 +225,15 @@ private:
         }
     }
 
+    // Sum of the current populations of node `cell`.
+    [[nodiscard]] double density_at(std::size_t cell) const noexcept {
+        double rho = 0.0;
+        for (std::size_t i = 0; i < q; ++i) {
+            rho += f_[i * cells_ + cell];
+        }
+        return rho;
+    }
+
     void update_row(std::size_t y) noexcept {
         const std::size_t nx = config_.nx;
         const bool inlet = config_.x_boundary == XBoundary::inflow_outflow;
@@ -241,6 +250,10 @@ private:
                                                static_cast<std::ptrdiff_t>(here) + offset_[i])];
                 }
             } else {
+                // Density of this node at the previous step (collision keeps
+                // it), the wall density of the moving-wall term; computed on
+                // first use.
+                double wall_rho = -1.0;
                 for (std::size_t i = 0; i < q; ++i) {
                     const detail::Source s = detail::resolve_source(config_, mask_, x, y, i);
                     switch (s.kind) {
@@ -249,8 +262,12 @@ private:
                             f[i] = f_[s.direction * cells_ + s.cell];
                             break;
                         case detail::SourceKind::wall:
+                            if (wall_rho < 0.0) {
+                                wall_rho = density_at(here);
+                            }
                             f[i] = f_[s.direction * cells_ + s.cell] +
-                                   6.0 * d2q9::w[i] * static_cast<double>(d2q9::cx[i]) * s.wall_ux;
+                                   6.0 * d2q9::w[i] * wall_rho * static_cast<double>(d2q9::cx[i]) *
+                                       s.wall_ux;
                             break;
                         case detail::SourceKind::inlet:
                             f[i] = 0.0;

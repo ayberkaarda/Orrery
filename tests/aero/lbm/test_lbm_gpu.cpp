@@ -224,6 +224,23 @@ TEST_CASE("GPU and CPU agree on the analytic flows", "[aero][lbm][gl]") {
     CHECK(gl.context.debug_error_count() == 0);
 }
 
+TEST_CASE("GPU: a uniform stream between co-moving walls stays uniform at any density",
+          "[aero][lbm][gl]") {
+    GlCompute gl = gl_compute_or_skip();
+    for (const double rho : {1.0, 2.0, 0.7}) {
+        auto solver = take(make_gpu_solver(*gl.backend, co_moving_walls_config(4, 12, 0.8, 0.02),
+                                           fluid_mask(4, 12)));
+        require_ok(solver->initialize(uniform_state(rho, 0.02)));
+        require_ok(solver->step(200));
+        const double deviation = uniform_deviation(take(solver->macroscopic()), rho, 0.02);
+        INFO("rho " << rho << " largest relative deviation " << deviation);
+        // binary32 storage: rho != 1 leaves deviations of order 1 in the
+        // shifted populations, so the bound is a few float epsilons per step.
+        CHECK(deviation < 1e-4);
+    }
+    CHECK(gl.context.debug_error_count() == 0);
+}
+
 TEST_CASE("GPU and CPU agree on the cylinder channel", "[aero][lbm][gl]") {
     GlCompute gl = gl_compute_or_skip();
     // Re 100, D = 10: Zou-He inlet, extrapolation outlet, slip sides, solid

@@ -111,6 +111,38 @@ inline Lbm2DConfig couette_config(std::size_t nx, std::size_t ny, double tau, do
     return config;
 }
 
+// Uniform translation between two no-slip walls moving with the fluid:
+// periodic in x, both walls at speed u, initial state rho0 and (u, 0)
+// everywhere. Exact solution: the state never changes, at any density.
+inline Lbm2DConfig co_moving_walls_config(std::size_t nx, std::size_t ny, double tau, double u) {
+    Lbm2DConfig config;
+    config.nx = nx;
+    config.ny = ny;
+    config.tau = tau;
+    config.x_boundary = XBoundary::periodic;
+    config.bottom = Wall{WallKind::no_slip, u};
+    config.top = Wall{WallKind::no_slip, u};
+    return config;
+}
+
+inline InitialState uniform_state(double rho, double ux) {
+    return [rho, ux](std::size_t, std::size_t) { return d2q9::Moments{rho, ux, 0.0}; };
+}
+
+// Largest deviation of the fluid nodes from density rho and velocity (u, 0).
+inline double uniform_deviation(const MacroFields2D& fields, double rho, double u) {
+    double worst = 0.0;
+    for (std::size_t c = 0; c < fields.density.size(); ++c) {
+        if (fields.solid[c] != 0) {
+            continue;
+        }
+        worst = std::max(worst, std::abs(fields.density[c] - rho) / rho);
+        worst = std::max(worst, std::abs(fields.velocity_x[c] - u) / u);
+        worst = std::max(worst, std::abs(fields.velocity_y[c]) / u);
+    }
+    return worst;
+}
+
 // Channel with a Zou-He inlet, an extrapolation outlet and free-slip sides
 // around a circular cylinder of diameter d centred at (cx, cy).
 struct CylinderSetup {

@@ -136,6 +136,21 @@ TEST_CASE("Plane Couette flow matches the linear profile", "[aero][lbm][flow]") 
     CHECK(profile_error(les_fields, [](double y) { return 0.02 * (y + 0.5) / 16.0; }) < 1e-7);
 }
 
+TEST_CASE("A uniform stream between co-moving walls stays uniform at any density",
+          "[aero][lbm][flow]") {
+    // The moving-wall bounce-back term 6 w_i rho_w c_i.u_w scales with the
+    // wall density; at rho != 1 a term without it brakes the wall rows.
+    for (const double rho : {1.0, 2.0, 0.7}) {
+        auto solver = take(make_cpu_solver(co_moving_walls_config(4, 12, 0.8, 0.02),
+                                           fluid_mask(4, 12)));
+        require_ok(solver->initialize(uniform_state(rho, 0.02)));
+        require_ok(solver->step(200));
+        const double deviation = uniform_deviation(take(solver->macroscopic()), rho, 0.02);
+        INFO("rho " << rho << " largest relative deviation " << deviation);
+        CHECK(deviation < 1e-12);
+    }
+}
+
 TEST_CASE("Momentum exchange balances the body force on a channel", "[aero][lbm][flow]") {
     // Periodic box with one solid row: at steady state the force on the
     // solid equals the body force on all fluid nodes.
