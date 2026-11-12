@@ -103,7 +103,7 @@ Located in `tests/aero_validation/`. Each case cites its literature reference in
 |---|---|---|---|
 | Circular cylinder, Re 100 to 200 | LBM 2D | Strouhal number, drag coefficient | St 0.16 to 0.20; Cd 1.2 to 1.5 |
 | Sphere, Re 10 to 1000 | LBM 3D | Cd versus Re follows Schiller-Naumann | within 15 percent |
-| NACA 0012, angle of attack 0 to 8 degrees | Panel | Lift slope near 2 pi per radian; embedded XFOIL reference table | within 10 percent |
+| NACA 0012, angle of attack 0 to 8 degrees | Panel | Lift slope near 2 pi per radian; embedded reference table from thin-airfoil and thick-section (Joukowski) theory, no XFOIL data | within 10 percent |
 | Flat plate normal to flow | LBM | Cd about 1.28 | within 15 percent |
 | Apollo-type capsule, Mach 20 | Newtonian | Cd about 1.3 (published capsule data) | within 10 percent |
 | User-supplied model | any | No validation | UI shows an "unvalidated geometry" badge |
