@@ -35,6 +35,9 @@ struct UiTheme {
     UiColor accent_active{};
     UiColor accent_secondary{};
     UiColor warning{};
+    // Slider grab at rest: the accent, translucent, because the slider's
+    // value text is drawn over it.
+    UiColor slider_grab{};
     // Metrics [px].
     float font_size = 15.0F;
     float rounding = 4.0F;

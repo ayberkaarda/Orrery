@@ -18,6 +18,7 @@
 #include "orrery/render/png.h"
 #include "orrery/render/space_renderer.h"
 #include "orrery/render/ssim.h"
+#include "orrery/render/ui_app_bar.h"
 #include "orrery/render/ui_context.h"
 #include "orrery/render/ui_panels.h"
 #include "space_test_support.h"
@@ -295,11 +296,57 @@ void check_golden(const ImageRgba8& image, const std::string& name,
 }
 
 struct UiScene {
+    std::vector<std::string> scenarios{"figure_eight", "solar_system_j2000", "sun_earth_moon"};
+    AppBarData bar;
     BodyInspectorData inspector;
     SystemMonitorData monitor;
     RenderSettings settings;
     std::vector<SceneLabel> labels;
 };
+
+// The workspace of the window (docs/app.md, "Window"): the J2000 solar system
+// with the Earth selected, the drift series of the backward run and a running
+// simulation at the solar_system experiment's warp.
+UiScene workspace_scene(const test::SolarSystemHistory& history) {
+    const core::SimSnapshot& snapshot = *history.snapshot;
+    const core::BodyId earth = snapshot.ids()[index_of(snapshot, "Earth")];
+    UiScene scene;
+    scene.bar.paused = false;
+    scene.bar.time_warp = 1'000'000;
+    scene.bar.effective_warp = 1'000'000.0;
+    scene.bar.sim_time_days = 0.0;
+    scene.bar.scenario = 1;
+    scene.bar.fps = 144.0;
+    scene.inspector = make_body_inspector_data(snapshot, earth);
+    scene.monitor.sim_time_days = 0.0;
+    scene.monitor.body_count = snapshot.size();
+    scene.monitor.frame_time_ms = 2.4;
+    scene.monitor.physics_step_ms = 0.021;
+    scene.monitor.integrator = "leapfrog_kdk";
+    scene.monitor.series_label = "Relative energy drift (150 yr backward run)";
+    scene.monitor.series_time_days = history.drift_days;
+    scene.monitor.series_values = history.drift_values;
+    return scene;
+}
+
+// One frame of the window's UI: the app bar, the dock space (returns its
+// central area), the scene labels and the three panels.
+UiRect draw_workspace(UiContext& ui, const UiScene& scene, const FrameInfo& frame) {
+    UiFrameInput input;
+    input.width = frame.width;
+    input.height = frame.height;
+    ui.begin_frame(input);
+    AppBarData bar = scene.bar;
+    bar.scenarios = scene.scenarios;
+    (void)draw_app_bar(bar);
+    const UiRect central = ui.dockspace();
+    draw_scene_labels(scene.labels);
+    (void)draw_body_inspector(scene.inspector);
+    (void)draw_system_monitor(scene.monitor);
+    (void)draw_render_settings(scene.settings);
+    ui.end_frame();
+    return central;
+}
 
 } // namespace
 
@@ -527,16 +574,7 @@ TEST_CASE("Golden snapshot: docked UI panels over the space scene", "[render][gl
     CHECK(ui.has_renderer());
 
     const core::BodyId earth = snapshot.ids()[index_of(snapshot, "Earth")];
-    UiScene scene;
-    scene.inspector = make_body_inspector_data(snapshot, earth);
-    scene.monitor.sim_time_days = 0.0;
-    scene.monitor.body_count = snapshot.size();
-    scene.monitor.frame_time_ms = 2.4;
-    scene.monitor.physics_step_ms = 0.021;
-    scene.monitor.integrator = "leapfrog_kdk";
-    scene.monitor.series_label = "Relative energy drift (150 yr backward run)";
-    scene.monitor.series_time_days = history.drift_days;
-    scene.monitor.series_values = history.drift_values;
+    UiScene scene = workspace_scene(history);
 
     // The scene is framed for the central area left free by the panels.
     const Camera camera = solar_system_camera(snapshot, 14.0);
@@ -548,18 +586,7 @@ TEST_CASE("Golden snapshot: docked UI panels over the space scene", "[render][gl
     CHECK(scene.labels.front().name == "Earth");
 
     UiRect central{};
-    const auto draw_ui = [&](const FrameInfo& f) {
-        UiFrameInput input;
-        input.width = f.width;
-        input.height = f.height;
-        ui.begin_frame(input);
-        central = ui.dockspace();
-        draw_scene_labels(scene.labels);
-        (void)draw_body_inspector(scene.inspector);
-        (void)draw_system_monitor(scene.monitor);
-        (void)draw_render_settings(scene.settings);
-        ui.end_frame();
-    };
+    const auto draw_ui = [&](const FrameInfo& f) { central = draw_workspace(ui, scene, f); };
     const auto draw_scene = [&](const FrameInfo& f) {
         (void)space.value().draw(SpaceView{&snapshot, &history.trails, &camera, scene.settings}, f);
     };
@@ -585,6 +612,10 @@ TEST_CASE("Golden snapshot: docked UI panels over the space scene", "[render][gl
         }
     }
     CHECK(text_pixels > 1500);
+    // The app bar runs across the top; the dock space starts below it.
+    CHECK(central.y > 20.0);
+    CHECK(central.y < 60.0);
+    CHECK(left->y >= central.y - 0.5);
     // The central area still shows the scene: the Sun is there.
     CHECK(central.width > kWidth * 0.4);
     const BodyScreenInfo& sun = prepared.screen[index_of(snapshot, "Sun")];
@@ -594,6 +625,73 @@ TEST_CASE("Golden snapshot: docked UI panels over the space scene", "[render][gl
     CHECK(luma(image, static_cast<std::uint32_t>(sun.pixel.x),
                static_cast<std::uint32_t>(sun.pixel.y)) > 235.0);
     check_golden(image, "ui_space_workspace");
+}
+
+TEST_CASE("The workspace layout holds from 1024 to 1920 px and in its empty state",
+          "[render][gl][ui]") {
+    // The window's composition at common sizes, plus the state before the
+    // first snapshot (no bodies, no series) with a limited warp and a
+    // simulation message. The images are written for review.
+    const test::SolarSystemHistory history = test::solar_system_history(150.0);
+    const core::SimSnapshot& snapshot = *history.snapshot;
+    const core::BodyId earth = snapshot.ids()[index_of(snapshot, "Earth")];
+    struct Case {
+        int width;
+        int height;
+        bool empty;
+    };
+    for (const Case c : {Case{1920, 1080, false}, Case{1366, 768, false}, Case{1024, 640, false},
+                         Case{1024, 640, true}}) {
+        const std::string name = "ui_workspace_" + std::to_string(c.width) + "x" +
+                                 std::to_string(c.height) + (c.empty ? "_empty" : "");
+        INFO(name);
+        HdrSettings hdr;
+        hdr.samples = 4;
+        OffscreenRenderer renderer = renderer_or_skip(c.width, c.height, hdr);
+        auto space = SpaceRenderer::create();
+        REQUIRE(space.has_value());
+        auto created = UiContext::create(renderer.context());
+        REQUIRE(created.has_value());
+        UiContext ui = std::move(created).value();
+
+        UiScene scene = workspace_scene(history);
+        const Camera camera = solar_system_camera(snapshot, 14.0);
+        if (c.empty) {
+            scene.bar.warp_limited = true;
+            scene.bar.effective_warp = 640'000.0;
+            scene.bar.message = "Step failed: non-finite state; simulation paused";
+            scene.inspector = BodyInspectorData{};
+            scene.monitor = SystemMonitorData{};
+            scene.monitor.series_label = "Relative energy drift";
+        } else {
+            const PreparedBodies prepared =
+                prepare_bodies(snapshot, camera, FrameInfo{c.width, c.height}, scene.settings);
+            scene.labels = make_scene_labels(snapshot, prepared.screen, earth);
+        }
+        UiRect central{};
+        const auto draw_ui = [&](const FrameInfo& f) { central = draw_workspace(ui, scene, f); };
+        const auto draw_scene = [&](const FrameInfo& f) {
+            if (!c.empty) {
+                (void)space.value().draw(
+                    SpaceView{&snapshot, &history.trails, &camera, scene.settings}, f);
+            }
+        };
+        for (int i = 0; i < 2; ++i) {
+            REQUIRE(renderer.render(draw_scene, draw_ui).has_value());
+        }
+        auto rendered = renderer.render(draw_scene, draw_ui);
+        REQUIRE(rendered.has_value());
+        const std::filesystem::path output_dir = ORRERY_RENDER_OUTPUT_DIR;
+        std::filesystem::create_directories(output_dir);
+        REQUIRE(write_png(output_dir / (name + "_actual.png"), rendered.value()).has_value());
+
+        CHECK(ui.window_docked(kBodyInspectorWindow));
+        CHECK(ui.window_docked(kSystemMonitorWindow));
+        CHECK(ui.window_docked(kRenderSettingsWindow));
+        CHECK(central.y > 20.0);
+        CHECK(central.width > c.width * 0.4);
+        CHECK(central.height > c.height * 0.5);
+    }
 }
 
 TEST_CASE("The Milky Way band is brightest towards the galactic centre and absent at the pole",

@@ -438,7 +438,11 @@ The physical radius is the snapshot radius when positive; otherwise the
 nominal radius from a built-in table of solar-system bodies (IAU/NASA mean
 radii; matched on the first word of the name, so "Jupiter system" is
 Jupiter) or, for unknown bodies, from mass and a bulk density per kind. A
-black hole uses its shadow radius `sqrt(27)/2 r_s`.
+black hole uses its shadow radius `sqrt(27)/2 r_s`. Stars other than the Sun
+get radius, luminosity and temperature from main-sequence mass relations,
+except S2 near Sgr A* (T_eff = 28,500 K, R = 5.53 R_sun; Habibi et al.
+2017): the bundled scenario enters it as a zero-mass test star, which the
+relations would draw as a cool red dwarf instead of the hot B star it is.
 
 **Materials and lighting.** Each kind and known body has a primary and a
 secondary albedo, a procedural surface style (rocky, cloudy, terrestrial,
@@ -461,8 +465,14 @@ pairs give finite instance data and an evenly lit disc).
 of their effective temperature (unit luminance, linear sRGB from the
 Planckian locus), limb darkening `1 - 0.6 (1 - mu)`, faint granulation. They
 are by far the brightest objects, so the future bloom pass has HDR values to
-work with. Until then an analytic glare sprite (core plus wide skirt, sized
-from the disc) marks them. **Black holes** are a black disc of the shadow
+work with. Until then an analytic glare sprite marks them: a point spread
+function sized from the disc radius d, `0.55 / (1 + x^2)^2` with
+`x = r / 1.6d` (core) plus power-law wings `0.09 / (1 + (r / 3d)^2)^1.5`
+and a faint veil `0.012 / (1 + (r / 9d)^2)^1.5`, both falling as r^-3, times
+the photosphere colour at 0.11. The sprite reaches 24 d (64 .. 480 px) and
+its window only fades the last, already faint, part of the wings from 30
+percent of that extent, so the glare has no visible rim (an earlier flat
+skirt read as a grey disc around every star). **Black holes** are a black disc of the shadow
 radius with a faint warm ring sprite (no lensing; Phase 5). **Probes** are
 small emissive cyan markers.
 
@@ -485,11 +495,19 @@ multiplies the direction (w = 0) by the view-projection matrix, so only the
 camera rotation matters. Peak radiance `2.4 * 10^(-0.4 * 0.85 m) / sigma^2`,
 sigma 0.42 .. 1.02 px growing for bright stars, scaled with the viewport
 height. The Milky Way is a full-screen pass in galactic coordinates: a
-Gaussian disc that thickens towards the centre, a bulge, star clouds and fine
-grain from value noise, and a meandering dust lane; surface brightness at most
-about 0.04 scene-linear, which the ACES toe keeps subtle. Tested: the band is
-more than twice as bright towards the centre as towards the anticentre, and
-dark at the galactic pole.
+Gaussian disc that thickens towards the centre, a bulge, star clouds and a
+gentle finer texture from value noise, and a meandering dust lane broken into
+filaments that dims the band by up to 70 percent. The noise is evaluated on
+galactic axes stretched 1.5 times across the plane and domain-warped along
+it, so clouds and lanes run along the band and meander instead of forming
+round blobs (no seam: the coordinates are the galactic direction, not
+longitude). The tint is a desaturated cool white along the disc and warmer
+towards the bulge. Intensity scale 0.03 scene-linear (the band itself stays
+below about 0.1 even at the bulge), which the ACES toe keeps a backdrop: the
+default framing camera looks about 30 degrees from the galactic centre, so
+the band is behind every opening view and must not compete with the trails.
+Tested: the band is more than twice as bright towards the centre as towards
+the anticentre, and dark at the galactic pole.
 
 ## 12. Trails
 
@@ -572,6 +590,29 @@ and the ordering of the surfaces are unit-tested; the stock ImGui blue is not
 used. Embedded scalable ImGui font at 15 px, 4 px rounding, 12/10 px window
 padding, upper-case muted section captions, label-left form rows.
 
+Readability details, all checked in the multi-size render test below:
+
+- Slider grabs are the accent at 45 percent over the track
+  (`UiTheme::slider_grab`), because ImGui draws the value text over the
+  grab: the text keeps 4.6:1 there (tested >= 4.5:1) while the grab stays an
+  amber mark on the grey track (2.6:1). It is opaque only while dragged.
+- The settings rows put controls at a column sized for the longest label
+  and capped at 40 percent of the panel; in a narrow panel the second Scale
+  option wraps under the first. Property tables use a fixed label column
+  ("Period" plus spacing) and give the values the rest, so "3.0035e-06 Msun"
+  fits a 235 px inspector. The kind next to each body name is dropped where
+  it would run into the name.
+- Empty states: an inspector without bodies says "No bodies to show."; the
+  System Monitor plot without samples shows "No data recorded yet" in an
+  empty frame (no placeholder [0, 1] axes). The time axis is in days with as
+  many decimals as the span needs (2 below 2 d, 1 below 20 d), or in years
+  from five years on, plotted in that unit so that the ticks fall on round
+  values.
+- Scene labels carry a 1 px dark shadow (70 percent black) so that names
+  stay readable over the Milky Way and trails.
+- The dock nodes hide their window menu button (the arrow in front of each
+  panel tab): the layout is code-defined and the menu could only undo it.
+
 ## 14. Phase 4b golden snapshots and tests
 
 Same procedure as section 8 (`ORRERY_UPDATE_GOLDEN=1 orrery_test_render
@@ -581,7 +622,7 @@ Same procedure as section 8 (`ORRERY_UPDATE_GOLDEN=1 orrery_test_render
 |---|---|---|
 | `space_solar_system.png` | 960x540 | J2000 solar system loaded with orrery_scene, oblique Orbit camera 12.5 AU from a point 4.2 AU from the Sun, 40 degree FOV, trails from a 150-year backward leapfrog run (600 samples, 85 percent of each orbit), starfield and Milky Way |
 | `space_earth_moon_true_scale.png`, `space_earth_moon_clamped.png` | 640x360 | the J2000 Earth from 32,000 km with the Moon beside it, 55 degree FOV, no trails; true scale and clamped (min. size x2) |
-| `ui_space_workspace.png` | 1280x720 | the docked panels (Earth selected, drift plot of the backward run) and scene labels over the solar system |
+| `ui_space_workspace.png` | 1280x720 | the window's composition: app bar (running, 1e6x), docked panels (Earth selected, drift plot of the backward run) and scene labels over the solar system |
 
 Whole-image SSIM cannot see a small planet: in the mostly empty 960x540
 frame, erasing a 10x10 patch changes at most 20x20 of the 950x530 SSIM
@@ -599,11 +640,19 @@ shift of every body plus +-2 levels of noise is accepted.
 Besides SSIM, the tests check structure that holds on any driver: the Sun is
 the brightest pixel and nothing else clips, the sky stays dark on average,
 the Earth disc is identical in both scale modes while the Moon grows, the UI
-panels are docked and carry text while the scene shows in the central area.
-With the compressed PNG writer (section 7) the five references take 1.05 MB
-(previously 7.9 MB of stored blocks): `space_solar_system.png` 388 KB,
-`ui_space_workspace.png` 490 KB, the two Earth-Moon images 72 to 73 KB each,
-`test_shape.png` 22 KB.
+panels are docked below the app bar and carry text while the scene shows in
+the central area. With the compressed PNG writer (section 7) the five
+references take 0.80 MB (previously 7.9 MB of stored blocks):
+`space_solar_system.png` 270 KB, `ui_space_workspace.png` 385 KB, the two
+Earth-Moon images 60 to 61 KB each, `test_shape.png` 22 KB.
+
+A further `[ui]` test renders the same composition at 1920x1080, 1366x768
+and 1024x640, and at 1024x640 in the state before the first snapshot (no
+bodies, no series, a limited warp and a simulation message), checks that
+the panels stay docked below the bar with a usable central area, and writes
+`ui_workspace_<size>[_empty]_actual.png` for review (no reference: these
+images exist to catch layout regressions by eye at sizes the golden does
+not cover).
 
 CPU tests (no GL): icosphere topology and precision, LOD thresholds, scale
 policy, frustum culling, appearance table and black-body colours, settings
@@ -652,5 +701,5 @@ Every item is marked `// APPROXIMATION:` in the code.
 | `shaders/body.frag.glsl` | PBR-lite: Lambert + normalised Blinn-Phong with Schlick Fresnel, small ambient; no atmosphere, shadows or eclipses | restrained shading for bodies seen from space | plausible; no mutual shadowing |
 | `shaders/body.frag.glsl` | photosphere: linear limb darkening (u = 0.6), faint granulation | display of emissive stars | Sun-like stars |
 | `shaders/body.frag.glsl` | black hole: unlensed black disc of the shadow radius with a faint ring | lensing renderer is Phase 5 | position and apparent size of the shadow only |
-| `shaders/glow.frag.glsl` | star glare: analytic halo sprite | stands in for optical glare until the bloom pass | display only |
-| `shaders/milky_way.frag.glsl` | Milky Way: Gaussian disc, bulge, noise star clouds and dust lane | no survey data | band position and overall shape, not detail |
+| `shaders/glow.frag.glsl` | star glare: analytic point spread function (Moffat core, r^-3 wings) | stands in for optical glare until the bloom pass | display only |
+| `shaders/milky_way.frag.glsl` | Milky Way: Gaussian disc, bulge, noise star clouds and filamentary dust lanes along the plane | no survey data | band position and overall shape, not detail |

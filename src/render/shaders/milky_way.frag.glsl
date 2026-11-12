@@ -11,8 +11,6 @@ uniform float u_intensity; // scene-linear radiance scale
 
 layout(location = 0) out vec4 o_color;
 
-const float kPi = 3.14159265358979;
-
 void main() {
     vec4 ndc = vec4(v_uv * 2.0 - 1.0, 0.0, 1.0);
     vec4 point = u_inverse_view_projection * ndc;
@@ -23,35 +21,47 @@ void main() {
 
     // APPROXIMATION: Milky Way surface brightness - a Gaussian disc in
     // latitude that thickens and brightens towards the galactic centre, a
-    // central bulge, value-noise mottling and dust lanes along the plane -
-    // reproduces the band's position and overall shape, not its detail.
+    // central bulge, value-noise star clouds and filamentary dust lanes along
+    // the plane - reproduces the band's position and overall shape, not its
+    // detail.
     float centre = exp(-(l * l) / (2.0 * 0.9 * 0.9));
-    vec3 p = direction * 4.0;
+    // Noise coordinates stretched along the plane (galactic z weighs 1.5 times as
+    // much as x and y), so that clouds and lanes run along the band instead
+    // of forming round blobs, then domain-warped so that they meander; the
+    // galactic axes avoid any seam.
+    vec3 q = vec3(g.xy * 3.0, g.z * 4.5);
+    q += 0.9 * vec3(orrery_fbm(q * 0.9 + vec3(1.7, 9.2, -3.3), 3) - 0.5,
+                    orrery_fbm(q * 0.9 + vec3(-8.3, 2.8, 5.1), 3) - 0.5, 0.0);
     // Latitude wobble so that the band edges are not perfectly straight.
-    float wobble = (orrery_fbm(p * 0.7 + vec3(11.0, 3.0, -2.0), 3) - 0.5) * 0.08;
+    float wobble = (orrery_fbm(q * 0.4 + vec3(11.0, 3.0, -2.0), 3) - 0.5) * 0.06;
     float bw = b + wobble;
-    float width = 0.09 + 0.08 * centre;
+    float width = 0.10 + 0.08 * centre;
     float disc = exp(-(bw * bw) / (2.0 * width * width)) * (0.30 + 0.70 * centre);
-    float halo = exp(-(b * b) / (2.0 * 0.45 * 0.45)) * (0.04 + 0.10 * centre);
+    float halo = exp(-(b * b) / (2.0 * 0.45 * 0.45)) * (0.03 + 0.08 * centre);
     float bulge = exp(-((l * l) / (2.0 * 0.22 * 0.22) + (b * b) / (2.0 * 0.16 * 0.16)));
 
-    // Star clouds: clumpy brightness along the plane.
-    float clouds = orrery_fbm(p * 2.6, 6);
+    // Star clouds: elongated brightness clumps along the plane, with a gentle
+    // finer texture (the resolved stars come from the starfield).
+    float clouds = orrery_fbm(q * 2.4, 6);
     float clumps = smoothstep(0.30, 0.80, clouds);
-    float grain = orrery_fbm(p * 70.0 + vec3(3.1, -1.7, 8.2), 2);
-    float brightness = disc * (0.45 + 0.9 * clumps) * (0.7 + 0.6 * grain) + halo +
-                       1.6 * bulge * (0.75 + 0.5 * clumps);
+    float texture_fine = orrery_fbm(q * 9.0 + vec3(3.1, -1.7, 8.2), 3);
+    float brightness = disc * (0.40 + 0.95 * clumps) * (0.88 + 0.24 * texture_fine) + halo +
+                       1.15 * bulge * (0.75 + 0.5 * clumps);
 
-    // Dark rifts: a meandering lane along the plane, broken up by noise.
-    float lane_centre = (orrery_fbm(p * 1.1 + vec3(-4.0, 2.0, 1.0), 4) - 0.5) * 0.10;
-    float lane_width = 0.025 + 0.03 * centre;
+    // Dust: a meandering lane along the plane, broken into filaments; partial
+    // extinction keeps some light behind it, as in the Great Rift.
+    float lane_centre = (orrery_fbm(q * 0.6 + vec3(-4.0, 2.0, 1.0), 4) - 0.5) * 0.08;
+    float lane_width = 0.022 + 0.03 * centre;
     float lane = exp(-((b - lane_centre) * (b - lane_centre)) / (2.0 * lane_width * lane_width));
-    float rifts = smoothstep(0.45, 0.65, orrery_fbm(p * 3.5 + vec3(7.0, -3.0, 5.0), 5));
-    float dust = lane * rifts;
-    brightness *= 1.0 - 0.85 * dust;
+    float filaments = smoothstep(0.42, 0.68, orrery_fbm(q * 3.2 + vec3(7.0, -3.0, 5.0), 5));
+    float dust = lane * (0.35 + 0.65 * filaments);
+    brightness *= 1.0 - 0.7 * dust;
 
-    vec3 warm = vec3(1.00, 0.91, 0.80);
-    vec3 cool = vec3(0.80, 0.87, 1.00);
-    vec3 tint = mix(cool, warm, clamp(0.15 + 0.85 * centre + 0.5 * bulge, 0.0, 1.0));
+    // Old disc light is close to neutral white with a slight blue cast away
+    // from the centre; the bulge is warmer. Kept desaturated: the band is a
+    // backdrop, the bodies and trails carry the colour.
+    vec3 warm = vec3(1.00, 0.90, 0.78);
+    vec3 cool = vec3(0.86, 0.91, 1.00);
+    vec3 tint = mix(cool, warm, clamp(0.10 + 0.60 * centre + 0.6 * bulge, 0.0, 1.0));
     o_color = vec4(tint * brightness * u_intensity, 1.0);
 }

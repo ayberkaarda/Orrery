@@ -4,6 +4,8 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
+#include <limits>
 #include <system_error>
 
 #include <imgui.h>
@@ -45,6 +47,33 @@ void item_tooltip(const char* text) {
         ImGui::TextUnformatted(text);
         ImGui::EndTooltip();
     }
+}
+
+// `text` cut at a UTF-8 character boundary and ended with "..." so that it
+// has at most `max_chars` bytes and fits `max_width` pixels; unchanged if it
+// already does, "..." alone if nothing else fits.
+std::string shortened(const std::string& text, float max_width, std::size_t max_chars) {
+    if (text.size() <= max_chars && ImGui::CalcTextSize(text.c_str()).x <= max_width) {
+        return text;
+    }
+    std::string cut = text.substr(0, std::min(text.size(), max_chars));
+    const auto pop_character = [&cut] {
+        while (!cut.empty() && (static_cast<unsigned char>(cut.back()) & 0xC0U) == 0x80U) {
+            cut.pop_back(); // continuation bytes
+        }
+        if (!cut.empty()) {
+            cut.pop_back();
+        }
+    };
+    pop_character();
+    while (!cut.empty() && (cut.size() + 3 > max_chars ||
+                            ImGui::CalcTextSize((cut + "...").c_str()).x > max_width)) {
+        pop_character();
+    }
+    while (!cut.empty() && cut.back() == ' ') {
+        cut.pop_back();
+    }
+    return cut + "...";
 }
 
 // Small orbit mark in front of the word mark: a ring, the sun and a planet.
@@ -237,6 +266,9 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
     }
     const ImGuiStyle& style = ImGui::GetStyle();
     const float gap = style.ItemSpacing.x * 2.0F;
+    // Below about 80 em (1200 px at the default font) the captions go and the
+    // scenario selector narrows, so that the status on the right keeps room.
+    const bool compact = ImGui::GetWindowWidth() < ImGui::GetFontSize() * 80.0F;
 
     word_mark();
     ImGui::Dummy(ImVec2(gap, 0.0F));
@@ -259,7 +291,9 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
     ImGui::Separator();
 
     // Time warp: arrows step through the presets, the value opens the list.
-    muted("WARP");
+    if (!compact) {
+        muted("WARP");
+    }
     if (ImGui::ArrowButton("##warp_down", ImGuiDir_Left)) {
         intent.set_time_warp = step_time_warp(data.time_warp, -1);
     }
@@ -288,8 +322,11 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
         data.paused
             ? static_cast<double>(data.time_warp)
             : (data.warp_limited ? data.effective_warp : static_cast<double>(data.time_warp));
-    muted(rate_label(shown_warp).c_str());
-    if (data.warp_limited && !data.paused) {
+    const bool limited = data.warp_limited && !data.paused;
+    if (!compact || !limited) { // a compact bar keeps only the chip's achieved warp
+        muted(rate_label(shown_warp).c_str());
+    }
+    if (limited) {
         warning_chip("LIMITED " + format_time_warp(data.effective_warp),
                      "The physics step budget cannot sustain the requested warp:\n"
                      "simulated time advances at the achieved rate shown here.\n"
@@ -298,12 +335,19 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
     ImGui::Separator();
 
     // Scenario selector.
-    muted("SCENARIO");
+    if (!compact) {
+        muted("SCENARIO");
+    }
     std::string preview(data.scenario_label);
     if (data.scenario && *data.scenario < data.scenarios.size()) {
         preview = data.scenarios[*data.scenario];
     }
-    ImGui::SetNextItemWidth(ImGui::GetFontSize() * 13.0F);
+    const float combo_width = ImGui::GetFontSize() * (compact ? 10.0F : 13.0F);
+    const std::string full_preview = preview;
+    preview =
+        shortened(preview, combo_width - ImGui::GetFrameHeight() - style.FramePadding.x * 2.0F,
+                  preview.size());
+    ImGui::SetNextItemWidth(combo_width);
     if (ImGui::BeginCombo("##scenario", preview.c_str())) {
         for (std::size_t i = 0; i < data.scenarios.size(); ++i) {
             const bool selected = data.scenario == i;
@@ -315,21 +359,32 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
         }
         ImGui::EndCombo();
     }
+    item_tooltip(("Scenario: " + full_preview).c_str());
 
-    // Right-aligned status: message, simulated time, frame rate.
+    // Right-aligned status: message, simulated time, frame rate. The time
+    // always shows; the message is shortened to the room left (full text in
+    // its tooltip) and the frame rate is dropped first when space runs out.
     const std::string time_text = sim_time_label(data.sim_time_days);
     const std::string fps_text = fixed(data.fps, 0) + " fps";
+    const float spacing = style.ItemSpacing.x;
+    const float time_width = ImGui::CalcTextSize(time_text.c_str()).x;
+    const float fps_width = ImGui::CalcTextSize(fps_text.c_str()).x + gap * 0.5F + spacing * 2.0F;
+    const float room = ImGui::GetWindowContentRegionMax().x - ImGui::GetCursorPosX() - gap;
     std::string message(data.message);
     constexpr std::size_t kMaxMessage = 72;
-    const bool truncated = message.size() > kMaxMessage;
-    if (truncated) {
-        message.resize(kMaxMessage - 3);
-        message += "...";
+    if (message.size() > kMaxMessage) {
+        message = shortened(message, std::numeric_limits<float>::max(), kMaxMessage);
     }
-    float right = ImGui::CalcTextSize(time_text.c_str()).x +
-                  ImGui::CalcTextSize(fps_text.c_str()).x + gap * 2.0F;
+    const float message_room =
+        room - time_width - (message.empty() ? 0.0F : gap * 0.5F + spacing * 2.0F);
+    const bool show_fps = message_room - fps_width >=
+                          (message.empty() ? 0.0F : ImGui::CalcTextSize(message.c_str()).x);
     if (!message.empty()) {
-        right += ImGui::CalcTextSize(message.c_str()).x + gap;
+        message = shortened(message, message_room - (show_fps ? fps_width : 0.0F), message.size());
+    }
+    float right = time_width + (show_fps ? fps_width : 0.0F);
+    if (!message.empty()) {
+        right += ImGui::CalcTextSize(message.c_str()).x + gap * 0.5F + spacing * 2.0F;
     }
     const float start = ImGui::GetWindowContentRegionMax().x - right;
     if (start > ImGui::GetCursorPosX()) {
@@ -339,15 +394,17 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
         ImGui::PushStyleColor(ImGuiCol_Text, im(default_theme().warning, 1.0F));
         ImGui::TextUnformatted(message.c_str());
         ImGui::PopStyleColor();
-        if (truncated) {
+        if (message != data.message) {
             item_tooltip(std::string(data.message).c_str());
         }
         ImGui::Dummy(ImVec2(gap * 0.5F, 0.0F));
     }
     ImGui::TextUnformatted(time_text.c_str());
     item_tooltip("Simulated time since the scenario epoch");
-    ImGui::Dummy(ImVec2(gap * 0.5F, 0.0F));
-    muted(fps_text.c_str());
+    if (show_fps) {
+        ImGui::Dummy(ImVec2(gap * 0.5F, 0.0F));
+        muted(fps_text.c_str());
+    }
     ImGui::EndMainMenuBar();
     ImGui::PopStyleVar(2);
     return intent;

@@ -59,6 +59,12 @@ TEST_CASE("The UI theme is readable and does not use the stock ImGui blue", "[re
     CHECK(contrast_ratio(t.text, t.control) >= 7.0);
     CHECK(contrast_ratio(t.text_muted, t.control) >= 4.5);
     CHECK(contrast_ratio(t.accent, window) >= 4.5);
+    // A slider's value is drawn over its grab: the text stays readable there
+    // (>= 4.5:1), and the grab still stands out from the track.
+    const UiColor grab = composite(t.slider_grab, t.control);
+    CHECK(contrast_ratio(t.text, grab) >= 4.5);
+    CHECK(contrast_ratio(grab, t.control) >= 2.5);
+    CHECK(grab.r > grab.b); // still reads as the accent
     // Surfaces stay dark (the scene is space) and ordered.
     CHECK(relative_luminance(window) < 0.02);
     CHECK(relative_luminance(t.title) <= relative_luminance(window));
