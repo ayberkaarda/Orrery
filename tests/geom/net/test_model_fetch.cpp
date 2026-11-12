@@ -464,6 +464,22 @@ TEST_CASE("A binary PLY download is accepted", "[net][fetch][ply]") {
     CHECK(read_file(zipped.value().local_path) == binary_ply(false));
 }
 
+TEST_CASE("A trusted certificate for another host name is rejected", "[net][fetch][tls]") {
+    // The chain is trusted (the certificate is its own CA in the bundle), but
+    // its names exclude 127.0.0.1: only host name verification can refuse it.
+    TempDir dir;
+    const TestCertificate other_host = make_test_certificate(dir.path(), "DNS:other-host.invalid");
+    MockServer server{MockServer::Mode::tls, &other_host};
+    server.route("/part.stl", body(binary_stl(1)));
+    FetchOptions options;
+    options.cache_dir = dir.path() / "cache";
+    options.ca_bundle_override = other_host.ca_file;
+    options.use_environment_proxy = false;
+    options.limits.total_timeout = 10s;
+    CHECK(rejection(server.url("/part.stl"), options) == FetchErrorKind::tls_failure);
+    CHECK(server.requests("/part.stl") == 0); // refused during the handshake
+}
+
 TEST_CASE("Linked cache directories are refused", "[net][fetch][cache][link]") {
     for (const char* linked : {".staging", "urls"}) {
         INFO(linked);
