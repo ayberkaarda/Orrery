@@ -314,8 +314,9 @@ TEST_CASE("Hostile zip downloads are rejected", "[net][fetch][zip]") {
     f.server.route("/traversal.zip",
                    body(build_zip({{"../../evil.obj", obj_text()}}), "application/zip"));
     std::vector<ZipMember> many;
+    many.reserve(1001);
     for (int i = 0; i < 1001; ++i) {
-        many.push_back({"m" + std::to_string(i) + ".obj", obj_text()});
+        many.emplace_back("m" + std::to_string(i) + ".obj", obj_text());
     }
     f.server.route("/many.zip", body(build_zip(many)));
     const FetchOptions options = f.options();

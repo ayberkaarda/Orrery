@@ -49,7 +49,7 @@ TEST_CASE("Archive member names must be plain relative paths", "[net][zip]") {
         CHECK(is_safe_member_name(safe));
     }
     for (const char* unsafe :
-         {"", "../evil.obj", "models/../../evil.obj", "a\\..\\..\\evil.obj", "..", "x/..",
+         {"", "../evil.obj", "models/../../evil.obj", R"(a\..\..\evil.obj)", "..", "x/..",
           "/etc/evil.obj", "\\evil.obj", "C:\\evil.obj", "C:evil.obj", "model.obj:stream",
           "bad\nname.obj", "bad\x01name.obj"}) {
         INFO(unsafe);
@@ -115,7 +115,7 @@ TEST_CASE("Zip bomb: the total uncompressed size is capped", "[net][zip]") {
 
 TEST_CASE("Zip with path traversal or absolute names is rejected", "[net][zip]") {
     for (const char* name : {"../evil.obj", "models/../../evil.obj", "/tmp/evil.obj", "\\evil.obj",
-                             "C:\\Windows\\evil.obj", "C:evil.obj", "a\\..\\..\\evil.obj"}) {
+                             "C:\\Windows\\evil.obj", "C:evil.obj", R"(a\..\..\evil.obj)"}) {
         INFO(name);
         CHECK(rejection({{"good.obj", obj_text()}, {name, obj_text()}}) ==
               FetchErrorKind::archive_unsafe_entry);
@@ -139,8 +139,9 @@ TEST_CASE("Zip with a symbolic link or an encrypted entry is rejected", "[net][z
 
 TEST_CASE("Zip with too many entries is rejected", "[net][zip]") {
     std::vector<ZipMember> members;
+    members.reserve(1001);
     for (int i = 0; i < 1001; ++i) {
-        members.push_back({"m" + std::to_string(i) + ".txt", "x"});
+        members.emplace_back("m" + std::to_string(i) + ".txt", "x");
     }
     CHECK(rejection(members) == FetchErrorKind::archive_too_many_entries);
 

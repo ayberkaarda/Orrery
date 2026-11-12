@@ -102,7 +102,7 @@ bool wait_readable(Socket s, int timeout_ms) {
 void set_receive_timeout(Socket s, int timeout_ms) {
     timeval value{};
     value.tv_sec = timeout_ms / 1000;
-    value.tv_usec = (timeout_ms % 1000) * 1000;
+    value.tv_usec = static_cast<decltype(value.tv_usec)>(timeout_ms % 1000) * 1000;
     setsockopt(s, SOL_SOCKET, SO_RCVTIMEO, &value, sizeof value);
 }
 
@@ -203,7 +203,7 @@ TestCertificate make_test_certificate(const std::filesystem::path& dir,
     std::random_device device;
     require(X509_set_version(cert.get(), X509_VERSION_3) == 1, "version");
     require(ASN1_INTEGER_set(X509_get_serialNumber(cert.get()),
-                             static_cast<long>((device() & 0x3FFFFFFFU) + 1U)) == 1,
+                             static_cast<long>(device() & 0x3FFFFFFFU) + 1L) == 1,
             "serial");
     require(X509_gmtime_adj(X509_getm_notBefore(cert.get()), -3600) != nullptr, "not before");
     require(X509_gmtime_adj(X509_getm_notAfter(cert.get()), 86400) != nullptr, "not after");
@@ -270,7 +270,7 @@ struct MockServer::Impl {
     // Writes everything or gives up (the client may have gone away).
     bool write_all(Socket client, SSL* ssl, std::string_view data) const {
         while (!data.empty()) {
-            const std::size_t chunk = std::min<std::size_t>(data.size(), 16 * 1024);
+            const std::size_t chunk = std::min<std::size_t>(data.size(), std::size_t{16} * 1024U);
             long written = 0;
             if (ssl != nullptr) {
                 written = SSL_write(ssl, data.data(), static_cast<int>(chunk));
@@ -288,7 +288,8 @@ struct MockServer::Impl {
     std::string read_request(Socket client, SSL* ssl) const {
         std::string request;
         char buffer[2048];
-        while (request.find("\r\n\r\n") == std::string::npos && request.size() < 16 * 1024) {
+        while (request.find("\r\n\r\n") == std::string::npos &&
+               request.size() < std::size_t{16} * 1024U) {
             long got = 0;
             if (ssl != nullptr) {
                 got = SSL_read(ssl, buffer, static_cast<int>(sizeof buffer));
@@ -334,7 +335,10 @@ struct MockServer::Impl {
         std::string head = "HTTP/1.1 " + std::to_string(response.status) + " " +
                            reason_phrase(response.status) + "\r\n";
         for (const auto& [key, value] : response.headers) {
-            head += key + ": " + value + "\r\n";
+            head += key;
+            head += ": ";
+            head += value;
+            head += "\r\n";
         }
         if (response.send_content_length) {
             head += "Content-Length: " +
