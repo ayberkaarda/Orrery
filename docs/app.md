@@ -204,6 +204,16 @@ the experiment's scenario file), and right-aligned the simulation message in
 the warning colour, the simulated time and the frame rate. It follows the
 theme of `rendering.md` section 13.
 
+The bar adapts to the window width. Below 80 em (1200 px at the 15 px font)
+it drops the `WARP` and `SCENARIO` captions, narrows the scenario selector
+from 13 to 10 em and, while the `LIMITED` chip shows, leaves the achieved
+rate to the chip. The scenario name is shortened with an ellipsis to the
+selector's width (the full name is in its tooltip). On the right the
+simulated time always shows; the message is shortened to the room left (at
+most 72 bytes, cut at a UTF-8 character boundary, full text in its tooltip)
+and the frame rate is the first item dropped when space runs out. Checked
+at 1024 px by the multi-size render test of `rendering.md` section 14.
+
 **Input:** left drag orbits the camera, the wheel zooms, Space runs/pauses,
 `.` or Right steps, F or Home reframes; only when ImGui does not want the
 pointer or keyboard. The Body Inspector's Focus orbits the selected body at
