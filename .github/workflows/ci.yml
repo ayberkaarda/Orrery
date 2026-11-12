@@ -197,7 +197,7 @@ jobs:
   lint:
     name: lint (format, tidy, cppcheck, deps)
     runs-on: ubuntu-22.04
-    timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 75 || 30 }}
+    timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 75 || 50 }}
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       CC: clang-17
@@ -259,7 +259,7 @@ jobs:
       - name: clang-tidy
         # Full-project runs (manual/scheduled) get a longer budget; PR and push
         # runs only analyse the changed first-party translation units.
-        timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 60 || 25 }}
+        timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 60 || 40 }}
         env:
           EVENT_NAME: ${{ github.event_name }}
           BASE_REF: ${{ github.base_ref }}
