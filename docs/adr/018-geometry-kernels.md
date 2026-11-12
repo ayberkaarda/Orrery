@@ -38,7 +38,11 @@ import. Two further facts shaped the decision:
   then the three permitted steps Triangulate, JoinIdenticalVertices and
   GenNormals, followed by a second validation during conversion to double.
 - Files referenced by a model are opened only from the model's own directory;
-  memory imports may not open any file.
+  memory imports may not open any file. The model file is parsed from the
+  bytes that were size-checked and pre-scanned (never reopened), and every
+  referenced file is read whole into memory against the same
+  `max_file_bytes` budget, so the model and its references together stay
+  within the limit.
 
 ## Consequences
 The geometry library builds in seconds and stays warning-free under every
@@ -50,7 +54,11 @@ no exact (rational) predicates. The pre-scan covers the formats whose parsers
 allocate from declared counts (PLY, FBX); STL, OBJ and glTF bound their
 storage by the data present or check it themselves. Shared-library builds
 (vcpkg x64-windows) ship assimp's DLL next to every executable that links
-`orrery_geom`.
+`orrery_geom`. The vcpkg assimp port is single precision (`ai_real` is
+`float`): imported coordinates carry float resolution until they are widened
+to double (G7 in `physics.md`); building assimp with
+`ASSIMP_DOUBLE_PRECISION` would need an overlay port and the matching define
+in every user of its headers.
 
 Alternatives rejected: libigl with Eigen (compile cost and warning surface
 for a few hundred lines of algorithms), the CGAL polygon-mesh-processing

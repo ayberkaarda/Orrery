@@ -456,7 +456,7 @@ validation gate around assimp); tests in `tests/geom`.
 | Sphere voxelization | r = 1, 16128 triangles, 44^3 cells of 0.05, against the true sphere | 85184 of 85184 cells agree (accuracy 1.0); solid volume within 2 percent | 0.999 (acceptance) |
 | Hierarchical winding number | beta = 2 against the direct sum, 2000 random points in [-2, 2]^3 | worst abs error 0.024, no inside/outside disagreement | 0.05 |
 | Narrow-band SDF | r = 0.8 sphere, 96 x 48 facets, band 3 cells | worst error 8.6e-4 against abs(p) - r (facet sagitta 1.7e-3) | sagitta |
-| Hostile input | NaN/inf coordinates, out-of-range indices, STL/PLY/FBX headers declaring billions of elements, 16 GB deflate claim, oversized files, references outside the model directory | all rejected before parsing or before post-processing | rejected |
+| Hostile input | NaN/inf coordinates, out-of-range indices, STL/PLY/FBX headers declaring billions of elements, a PLY comment naming `end_header` before the counts, 16 GB deflate claim, oversized files, referenced files over the byte budget, references outside the model directory | all rejected before parsing or before post-processing | rejected |
 | Import of 508320 triangles (glb) with watertight report | hidden benchmark `[benchmark]` | 0.96 s | 5 s (project criterion) |
 
 ### Approximations (geometry)
@@ -471,3 +471,4 @@ for the centre of mass) applies to `reference_quantities`.
 | G4 | Holes filled by a fan from the loop centroid | `repair_mesh` | Small, nearly planar holes | Large or curved holes get a flat or self-intersecting patch (changes volume and area) |
 | G5 | Winding number far field truncated at first order (dipole), beta = 2 | `MeshTree::winding_number` | Error a few percent at worst, far below the 1/2 decision threshold | Values near 1/2 (open or self-overlapping meshes) may be misclassified where the exact sum is within a few percent of the threshold |
 | G6 | Silhouette area by cell-centre raster coverage (1024 cells along the larger side) | `projected_area` | Error below perimeter x cell size (about 0.4 percent for a sphere) | Thin features below a cell are lost; use the bound for convex bodies |
+| G7 | Imported coordinates and node transforms parsed in single precision (the vcpkg assimp port has no `ASSIMP_DOUBLE_PRECISION` build), widened to double afterwards | `import_mesh_file`, `import_mesh_memory` | Detail above about 1e-7 of the model extent (float resolution 6e-8 relative); every later stage is double | Coordinates closer than float resolution (`1.0` and `1.000000001`) collapse to one vertex; a double-precision assimp build is needed for such models |

@@ -51,6 +51,15 @@ pyramid with planar trapezoid faces, so
 
 The poles are single vertices, so every mesh is closed and 2-manifold.
 
+**Mesh size.** Each resolution parameter has its own range (`around` up to
+100000, arcs up to 10^6 pieces, NACA `n` up to 10^6 and `span_divisions` up
+to 10^5), but together they can describe meshes far too large to build. The
+revolution mesh and the NACA wing therefore compute the vertex and triangle
+counts their resolution implies (with saturating arithmetic) and throw
+`std::invalid_argument` above the default `MeshLimits` (10^7 each, which also
+keeps every index below 2^32 - 1) before the profile polyline, the section or
+the mesh is allocated.
+
 **Capsule.** Heat-shield sphere of radius R_n (nose at the origin), a
 toroidal shoulder of radius R_s tangent to it whose outermost point is the
 maximum radius D/2, a conical afterbody leaving the shoulder tangentially at
@@ -91,7 +100,9 @@ glTF 2.0 (`.gltf`, `.glb`), PLY, FBX, read through assimp. Every file is
 untrusted (ADR-010, ADR-018) and goes through four stages:
 
 1. **Pre-scan** of the counts the file declares (PLY element counts against
-   the limits and the bytes after the header; FBX ASCII `*N {` arrays and
+   the limits and the bytes after the header, the header ending at the first
+   line that is exactly `end_header` as the parser reads it, so a comment
+   containing the word cannot end it early; FBX ASCII `*N {` arrays and
    binary typed arrays against a decoded-size budget and, for deflated
    arrays, deflate's maximum ratio 1032:1). Parsers that allocate the
    declared storage up front never see a hostile count.
@@ -102,7 +113,21 @@ untrusted (ADR-010, ADR-018) and goes through four stages:
    index below its mesh's vertex count.
 4. **Post-processing**, only `Triangulate | JoinIdenticalVertices |
    GenNormals`, then conversion to double with all node transforms applied
-   (in double) and the same checks again (`validate_mesh`).
+   (in double) and the same checks again (`validate_mesh`). A node whose
+   world transform mirrors (negative determinant of its linear part) has
+   its triangles reversed, so a mirrored closed mesh stays outward.
+
+**Precision (G7).** The vcpkg assimp port is built without
+`ASSIMP_DOUBLE_PRECISION` and offers no feature to enable it, so assimp
+parses coordinates and node transforms into `float` (`ai_real`), and
+triangulation and vertex joining run in `float`. The conversion to double is
+exact but cannot restore what the parser rounded: text coordinates closer
+than float resolution (relative 6e-8, for example `1.0` and `1.000000001`)
+collapse to one value. Everything after the import (repair, voxels, panels,
+reference quantities) is double. Models whose detail is below 1e-7 of their
+extent need a double-precision assimp build (an overlay port with the
+define set for both the library and its users, since `ai_real` changes the
+ABI); the box fixtures use float-exact coordinates for this reason.
 
 Point and line primitives are dropped and counted (`skipped_primitives`).
 Files a model refers to (glTF buffers, OBJ materials) are opened only from
@@ -110,13 +135,19 @@ the model's own directory, read-only; `import_mesh_memory` refuses every
 file reference, so only self-contained data (glb, embedded buffers) loads
 from memory. glTF, glb and OBJ files are parsed from their path for this
 reason; STL, PLY and FBX are read into memory (after the size check) and
-parsed from there.
+parsed from there. For the path-based formats the file system handed to
+assimp serves the model file from the bytes already read and pre-scanned
+(it is never opened a second time, so a file replaced after the check is
+not what gets parsed) and reads every referenced file whole into memory
+against what is left of `max_file_bytes`: the model and everything it
+references together stay within the limit, and exceeding it is reported as
+`file_too_large`.
 
 Limits (`ImportLimits`, all configurable):
 
 | Limit | Default |
 |---|---|
-| File size | 200 MB (ADR-010) |
+| File size (model and referenced files together) | 200 MB (ADR-010) |
 | Vertices | 10 000 000 |
 | Triangles (after triangulation) | 10 000 000 |
 | Coordinate magnitude | 1e12 file units |
@@ -173,9 +204,25 @@ triangles; drop fins (two or more boundary edges and a non-manifold edge,
 repeated until stable); make orientation consistent per component by
 breadth-first propagation over manifold edges (a conflict, as on a Moebius
 strip, is reported); fill each boundary loop up to `max_hole_edges` (three
-edges: one triangle; more: a fan from the loop centroid, G4); flip every
-closed component with negative volume; drop unreferenced vertices. It reports
-what it did and the report before and after.
+edges: one triangle; more: a fan from the loop centroid, G4); orient every
+closed component so the solid lies on its inner side; drop unreferenced
+vertices. It reports what it did and the report before and after.
+
+Orientation of closed components counts nesting: a component enclosed by an
+even number of other closed components (an outer wall, or an island inside a
+cavity) gets a positive volume, one enclosed by an odd number (the wall of a
+cavity) a negative volume, so a hollow solid keeps its cavity (volume
+outer - inner, winding number 0 in the void). Enclosure is decided by the
+winding number of the candidate enclosing component at one corner of the
+other, after a bounding-box test; components are assumed not to intersect
+(true for a closed 2-manifold mesh). Cost: one direct winding sum per pair
+of components whose boxes nest.
+
+A positive weld tolerance quantizes coordinates by division; a tolerance so
+small that the largest coordinate divided by it is not finite (for example
+1e-320 for coordinates of order 1) would put every vertex in the same
+infinite cell, so `analyze_mesh` and `repair_mesh` reject it with
+`std::invalid_argument` before changing anything.
 
 The fixture `tests/geom/fixtures/broken_box.stl` (unit cube with a missing
 triangle, a flipped triangle, a duplicate, a degenerate triangle and a fin on
@@ -188,20 +235,35 @@ chain, 1 component; repaired it is the watertight, outward unit cube (volume
 
 Header `orrery/geom/voxel_grid.h`, `orrery/geom/winding_number.h`. A
 `GridSpec` places cell centres at origin + h (i + 1/2, j + 1/2, k + 1/2);
-`grid_around` covers a bounding box with padding (at most 2^27 cells). A cell
+`grid_around` covers a bounding box with padding (at most 2^27 cells). Every
+grid is validated before any arithmetic on it: at least one cell per axis, a
+cell count at most 2^27 computed without wrapping (a product like
+2^63 x 2 x 1 is rejected, not taken as zero cells), a finite origin, a
+positive finite spacing, finite cell centres; `grid_around` also needs finite,
+ordered bounds, `voxelize` a finite threshold and `signed_distance_band` a band
+that stays finite once scaled by the spacing. A cell
 is solid when the generalized winding number at its centre is at least 1/2
 (Jacobson et al. 2013): w(p) = sum of the signed solid angles of all
 triangles / 4 pi, each from the Van Oosterom-Strackee formula
 tan(Omega / 2) = a . (b x c) / (|a||b||c| + (a.b)|c| + (b.c)|a| + (c.a)|b|).
 w is 1 inside and 0 outside a closed surface and degrades smoothly for holes
-and overlaps. `MeshTree` evaluates it hierarchically (Barill et al. 2018): a
-median-split tree whose node is replaced by its dipole
+and overlaps. The formula is evaluated on the unit vectors a/|a|, b/|b|,
+c/|c| (dividing both arguments of the arctangent by |a||b||c|), so it does
+not underflow or overflow for very small or very large triangles; a point on
+a corner sees no solid angle. `MeshTree` evaluates it hierarchically (Barill
+et al. 2018): a median-split tree whose node is replaced by its dipole
 (sum a_t n_t) . (c - p) / (4 pi |c - p|^3) when the distance to its
-area-weighted centre c exceeds beta = 2 times its radius (G5).
+area-weighted centre c exceeds beta = 2 times its radius (G5). The tree
+stores area vectors divided by s^2, s a power of two near the mesh extent,
+and evaluates the dipole as ((A / s^2) . u) (s / |c - p|)^2 with u the unit
+direction, so the same mesh scaled by 1e-110 or 1e100 classifies the same
+points.
 
 `signed_distance_band` stores, within `band_cells` cells of the surface, the
 exact distance to the closest triangle (Ericson's closest point on a
-triangle, the same tree with box-distance pruning) with the sign of the voxel
+triangle; a triangle without area, from repeated or collinear corners, is
+taken as its three edges, so the distance is never NaN; the same tree with
+box-distance pruning) with the sign of the voxel
 classification (negative inside); other cells hold +-band and `in_band = 0`.
 This is the wall description the LBM solver uses (A4).
 
@@ -215,7 +277,11 @@ and chains them into one polyline ordered along the span. `add_wake` sheds
 flat quadrilateral panels from each trailing-edge segment along the free
 stream (`rows` panels over `length`), each carrying the upper and lower
 surface panels that meet at its segment for the Kutta condition (A5: fixed
-wake).
+wake). The direction and the up vector must be finite and the direction
+non-zero; a wake panel whose area is below 1e-9 of the rectangle spanned by
+its segment and the wake step (a direction along the trailing edge) is
+rejected. All panels are built first and appended only when every one is
+usable, so a rejected request leaves the panel mesh unchanged.
 
 ## 6. Reference quantities
 
@@ -241,8 +307,16 @@ independent quadrature, tessellations against their polyhedral closed forms
 and second-order convergence, Carlson's published test values; NACA areas;
 every format importing the same box; FBX unit and axis; hostile arrays and
 files (NaN and infinite coordinates, out-of-range indices, oversized counts
-in STL, PLY and FBX headers, a deflate bomb array, size limits, escaping
-references); the broken STL fixture; welding, inside-out meshes, large holes
-and a Moebius strip; winding number against the direct sum; sphere
-voxelization and SDF; panels and wakes; reference quantities. Measured
-values are in `physics.md`.
+in STL, PLY and FBX headers, a PLY comment naming `end_header` before the
+counts, a deflate bomb array, size limits, referenced files over the byte
+budget, escaping references, a memory import referring to an absolute path
+that resolves on disk); mirroring node transforms (single, nested, matrix);
+the broken STL fixture; welding (and a subnormal tolerance), inside-out
+meshes, large holes, hollow and nested solids and a Moebius strip; winding
+number against the direct sum and across scales from 1e-150 to 1e100;
+closest points on degenerate triangles; grid specs with wrapped, zero or
+oversized counts, reversed bounds, non-finite origins, spacings and
+thresholds; sphere voxelization and SDF; panels and wakes (including
+non-finite and along-the-edge directions); resolutions whose meshes are too
+large; appending a mesh to itself; reference quantities. Measured values are
+in `physics.md`.
