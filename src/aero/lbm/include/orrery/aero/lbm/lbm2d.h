@@ -1,5 +1,6 @@
 #pragma once
 
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <functional>
@@ -121,10 +122,36 @@ struct MacroFields2D {
 // Largest |u| over fluid nodes.
 [[nodiscard]] double max_speed(const MacroFields2D& fields) noexcept;
 
+// Force on the solid nodes and its moment about the lattice origin, z
+// component of sum r x F with each link force applied at the wall point of
+// the link (halfway between the fluid node and its solid neighbour).
 struct Force2D {
     double x = 0.0;
     double y = 0.0;
+    double moment = 0.0;
 };
+
+// Wall point of a boundary link: node position minus c_j / 2.
+[[nodiscard]] inline std::array<double, 2> link_wall_point(const Lbm2DConfig& config,
+                                                           const BoundaryLink& link) noexcept {
+    const std::size_t x = link.cell % config.nx;
+    const std::size_t y = link.cell / config.nx;
+    return {static_cast<double>(x) - 0.5 * d2q9::cx[link.direction],
+            static_cast<double>(y) - 0.5 * d2q9::cy[link.direction]};
+}
+
+// Adds the momentum-exchange force of one link (2 c_o f*_o, o = opposite(j))
+// and its moment to `total`.
+inline void add_link_force(Force2D& total, const Lbm2DConfig& config, const BoundaryLink& link,
+                           double outgoing) noexcept {
+    const std::size_t out = d2q9::opposite[link.direction];
+    const double fx = 2.0 * static_cast<double>(d2q9::cx[out]) * outgoing;
+    const double fy = 2.0 * static_cast<double>(d2q9::cy[out]) * outgoing;
+    const std::array<double, 2> r = link_wall_point(config, link);
+    total.x += fx;
+    total.y += fy;
+    total.moment += r[0] * fy - r[1] * fx;
+}
 
 // Initial macroscopic state of a fluid node; populations start at its
 // equilibrium.

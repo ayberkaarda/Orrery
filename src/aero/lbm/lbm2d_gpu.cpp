@@ -61,13 +61,6 @@ public:
     GpuLbm2D(IComputeBackend& backend, const Lbm2DConfig& config, SolidMask2D mask)
         : backend_(&backend), config_(config), mask_(std::move(mask)),
           cells_(config.nx * config.ny), links_(boundary_links(config_, mask_)) {
-        // Constant part of the momentum exchange: the weights removed by the
-        // shift, summed in double on the host.
-        for (const BoundaryLink& link : links_) {
-            const std::size_t out = d2q9::opposite[link.direction];
-            weight_force_.x += 2.0 * static_cast<double>(d2q9::cx[out]) * d2q9::w[out];
-            weight_force_.y += 2.0 * static_cast<double>(d2q9::cy[out]) * d2q9::w[out];
-        }
         const double c = config_.smagorinsky.enabled ? config_.smagorinsky.constant : 0.0;
         uniforms_ = {
             Uniform{"u_nx", static_cast<std::uint32_t>(config_.nx)},
@@ -265,10 +258,15 @@ public:
         if (auto read = read_float32(link_force_.id(), parts); !read) {
             return core::failure(std::string(read.error()));
         }
-        Force2D total = weight_force_;
+        // The kernel writes 2 c_o fs_o per link; adding the weight back gives
+        // 2 c_o f_o. Only one component of c_o is needed to recover fs_o.
+        Force2D total;
         for (std::size_t k = 0; k < links_.size(); ++k) {
-            total.x += parts[2 * k];
-            total.y += parts[2 * k + 1];
+            const BoundaryLink& link = links_[k];
+            const std::size_t out = d2q9::opposite[link.direction];
+            const double shifted = d2q9::cx[out] != 0 ? parts[2 * k] / (2.0 * d2q9::cx[out])
+                                                      : parts[2 * k + 1] / (2.0 * d2q9::cy[out]);
+            add_link_force(total, config_, link, shifted + d2q9::w[out]);
         }
         return total;
     }
@@ -307,7 +305,6 @@ private:
     SolidMask2D mask_;
     std::size_t cells_ = 0;
     std::vector<BoundaryLink> links_;
-    Force2D weight_force_;
     std::vector<Uniform> uniforms_;
     std::array<ScopedBuffer, 2> populations_;
     ScopedBuffer solid_;

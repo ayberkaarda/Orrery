@@ -151,9 +151,7 @@ public:
         Force2D total;
         for (const BoundaryLink& link : links_) {
             const std::size_t out = d2q9::opposite[link.direction];
-            const double f = f_[out * cells_ + link.cell];
-            total.x += 2.0 * static_cast<double>(d2q9::cx[out]) * f;
-            total.y += 2.0 * static_cast<double>(d2q9::cy[out]) * f;
+            add_link_force(total, config_, link, f_[out * cells_ + link.cell]);
         }
         return total;
     }
