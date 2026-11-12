@@ -103,15 +103,13 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_geom": {"assimp::assimp"},
     # orrery_aero (Phase 7a): Eigen (MPL-2.0, header-only) solves the panel
     # method's linear systems (dense LU, GMRES); private, graphics-free, used
-    # in double precision only.
-    "orrery_aero": {"Eigen3::Eigen"},
+    # in double precision only. Phase 7b adds oneTBB, which runs the CPU lattice
+    # Boltzmann step over rows (private, as in orrery_core).
+    "orrery_aero": {"Eigen3::Eigen", "TBB::tbb"},
     "orrery_sim": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
                       "implot::implot"},
-    # orrery_aero (Phase 7b): oneTBB runs the CPU lattice Boltzmann step over
-    # rows, private and graphics-free as in orrery_core.
-    "orrery_aero": {"TBB::tbb"},
 }
 
 # Imported targets created by CMake's own Find modules (FindZLIB, FindOpenSSL)
