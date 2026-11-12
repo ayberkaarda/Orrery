@@ -3,7 +3,6 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <limits>
 #include <numbers>
 #include <stdexcept>
 #include <string>
@@ -466,6 +465,7 @@ bool PanelSolver3D::step() {
         double mu = 0.0;
     };
     std::vector<Segment> segments;
+    segments.reserve(panels_.wake.size());
     for (const geom::WakePanel& w : panels_.wake) {
         if (w.row != 0) {
             continue;
