@@ -86,7 +86,7 @@ private:
     void update_result();
     // SI force and moment (body axes, per unit span) and the coefficients of
     // a lattice force: the one normalisation of the history and the result.
-    void apply_force(AeroResult& result, const Force2D& lattice) const;
+    void apply_force(AeroResult& result, const Force2D& lattice, const LatticeUnits& units) const;
 
     LbmSolverOptions options_;
     FlowConditions conditions_;

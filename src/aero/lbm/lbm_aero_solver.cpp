@@ -213,7 +213,8 @@ bool LbmAeroSolver2D::step() {
         const std::uint64_t now = solver_->steps();
         const std::uint64_t next_sample = now - now % every + every;
         const std::uint64_t until = std::min(target, next_sample);
-        if (auto stepped = solver_->step(static_cast<std::size_t>(until - now)); !stepped) {
+        const std::size_t chunk = until - now; // at most sample_every
+        if (auto stepped = solver_->step(chunk); !stepped) {
             throw std::runtime_error(stepped.error());
         }
         if (solver_->steps() % every != 0) {
@@ -228,7 +229,7 @@ bool LbmAeroSolver2D::step() {
         f.moment -= centre_[0] * f.y - centre_[1] * f.x;
         samples_.push_back(f);
         AeroResult sample;
-        apply_force(sample, f);
+        apply_force(sample, f, *units_);
         instantaneous_ = Coefficients{sample.cd, sample.cl};
         history_.push(static_cast<double>(solver_->steps()), instantaneous_);
     }
@@ -236,8 +237,8 @@ bool LbmAeroSolver2D::step() {
     return result_.iterations >= total_steps_;
 }
 
-void LbmAeroSolver2D::apply_force(AeroResult& result, const Force2D& lattice) const {
-    const LatticeUnits& units = *units_;
+void LbmAeroSolver2D::apply_force(AeroResult& result, const Force2D& lattice,
+                                  const LatticeUnits& units) const {
     const double drag = units.force_per_span_to_si(lattice.x);
     const double lift = units.force_per_span_to_si(lattice.y);
     result.force = drag * conditions_.drag_direction() + lift * conditions_.lift_direction();
@@ -285,7 +286,7 @@ void LbmAeroSolver2D::update_result() {
         mean.y /= static_cast<double>(n);
         mean.moment /= static_cast<double>(n);
     }
-    apply_force(next, mean);
+    apply_force(next, mean, units);
 
     const double residual =
         next.cd != 0.0 ? std::abs(next.cd - previous_cd_) / std::abs(next.cd) : 0.0;
