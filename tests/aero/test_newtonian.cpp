@@ -1,8 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <iostream>
 #include <numbers>
 #include <stdexcept>
 
@@ -130,4 +132,21 @@ TEST_CASE("Newtonian rejects unusable input", "[aero][newtonian]") {
     g.mesh = orrery::geom::cube_mesh(1.0);
     g.mesh.triangles[0][0] = 1000;
     CHECK_THROWS_AS(solver.setup(g, hypersonic(10.0, 0.0)), std::invalid_argument);
+}
+
+// Hidden timing check (plan section 8: 100k triangles under 100 ms):
+// orrery_test_aero "[benchmark]"
+TEST_CASE("Newtonian timing on 100k triangles", "[.benchmark][aero][newtonian]") {
+    AeroGeometry g;
+    g.mesh = orrery::geom::sphere_profile(1.0).mesh({256, 0.016});
+    g.reference = {pi, 2.0, {}};
+    NewtonianSolver solver;
+    solver.setup(g, hypersonic(10.0, 5.0));
+    const auto start = std::chrono::steady_clock::now();
+    solver.step();
+    const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
+    std::cout << "Newtonian: " << g.mesh.triangles.size() << " triangles in " << took.count() * 1e3
+              << " ms\n";
+    CHECK(g.mesh.triangles.size() >= 100000);
+    CHECK(took.count() < 0.1);
 }

@@ -1,8 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
+#include <iostream>
 #include <numbers>
 #include <stdexcept>
 #include <vector>
@@ -109,7 +111,9 @@ TEST_CASE("2D panel method reproduces the circular cylinder Cp = 1 - 4 sin^2", "
         worst = std::max(worst, std::abs(r.surface.cp[i] - (1.0 - 4.0 * s * s)));
     }
     INFO("worst |Cp - (1 - 4 sin^2)| = " << worst);
-    CHECK(worst < 2e-3);
+    // The constant-source solution is exact at the midpoints of a regular
+    // polygon (measured 1.1e-14).
+    CHECK(worst < 1e-10);
     CHECK(std::abs(r.cl) < 1e-10);
     CHECK(std::abs(r.cd) < 1e-10);
     CHECK(r.converged);
@@ -255,4 +259,21 @@ TEST_CASE("3D panel method rejects unusable input", "[aero][panel]") {
     g.mesh = orrery::geom::cube_mesh(1.0);
     g.reference.area = 0.0;
     CHECK_THROWS_AS(solver.setup(g, low_speed(0.0)), std::invalid_argument);
+}
+
+// Hidden timing check (plan section 8: 3D panel solve with N = 2000 under 3 s):
+// orrery_test_aero "[benchmark]"
+TEST_CASE("3D panel method timing at about 2000 panels", "[.benchmark][aero][panel]") {
+    AeroGeometry g;
+    g.mesh = orrery::geom::sphere_profile(1.0).mesh({32, 0.098});
+    g.reference = {pi, 2.0, {}};
+    PanelSolver3D solver;
+    solver.setup(g, low_speed(2.0));
+    const auto start = std::chrono::steady_clock::now();
+    solver.step();
+    const std::chrono::duration<double> took = std::chrono::steady_clock::now() - start;
+    std::cout << "3D panel: " << solver.panels().panels.size() << " panels in " << took.count()
+              << " s\n";
+    CHECK(solver.panels().panels.size() >= 2000);
+    CHECK(took.count() < 3.0);
 }
