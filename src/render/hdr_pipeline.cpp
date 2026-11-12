@@ -163,6 +163,15 @@ void HdrPipeline::begin_overlay() const {
     glDisable(GL_MULTISAMPLE);
 }
 
+void HdrPipeline::present(int width, int height) const {
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glDisable(GL_FRAMEBUFFER_SRGB);
+    glViewport(0, 0, width, height);
+    const GLenum filter = width == width_ && height == height_ ? GL_NEAREST : GL_LINEAR;
+    glBlitNamedFramebuffer(srgb_fbo_.id(), 0, 0, 0, width_, height_, 0, 0, width, height,
+                           GL_COLOR_BUFFER_BIT, filter);
+}
+
 ImageRgba8 HdrPipeline::read_srgb() const {
     ImageRgba8 image;
     image.width = static_cast<std::uint32_t>(width_);

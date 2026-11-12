@@ -62,6 +62,12 @@ public:
     void begin_overlay() const;
     // Reads the sRGB target, rows top to bottom.
     [[nodiscard]] ImageRgba8 read_srgb() const;
+    // Copies the sRGB target (after resolve() and any overlay) to the default
+    // framebuffer of the current context, scaled to width x height (nearest
+    // when the sizes match, linear otherwise). The stored sRGB-encoded bytes
+    // are copied unchanged (GL_FRAMEBUFFER_SRGB off), which is what a window
+    // without an sRGB-capable default framebuffer displays correctly.
+    void present(int width, int height) const;
 
     [[nodiscard]] FrameInfo frame() const noexcept { return {width_, height_}; }
     [[nodiscard]] const HdrSettings& settings() const noexcept { return settings_; }
