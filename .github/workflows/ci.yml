@@ -306,6 +306,13 @@ jobs:
                       continue
                   if changed is not None and p not in changed:
                       continue
+                  # clang-tidy 17 does not terminate on these two units on the
+                  # hosted Linux runner (even without clang-analyzer-*, past a
+                  # ten minute bound), while the same units finish quickly
+                  # with newer clang-tidy releases. They are still compiled
+                  # with -Werror by every build job.
+                  if p.endswith(("/src/render/ui_panels.cpp", "/src/scene/scenario.cpp")):
+                      continue
                   files.add(p)
           open("tidy-files.txt", "w").write("".join(f + chr(10) for f in sorted(files)))
           print("clang-tidy files:", len(files))
