@@ -200,3 +200,59 @@ TEST_CASE("The LBM solver refuses step counts no integer can hold", "[aero][lbm]
     CHECK_THROWS_AS(window.setup(geometry, flow_at(100.0, 1.0)), std::invalid_argument);
     CHECK(window.lattice() == nullptr);
 }
+
+namespace {
+
+// A short Re 100 cylinder run (10 cells per diameter, 800 lattice steps)
+// with the given call size and reference area.
+struct ShortRun {
+    AeroResult result;
+    std::vector<double> time;
+    std::vector<double> drag;
+    Coefficients average;
+};
+
+ShortRun short_cylinder_run(std::size_t steps_per_call, double area_over_length) {
+    LbmSolverOptions options;
+    options.resolution = LatticeResolution{10.0, 0.05};
+    options.height = 12.0;
+    options.downstream = 10.0;
+    options.duration = 4.0;
+    options.average_window = 2.0;
+    options.sample_every = 10;
+    options.steps_per_call = steps_per_call;
+    LbmAeroSolver2D solver(options);
+    AeroGeometry geometry = cylinder_geometry(0.02);
+    geometry.reference.area = area_over_length * geometry.reference.length;
+    solver.setup(geometry, flow_at(100.0, 0.02));
+    std::size_t calls = 0;
+    while (!solver.step()) {
+        ++calls;
+        REQUIRE(calls < 10000);
+    }
+    ShortRun run;
+    run.result = solver.result();
+    run.time.assign(solver.history().time().begin(), solver.history().time().end());
+    run.drag.assign(solver.history().drag().begin(), solver.history().drag().end());
+    run.average = solver.history().moving_average();
+    return run;
+}
+
+} // namespace
+
+TEST_CASE("Averages do not depend on how the steps are split into calls", "[aero][lbm][solver]") {
+    const ShortRun reference = short_cylinder_run(800, 1.0);
+    REQUIRE(reference.result.iterations == 800);
+    REQUIRE(reference.time.size() == 80);
+    for (const std::size_t call : {std::size_t{1}, std::size_t{7}, std::size_t{25}}) {
+        const ShortRun run = short_cylinder_run(call, 1.0);
+        INFO("steps_per_call " << call);
+        CHECK(run.result.iterations == 800);
+        // Samples on the absolute schedule every 10 lattice steps.
+        CHECK(run.time == reference.time);
+        CHECK(run.drag == reference.drag);
+        CHECK(run.result.cd == reference.result.cd);
+        CHECK(run.result.cl == reference.result.cl);
+        CHECK(run.average.drag == reference.average.drag);
+    }
+}

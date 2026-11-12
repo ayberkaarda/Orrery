@@ -201,14 +201,23 @@ bool LbmAeroSolver2D::step() {
     }
     const LatticeUnits units = *units_;
     const std::uint64_t target =
-        std::min<std::uint64_t>(total_steps_, solver_->steps() + options_.steps_per_call);
+        solver_->steps() + std::min<std::uint64_t>(total_steps_ - solver_->steps(),
+                                                   options_.steps_per_call);
     const double cells = units.cells_per_length();
     const double u = units.lattice_velocity();
+    const std::uint64_t every = options_.sample_every;
     while (solver_->steps() < target) {
-        const std::uint64_t left = target - solver_->steps();
-        const std::size_t chunk = left < options_.sample_every ? left : options_.sample_every;
-        if (auto stepped = solver_->step(chunk); !stepped) {
+        // Forces are sampled on the absolute schedule (lattice steps that are
+        // multiples of sample_every), whatever the call size, so the samples
+        // and their averages do not depend on how the run is split into calls.
+        const std::uint64_t now = solver_->steps();
+        const std::uint64_t next_sample = now - now % every + every;
+        const std::uint64_t until = std::min(target, next_sample);
+        if (auto stepped = solver_->step(static_cast<std::size_t>(until - now)); !stepped) {
             throw std::runtime_error(stepped.error());
+        }
+        if (solver_->steps() % every != 0) {
+            continue; // the call ends between two samples
         }
         auto force = solver_->force();
         if (!force) {

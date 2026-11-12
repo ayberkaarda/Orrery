@@ -202,6 +202,14 @@ averaging window (convective times L / U), steps per `step()` call, the
 force sampling interval and, optionally, a compute backend (GPU) instead of
 the CPU.
 
+The force is sampled at the lattice steps that are multiples of
+`sample_every`, whatever `steps_per_call` is: a call that ends between two
+sample points takes no sample, so the samples, the history and the averages
+are the same for any split of the run into calls (a run of 800 steps gives
+identical samples with 1, 7, 25 or 800 steps per call). The averaging window
+is a number of samples, `average_window` L / U divided by `sample_every`
+steps.
+
 Result: Cd, Cl and Cm from the force and moment averaged over the window
 (per unit span, `set_coefficients` with the caller's reference area); the
 force and pitching moment in body axes; wall samples (`surface`: one per

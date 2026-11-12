@@ -23,7 +23,9 @@
 // stay parallel to it), and placed `upstream` reference lengths behind the
 // inlet in a channel `height` reference lengths high with free-slip sides.
 // Time-marching: every step() advances `steps_per_call` lattice steps; the
-// result holds the moving average of the force coefficients over the last
+// force is sampled at the lattice steps that are multiples of `sample_every`
+// (an absolute schedule, independent of the call size), and the result holds
+// the moving average of the force coefficients over the samples of the last
 // `average_window` convective times L / U.
 namespace orrery::aero::lbm {
 
