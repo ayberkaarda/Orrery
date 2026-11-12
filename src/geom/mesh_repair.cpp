@@ -381,7 +381,10 @@ std::size_t orient_closed_components(const std::vector<Vector3>& vertices,
         if (root[t] == t) {
             shell_of[t] = shells.size();
             const Vector3& first = vertices[triangles[t][0]];
-            shells.push_back({root[t], {}, {first, first}});
+            Shell shell;
+            shell.root = root[t];
+            shell.box = {first, first};
+            shells.push_back(std::move(shell));
         }
         Shell& s = shells[shell_of[root[t]]];
         for (std::uint32_t v : triangles[t]) {

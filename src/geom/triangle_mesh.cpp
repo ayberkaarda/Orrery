@@ -78,8 +78,7 @@ Vector3 volume_centroid(const TriangleMesh& mesh) noexcept {
 void append(TriangleMesh& mesh, const TriangleMesh& other) {
     if (&mesh == &other) {
         // Inserting a vector's own range into it is undefined: copy first.
-        const TriangleMesh copy = other;
-        append(mesh, copy);
+        append(mesh, TriangleMesh(other));
         return;
     }
     const std::size_t offset = mesh.vertices.size();
