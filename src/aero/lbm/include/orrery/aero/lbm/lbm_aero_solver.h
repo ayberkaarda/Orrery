@@ -91,7 +91,7 @@ private:
     AeroResult result_;
     std::array<double, 2> centre_{}; // moment centre, lattice coordinates
     std::array<double, 2> origin_{}; // wind-frame position (m) of lattice node (0, 0)
-    std::size_t total_steps_ = 0;
+    std::uint64_t total_steps_ = 0;
     std::size_t window_samples_ = 1;
     double previous_cd_ = 0.0;
 };

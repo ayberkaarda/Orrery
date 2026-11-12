@@ -138,7 +138,7 @@ void LbmAeroSolver2D::setup(const AeroGeometry& geometry, const FlowConditions& 
     reference_ = reference;
     const double cells = units_->cells_per_length();
     const double steps_per_time = cells / units_->lattice_velocity();
-    total_steps_ = static_cast<std::size_t>(std::ceil(options_.duration * steps_per_time));
+    total_steps_ = static_cast<std::uint64_t>(std::ceil(options_.duration * steps_per_time));
     window_samples_ = std::max<std::size_t>(
         1, static_cast<std::size_t>(options_.average_window * steps_per_time /
                                     static_cast<double>(options_.sample_every)));
@@ -188,13 +188,13 @@ bool LbmAeroSolver2D::step() {
     if (!solver_) {
         throw std::logic_error("lbm: step() called before setup()");
     }
-    const std::size_t done = static_cast<std::size_t>(solver_->steps());
-    const std::size_t target = std::min(total_steps_, done + options_.steps_per_call);
+    const std::uint64_t target =
+        std::min<std::uint64_t>(total_steps_, solver_->steps() + options_.steps_per_call);
     const double cells = units_->cells_per_length();
     const double u = units_->lattice_velocity();
-    while (static_cast<std::size_t>(solver_->steps()) < target) {
-        const std::size_t chunk =
-            std::min(options_.sample_every, target - static_cast<std::size_t>(solver_->steps()));
+    while (solver_->steps() < target) {
+        const std::uint64_t left = target - solver_->steps();
+        const std::size_t chunk = left < options_.sample_every ? left : options_.sample_every;
         if (auto stepped = solver_->step(chunk); !stepped) {
             throw std::runtime_error(stepped.error());
         }
@@ -231,7 +231,7 @@ void LbmAeroSolver2D::update_result() {
     const LatticeUnits& units = *units_;
     const double dx = units.dx();
     AeroResult next;
-    next.iterations = static_cast<std::size_t>(solver_->steps());
+    next.iterations = solver_->steps();
     next.residuals = result_.residuals;
 
     // Moving average of force and moment over the window.
