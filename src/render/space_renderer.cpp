@@ -32,7 +32,7 @@ constexpr float kAmbientFraction = 0.0025F;
 // (BodyAppearance::emission) and the halo colour derived from it.
 constexpr double kStarGlowStrength = 0.11;
 // Milky Way surface brightness (scene-linear) at the galactic centre.
-constexpr double kMilkyWayIntensity = 0.04;
+constexpr double kMilkyWayIntensity = 0.03;
 // Star sprites: peak radiance = kStarPeak * flux / sigma^2.
 constexpr double kStarPeak = 2.4;
 constexpr double kStarMagnitudeGamma = 0.85;

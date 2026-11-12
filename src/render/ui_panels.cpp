@@ -4,6 +4,7 @@
 #include <array>
 #include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <string>
 #include <system_error>
@@ -103,13 +104,16 @@ void section(const char* caption) {
     ImGui::PopStyleColor();
 }
 
-// Two-column property table rows: muted label, value.
+// Two-column property table rows: muted label in a column just wide enough
+// for the longest label, value in the rest (long values keep their room in a
+// narrow panel).
 bool begin_properties(const char* id) {
-    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingStretchProp)) {
+    if (!ImGui::BeginTable(id, 2, ImGuiTableFlags_SizingFixedFit)) {
         return false;
     }
-    ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthStretch, 0.42F);
-    ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch, 0.58F);
+    ImGui::TableSetupColumn("label", ImGuiTableColumnFlags_WidthFixed,
+                            ImGui::CalcTextSize("Period").x + ImGui::GetFontSize() * 1.5F);
+    ImGui::TableSetupColumn("value", ImGuiTableColumnFlags_WidthStretch);
     return true;
 }
 
@@ -121,12 +125,54 @@ void property(const char* label, const std::string& value) {
     text(value);
 }
 
+// Offset of the control column of the settings rows: room for the longest
+// label, capped so that a narrow panel keeps most of its width for controls.
+float control_column() {
+    const float longest = ImGui::CalcTextSize("Brightness").x + ImGui::GetStyle().ItemSpacing.x;
+    const float cap = ImGui::GetStyle().WindowPadding.x + ImGui::GetContentRegionAvail().x * 0.4F;
+    return std::max(std::min(ImGui::GetFontSize() * 7.0F, cap),
+                    ImGui::GetStyle().WindowPadding.x + longest);
+}
+
 // Label on the left, control filling the rest of the row.
 void row_label(const char* label) {
     ImGui::AlignTextToFramePadding();
     muted(label);
-    ImGui::SameLine(ImGui::GetFontSize() * 7.0F);
+    ImGui::SameLine(control_column());
     ImGui::SetNextItemWidth(-1.0F);
+}
+
+// Unit and tick decimals of a time axis, chosen from the plotted span in
+// days; the plotted values are days / days_per_unit, so that the ticks fall
+// on round values of the unit.
+struct TimeAxis {
+    double days_per_unit = 1.0;
+    int decimals = 0;
+    const char* unit = " d";
+};
+
+TimeAxis time_axis_for(double span_days) {
+    constexpr double kDaysPerYear = 365.25;
+    if (span_days >= 5.0 * kDaysPerYear) {
+        return {kDaysPerYear, span_days >= 50.0 * kDaysPerYear ? 0 : 1, " yr"};
+    }
+    if (span_days >= 20.0) {
+        return {1.0, 0, " d"};
+    }
+    return {1.0, span_days >= 2.0 ? 1 : 2, " d"};
+}
+
+// ImPlotFormatter: `user_data` is the TimeAxis of the plot.
+int format_time_tick(double value, char* buffer, int size, void* user_data) {
+    const auto* axis = static_cast<const TimeAxis*>(user_data);
+    const std::string text = fixed(value, axis->decimals) + axis->unit;
+    if (size <= 0) {
+        return 0;
+    }
+    const std::size_t count = std::min(text.size(), static_cast<std::size_t>(size - 1));
+    std::copy_n(text.data(), count, buffer);
+    buffer[count] = '\0';
+    return static_cast<int>(count);
 }
 
 core::BodyKindTag tag_at(const core::SimSnapshot& snapshot, std::size_t i) {
@@ -241,6 +287,12 @@ BodyInspectorIntent draw_body_inspector(const BodyInspectorData& data) {
     const ImGuiStyle& style = ImGui::GetStyle();
 
     section("BODIES");
+    if (data.bodies.empty()) {
+        // Before the first snapshot, or after every body was removed.
+        muted("No bodies to show.");
+        ImGui::End();
+        return intent;
+    }
     const float row = ImGui::GetTextLineHeightWithSpacing();
     const float list_height =
         std::min(static_cast<float>(data.bodies.size()), 6.0F) * row + style.WindowPadding.y;
@@ -257,10 +309,17 @@ BodyInspectorIntent draw_body_inspector(const BodyInspectorData& data) {
             const float dot_y = start.y + ImGui::GetTextLineHeight() * 0.5F;
             draw->AddCircleFilled(ImVec2(start.x + 7.0F, dot_y), 3.5F,
                                   ImGui::GetColorU32(kind_color(entry.kind)));
+            // The kind, right-aligned, only where it does not run into the
+            // name (a narrow panel shows the names alone).
             const std::string kind = kind_label(entry.kind);
-            const float kind_width = ImGui::CalcTextSize(kind.c_str()).x;
-            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - kind_width - 2.0F);
-            muted(kind);
+            const float kind_x =
+                ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize(kind.c_str()).x - 2.0F;
+            const float name_end = ImGui::GetCursorStartPos().x +
+                                   ImGui::CalcTextSize(label.c_str()).x + style.ItemSpacing.x;
+            if (kind_x > name_end) {
+                ImGui::SameLine(kind_x);
+                muted(kind);
+            }
             ImGui::PopID();
         }
     }
@@ -364,7 +423,7 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
 
     // Stat tiles: caption above, value below.
     struct Tile {
-        const char* caption;
+        const char* caption = nullptr;
         std::string value;
     };
     const std::array<Tile, 5> tiles{{
@@ -404,20 +463,38 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
     const ImPlotFlags plot_flags =
         ImPlotFlags_NoMenus | ImPlotFlags_NoBoxSelect | ImPlotFlags_NoLegend | ImPlotFlags_NoTitle;
     const float plot_height = std::max(ImGui::GetContentRegionAvail().y - 2.0F, 60.0F);
+    // Time ticks in days or, for long series, years, with as many decimals as
+    // the span needs (no repeated "0 d" labels on short runs). Read by the
+    // formatter until EndPlot.
+    TimeAxis time_axis =
+        n > 0 ? time_axis_for(std::abs(data.series_time_days[n - 1] - data.series_time_days[0]))
+              : TimeAxis{};
+    std::vector<double> times(data.series_time_days.begin(),
+                              data.series_time_days.begin() + static_cast<std::ptrdiff_t>(n));
+    for (double& t : times) {
+        t /= time_axis.days_per_unit;
+    }
     if (ImPlot::BeginPlot("##series", ImVec2(-1.0F, plot_height), plot_flags)) {
-        ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
-        ImPlot::SetupAxisFormat(ImAxis_X1, "%.0f d");
-        ImPlot::SetupAxisFormat(ImAxis_Y1, "%.1e");
-        if (n > 0) {
+        if (n == 0) {
+            // Nothing recorded yet: a quiet empty frame instead of the
+            // placeholder axis range [0, 1] and its tick labels.
+            ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_NoTickLabels,
+                              ImPlotAxisFlags_NoTickLabels);
+            ImPlot::SetupAxesLimits(0.0, 1.0, 0.0, 1.0, ImPlotCond_Always);
+            ImPlot::PlotText("No data recorded yet", 0.5, 0.5);
+        } else {
+            ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+            ImPlot::SetupAxisFormat(ImAxis_X1, format_time_tick, &time_axis);
+            ImPlot::SetupAxisFormat(ImAxis_Y1, "%.1e");
             const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_PlotLines);
             ImPlotSpec spec;
             spec.LineColor = accent;
             spec.LineWeight = 1.5F;
             spec.FillColor = ImVec4(accent.x, accent.y, accent.z, 0.12F);
-            ImPlot::PlotShaded("##fill", data.series_time_days.data(), data.series_values.data(),
+            ImPlot::PlotShaded("##fill", times.data(), data.series_values.data(),
                                static_cast<int>(n), 0.0, spec);
-            ImPlot::PlotLine("##line", data.series_time_days.data(), data.series_values.data(),
-                             static_cast<int>(n), spec);
+            ImPlot::PlotLine("##line", times.data(), data.series_values.data(), static_cast<int>(n),
+                             spec);
         }
         ImPlot::EndPlot();
     }
@@ -440,7 +517,16 @@ RenderSettingsIntent draw_render_settings(const RenderSettings& settings) {
     if (ImGui::RadioButton("Clamped", &mode, 0)) {
         changed = true;
     }
-    ImGui::SameLine();
+    // The second option wraps under the first in a narrow panel.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float true_width =
+        ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize("True").x;
+    const float right_edge = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + true_width <= right_edge) {
+        ImGui::SameLine();
+    } else {
+        ImGui::SetCursorPosX(control_column());
+    }
     if (ImGui::RadioButton("True", &mode, 1)) {
         changed = true;
     }
@@ -569,6 +655,8 @@ void draw_scene_labels(std::span<const SceneLabel> labels) {
     const ImU32 text_color = ImGui::GetColorU32(ImGuiCol_Text, 0.82F);
     const ImU32 accent = ImGui::GetColorU32(ImGuiCol_CheckMark);
     const ImU32 leader = ImGui::GetColorU32(ImGuiCol_TextDisabled, 0.7F);
+    // A soft dark shadow keeps names readable over the Milky Way and trails.
+    const ImU32 shadow = ImGui::GetColorU32(ImVec4(0.0F, 0.0F, 0.0F, 0.7F));
     const float font = ImGui::GetFontSize();
     // Labels are placed in order (most important first); one whose text box
     // would overlap a placed one is dropped.
@@ -595,6 +683,7 @@ void draw_scene_labels(std::span<const SceneLabel> labels) {
             draw->AddCircle(ImVec2(x, y), r + 3.0F, accent, 0, 1.5F);
         }
         draw->AddLine(a, b, label.selected ? accent : leader, 1.0F);
+        draw->AddText(ImVec2(text_pos.x + 1.0F, text_pos.y + 1.0F), shadow, label.name.c_str());
         draw->AddText(text_pos, label.selected ? accent : text_color, label.name.c_str());
     }
 }
