@@ -90,8 +90,8 @@ core::Result<SimulationConfig, std::string> read_config(const scene::Experiment&
     if (!warp) {
         return core::failure(warp.error());
     }
-    if (warp.value()) {
-        const auto value = integral(*warp.value(), static_cast<double>(kMinTimeWarp),
+    if (const auto& requested = warp.value(); requested.has_value()) {
+        const auto value = integral(*requested, static_cast<double>(kMinTimeWarp),
                                     static_cast<double>(kMaxTimeWarp), "conditions.time_warp");
         if (!value) {
             return core::failure(value.error());
@@ -102,8 +102,8 @@ core::Result<SimulationConfig, std::string> read_config(const scene::Experiment&
     if (!paused) {
         return core::failure(paused.error());
     }
-    if (paused.value()) {
-        const auto value = integral(*paused.value(), 0.0, 1.0, "conditions.paused");
+    if (const auto& requested = paused.value(); requested.has_value()) {
+        const auto value = integral(*requested, 0.0, 1.0, "conditions.paused");
         if (!value) {
             return core::failure(value.error());
         }
@@ -125,9 +125,8 @@ core::Result<SimulationConfig, std::string> read_config(const scene::Experiment&
     if (!budget) {
         return core::failure(budget.error());
     }
-    if (budget.value()) {
-        const auto value =
-            integral(*budget.value(), 1.0, 1.0e7, "solver.settings.max_steps_per_frame");
+    if (const auto& requested = budget.value(); requested.has_value()) {
+        const auto value = integral(*requested, 1.0, 1.0e7, "solver.settings.max_steps_per_frame");
         if (!value) {
             return core::failure(value.error());
         }
@@ -137,10 +136,10 @@ core::Result<SimulationConfig, std::string> read_config(const scene::Experiment&
     if (!force) {
         return core::failure(force.error());
     }
-    if (force.value()) {
-        const auto choice = force_from_string(*force.value());
+    if (const auto& requested = force.value(); requested.has_value()) {
+        const auto choice = force_from_string(*requested);
         if (!choice) {
-            return core::failure("solver.settings.force: unknown force model '" + *force.value() +
+            return core::failure("solver.settings.force: unknown force model '" + *requested +
                                  "' (allowed: auto, newtonian, barnes_hut, paczynski_wiita)");
         }
         config.force = *choice;
