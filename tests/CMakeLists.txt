@@ -28,7 +28,8 @@ endforeach()
 target_sources(orrery_test_geom PRIVATE
     geom/geom_test_support.h
     geom/test_primitives.cpp
-    geom/test_naca.cpp)
+    geom/test_naca.cpp
+    geom/test_import.cpp)
 target_compile_definitions(orrery_test_geom PRIVATE
     ORRERY_GEOM_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/geom/fixtures"
     ORRERY_GEOM_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/geom_output")

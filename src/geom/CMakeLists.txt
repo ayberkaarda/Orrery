@@ -20,4 +20,14 @@ target_sources(orrery_geom PRIVATE
     include/orrery/geom/primitives.h
     include/orrery/geom/naca.h)
 
+# Phase 6a: model import through assimp, a private dependency of geom
+# (tools/check_deps.py THIRD_PARTY_DEPS), behind a validation gate (ADR-018).
+find_package(assimp CONFIG REQUIRED)
+target_sources(orrery_geom PRIVATE
+    mesh_import.cpp
+    model_prescan.cpp
+    model_prescan.h
+    include/orrery/geom/mesh_import.h)
+target_link_libraries(orrery_geom PRIVATE assimp::assimp)
+
 orrery_configure_target(orrery_geom)
