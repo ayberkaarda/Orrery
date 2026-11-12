@@ -103,7 +103,7 @@ Located in `tests/aero_validation/`. Each case cites its literature reference in
 |---|---|---|---|
 | Circular cylinder, Re 100 to 200 | LBM 2D | Strouhal number, drag coefficient | St 0.16 to 0.20; Cd 1.2 to 1.5 |
 | Sphere, Re 10 to 1000 | LBM 3D | Cd versus Re follows Schiller-Naumann | within 15 percent |
-| NACA 0012, angle of attack 0 to 8 degrees | Panel | Lift slope near 2 pi per radian; embedded XFOIL reference table | within 10 percent |
+| NACA 0012, angle of attack 0 to 8 degrees | Panel | Lift slope near 2 pi per radian; embedded reference table from thin-airfoil and thick-section (Joukowski) theory, no XFOIL data | within 10 percent |
 | Flat plate normal to flow | LBM | Cd about 1.28 | within 15 percent |
 | Apollo-type capsule, Mach 20 | Newtonian | Cd about 1.3 (published capsule data) | within 10 percent |
 | User-supplied model | any | No validation | UI shows an "unvalidated geometry" badge |
@@ -472,3 +472,94 @@ for the centre of mass) applies to `reference_quantities`.
 | G5 | Winding number far field truncated at first order (dipole), beta = 2 | `MeshTree::winding_number` | Error a few percent at worst, far below the 1/2 decision threshold | Values near 1/2 (open or self-overlapping meshes) may be misclassified where the exact sum is within a few percent of the threshold |
 | G6 | Silhouette area by cell-centre raster coverage (1024 cells along the larger side) | `projected_area` | Error below perimeter x cell size (about 0.4 percent for a sphere) | Thin features below a cell are lost; use the bound for convex bodies |
 | G7 | Imported coordinates and node transforms parsed in single precision (the vcpkg assimp port has no `ASSIMP_DOUBLE_PRECISION` build), widened to double afterwards | `import_mesh_file`, `import_mesh_memory` | Detail above about 1e-7 of the model extent (float resolution 6e-8 relative); every later stage is double | Coordinates closer than float resolution (`1.0` and `1.000000001`) collapse to one vertex; a double-precision assimp build is needed for such models |
+
+## Aerodynamic solvers (orrery_aero, Phase 7a)
+
+Sources: `orrery/aero/aero_solver.h` (interface), `flow_conditions.h`,
+`aero_result.h`, `regime.h`, `panel_method.h`, `newtonian.h`; overview and
+validity envelopes in `aero.md`; decision ADR-009; tests in `tests/aero`
+and `tests/aero_validation`.
+
+### Flow conditions and coefficients
+- Speed of sound a = sqrt(gamma R T), Mach = V / a, Re = rho V L / mu,
+  q = rho V^2 / 2; air defaults gamma = 1.4, R = 287.05 J/(kg K), sea-level
+  rho, T and mu of the US Standard Atmosphere 1976.
+- Body axes x downstream, y span, z up. Free-stream (drag) direction
+  (cos a cos b, sin b, sin a cos b), lift direction normalize(drag x y) =
+  (-sin a, 0, cos a) at b = 0, side direction lift x drag.
+- Cd, Cl, Cy = force . direction / (q S); Cm = M_y / (q S l) about the
+  moment centre, nose up positive.
+
+### Panel method (Hess and Smith 1967; Katz and Plotkin, *Low-Speed Aerodynamics*, 2001)
+- 2D: constant source sigma_j on each panel and one vorticity gamma on all
+  panels. In panel coordinates (xi along the panel, eta normal) a unit source
+  induces u = ln(r1/r2) / (2 pi), v = beta / (2 pi) and a unit vortex
+  u = -beta / (2 pi), v = ln(r1/r2) / (2 pi), beta the angle the panel
+  subtends. Unknowns from zero normal velocity at the panel midpoints plus the
+  Kutta condition V_t,1 + V_t,N = 0 at the trailing edge; Cp = 1 - (V_t/V)^2.
+  Circulation Gamma = -gamma * perimeter * V gives the Kutta-Joukowski lift
+  rho V Gamma, which the tests compare with the pressure integral.
+- 3D: on each triangle a constant source sigma = -n . V and an unknown
+  constant doublet mu; the perturbation potential inside the body is zero
+  (Dirichlet condition, Katz and Plotkin eq. 12.12):
+  sum_j mu_j C_ij + sum_w mu_w C_iw + sum_j sigma_j B_ij = 0, C_ii = -1/2.
+  Doublet influence -Omega / (4 pi) from the solid angle (van Oosterom and
+  Strackee 1983); source influence -(1 / 4 pi) [sum_k d_k ln((r_k + r_k+1 +
+  l_k) / (r_k + r_k+1 - l_k)) - |h| |Omega|] (edge-logarithm form), both
+  checked against brute-force quadrature. mu is the surface perturbation
+  potential, so the surface velocity is V_tangential + grad mu, with grad mu
+  from weighted least squares over two rings of neighbours that do not
+  cross the trailing edge.
+- Kutta condition: mu_w = mu_upper - mu_lower at the trailing edge (upper
+  and lower values: mean of the panels at each trailing-edge vertex,
+  extrapolated to the vertex with their gradients).
+- Trefftz plane: wake trace with point vortices -mu, +mu at each segment's
+  ends; CL_T = 2 sum mu_k ds_k / S and CDi = -sum mu_k w_k ds_k / S (w the
+  normal velocity at the segment midpoints, per unit free-stream speed).
+- Linear solve: dense partial-pivot LU up to 4000 unknowns, restarted GMRES
+  (Eigen) above; the relative residual is reported.
+- Flat-plate friction (Schlichting, *Boundary-Layer Theory*): Cf = 1.328 /
+  sqrt(Re) for Re <= 5e5, else 0.455 / (log10 Re)^2.58 - 1700 / Re;
+  Cd_friction = Cf S_wetted / S_ref, reported separately from Cd.
+
+### Modified Newtonian theory (Lees 1955; Anderson, *Hypersonic and High-Temperature Gas Dynamics*)
+- Cp = Cp_max sin^2(theta), sin theta = -n . V_hat on windward faces, 0 in the
+  shadow; force -sum Cp q A n.
+- Cp_max = 2 / (gamma M^2) (p02/p1 - 1) with the Rayleigh pitot formula
+  p02/p1 = [(g+1)^2 M^2 / (4 g M^2 - 2 (g-1))]^(g/(g-1)) (1 - g + 2 g M^2) / (g+1)
+  for M >= 1 (isentropic stagnation below); 1.839 for gamma = 1.4 as M -> inf.
+- Sutton-Graves (NASA TR R-376, 1971): q_s = k sqrt(rho / R_n) V^3,
+  k = 1.7415e-4 kg^0.5/m for Earth air (configurable).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| NACA 0012 lift slope, 2D Hess-Smith | 200 panels, alpha 0, 2, 4, 6, 8 degrees, least-squares slope through the origin | 6.897 per rad = 1.098 x 2 pi; 1.005 x the Joukowski thick-section slope 2 pi (1 + 0.77 t/c) | 2 pi within 10 percent (acceptance); thick-section slope within 2 percent |
+| NACA 0012 Cl table | as above, against the embedded thin-airfoil and thick-section values | Cl 0.2413, 0.4823, 0.7227, 0.9622 at 2, 4, 6, 8 degrees; at most 0.7 percent from the thick-section values; inviscid pressure Cd 1.4e-4 to 2.1e-4 (discretisation error) | 3 percent |
+| Symmetric section at zero incidence | NACA 0012, 160 panels | Cl 1e-16, Cm 5e-17; Cl at 4 degrees equals Kutta-Joukowski rho V Gamma within 1 percent | 1e-10 |
+| Circular cylinder, 2D | 128 panels | worst error of Cp against 1 - 4 sin^2(theta) 1.1e-14 at the panel midpoints | 1e-10 |
+| Sphere, 3D | 480 and 1984 triangles | Cp against 1 - 9/4 sin^2(theta): rms 0.052 and 0.026 (first order), worst 0.066; Cd, Cl below 0.01 | rms 0.03, worst 0.08 |
+| Rectangular NACA 0012 wing, AR 6, 5 degrees | 16 stations, 24 strips, 1596 panels | CL 0.3915 (Helmbold with the 2D slope 0.421, 7 percent lower); Trefftz CL 0.3920; CDi 0.00823, e = 0.988; at 0 degrees CL 6e-6, CDi 2.5e-4 (P3) | CL within 10 percent, Trefftz within 2 percent, e 0.85 to 1.05 |
+| GMRES against dense LU | sphere, 480 panels, 3 degrees | doublet strengths agree to 3.8e-12 | 1e-8 |
+| Triangle influence against quadrature | 5 points around a triangle, 16384-cell centroid rule | below 1e-4 relative (quadrature error) | 1e-4 |
+| 3D panel solve time | sphere, 2048 panels, dense LU | 0.69 s (hidden `[benchmark]`) | 3 s (project criterion) |
+| Newtonian sphere | 40k triangles, Mach 10 | Cd 0.915775 against Cp_max / 2 = 0.915835 (6.6e-5 relative) | 2e-3 |
+| Newtonian flat plate | Mach 8, alpha 10, 30, 90 degrees | Cd, Cl equal Cp_max sin^2(a) (sin a, cos a) to 1e-8 | 1e-8 |
+| Apollo command module, Mach 20 | capsule primitive (`CapsuleShape::apollo`), 128 x 0.01 rad, heat shield forward | Cd 1.600, 1.539, 1.367, 1.250 at 0, 10, 20, 25 degrees; at the 20 degree trim attitude Cd 1.367 (5 percent above 1.3) and L/D -0.303; Sutton-Graves q_s 35 W/cm^2 at 60 km | Cd 1.3 within 10 percent (acceptance); abs(L/D) 0.3 within 0.05 |
+| Newtonian time | sphere, 100352 triangles | 3.4 ms (hidden `[benchmark]`) | 100 ms (project criterion) |
+| Validity warnings | panel 2D at Mach 0.59, 14 degrees, sideslip 2 degrees; Newtonian at Mach 3; selector override to Newtonian at Mach 0.15 | `panel.mach`, `panel.angle_of_attack`, `panel.sideslip_ignored`; `newtonian.mach`; `newtonian.mach` with the result still computed | every warning fires, nothing blocks |
+
+### Approximations (aero solvers)
+Every item is marked `// APPROXIMATION:` in the code. A5 (potential flow,
+fixed wake), A6 (flat-plate friction), A7 (Newtonian impact) and A8
+(Sutton-Graves heating) in section 5 apply.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| P1 | Panels beyond 10 diameters act as a point source and point doublet | `PanelSolver3D::step` | Neglected terms of relative order 1e-2 of influences that are themselves 1e-2 of the near field | Not used closer than 10 diameters |
+| P2 | Wake strips flat and straight along the free stream, 50 reference lengths long | `PanelSolver3D::setup` (A5) | Small angle of attack, wake roll-up negligible for the loads | High lift or close wake-body interaction |
+| P3 | Kutta jump from the mean of the panels at each trailing-edge vertex, extrapolated linearly | `kutta_jumps` | Triangulations symmetric between upper and lower surface give the exact discrete jump; the diagonal split of `naca_wing` leaves CDi = 2.5e-4 at zero incidence (AR 6, 16 stations) | Very thin trailing-edge panels on an unsymmetric triangulation: spurious antisymmetric circulation at the tips (CDi = 2e-3 at 48 stations) |
+| P4 | Surface velocity from a least-squares doublet gradient over two rings of neighbours, sharp edges (normals over 45 degrees apart) used only as a fallback | `gradient_weights` | Smooth surfaces; first-order accurate | Cp next to sharp edges (wing tips, capsule shoulders) is smeared over one panel |
+| P5 | 2D panel method ignores sideslip | `PanelSolver2D::step` | Sections in a plane flow | Swept or yawed flow; a `panel.sideslip_ignored` warning is attached |
+| P6 | Regime boundaries Mach 0.3 (incompressible), Mach 5 (hypersonic), Re 1e5 (thin attached boundary layer), 10 degrees (attached flow) | `validity_envelope`, `select_solver` | Engineering rules of thumb, not sharp limits | Results near a boundary deserve the same caution as those just outside |

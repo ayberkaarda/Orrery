@@ -20,6 +20,7 @@
         "gl-api-46"
       ]
     },
+    "eigen3",
     "glfw3",
     "glm",
     {

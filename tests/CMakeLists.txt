@@ -38,6 +38,13 @@ target_compile_definitions(orrery_test_geom PRIVATE
     ORRERY_GEOM_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/geom/fixtures"
     ORRERY_GEOM_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/geom_output")
 
+# Phase 7a: aero solver interface, regime selection and analytic solver tests.
+target_sources(orrery_test_aero PRIVATE
+    aero/test_regime.cpp
+    aero/test_panel.cpp
+    aero/test_newtonian.cpp)
+add_subdirectory(aero_validation)
+
 # Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
 # shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
 # context and are reported as skipped when none can be created (set

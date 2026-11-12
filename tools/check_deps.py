@@ -101,6 +101,10 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
     # PLY and FBX models; private, graphics-free, single precision only
     # behind its API (converted to double on read).
     "orrery_geom": {"assimp::assimp"},
+    # orrery_aero (Phase 7a): Eigen (MPL-2.0, header-only) solves the panel
+    # method's linear systems (dense LU, GMRES); private, graphics-free, used
+    # in double precision only.
+    "orrery_aero": {"Eigen3::Eigen"},
     "orrery_sim": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
