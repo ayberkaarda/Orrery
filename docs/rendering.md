@@ -6,8 +6,10 @@ headless snapshots, PNG output and snapshot comparison. Phase 4b adds the
 space scene (sections 10 to 12: bodies, starfield, trails), the immutable
 `SimSnapshot` the renderer reads (section 9) and the Dear ImGui / ImPlot
 layer (section 13). The physics thread, the triple buffer and the
-application loop come in Phase 4c (ADR-005, ADR-011); bloom, rings,
-atmospheres and black-hole lensing later.
+application loop come in Phase 4c (ADR-005, ADR-011). Phase 5 adds the
+black-hole lensing pass (section 17: Schwarzschild ray marching in a compute
+shader, an environment cube map of the sky, a thin accretion disk); bloom,
+rings and atmospheres come later.
 
 ## 1. Precision and units
 
@@ -239,6 +241,9 @@ sRGB target      read back as 8-bit RGBA (glGetTextureImage: stored bytes, no co
 | `stars.vert.glsl`, `stars.frag.glsl` | starfield point sprites at infinity |
 | `milky_way.frag.glsl` | Milky Way band (with `fullscreen.vert.glsl`) |
 | `trail.vert.glsl`, `trail.frag.glsl` | anti-aliased screen-space trail segments, near-plane clipped |
+| `black_hole_trace.comp.glsl` | compute: Schwarzschild null geodesics per half-resolution sample, thin disk (section 17) |
+| `black_hole_composite.frag.glsl` | edge-aware upsampling of the trace, lensed sky lookup, shadow edge, depth (with `fullscreen.vert.glsl`) |
+| `sky_cube_stars.vert.glsl`, `sky_cube_stars.frag.glsl` | starfield into the faces of the environment cube map: Gaussian in the angle from each star |
 
 ## 7. Headless snapshots
 
@@ -472,9 +477,11 @@ and a faint veil `0.012 / (1 + (r / 9d)^2)^1.5`, both falling as r^-3, times
 the photosphere colour at 0.11. The sprite reaches 24 d (64 .. 480 px) and
 its window only fades the last, already faint, part of the wings from 30
 percent of that extent, so the glare has no visible rim (an earlier flat
-skirt read as a grey disc around every star). **Black holes** are a black disc of the shadow
-radius with a faint warm ring sprite (no lensing; Phase 5). **Probes** are
-small emissive cyan markers.
+skirt read as a grey disc around every star). **Black holes** are drawn by
+the lensing pass (section 17); the black disc of the shadow radius with a
+faint warm ring sprite remains as the marker of a hole whose shadow is below
+its minimum screen size, and of every hole when lensing is off. **Probes**
+are small emissive cyan markers.
 
 ## 11. Starfield and Milky Way
 
@@ -574,7 +581,7 @@ they read no physics state and keep no state of their own:
 |---|---|---|
 | `draw_body_inspector` | body list; selected body: kind, mass (Msun, kg), radius (nominal flagged), position (AU) and velocity (km/s), distance, speed, osculating a, e, i, period around its primary | `select`, `focus_camera` |
 | `draw_system_monitor` | sim time, body count, frame and physics step time, integrator, one recorded series (for example the relative energy drift) plotted with ImPlot | `clear_series` |
-| `draw_render_settings` | `RenderSettings` (scale mode, minimum size, LOD bias, star glare, trails, starfield, Milky Way, exposure in EV, light falloff) | `changed` (sanitised copy) |
+| `draw_render_settings` | `RenderSettings` (scale mode, minimum size, LOD bias, star glare, trails, starfield, Milky Way, exposure in EV, light falloff; with `RenderSettingsContext::black_hole` also the BLACK HOLE section of section 17) | `changed` (sanitised copy) |
 | `draw_scene_labels` | `make_scene_labels`: visible bodies, selected first, then by mass, decluttered | none |
 
 `make_body_inspector_data(snapshot, selected)` computes the osculating orbit
@@ -678,6 +685,11 @@ Two runs on the reference machine: median 1.38 / 1.86 ms, p95 1.40 / 1.93 ms
 physics and UI). The test requires the GPU 95th percentile below 16 ms and
 GPU median plus CPU submit below 16 ms.
 
+The black-hole view (section 17: lensing pass with the disk, 512 steps, same
+resolution and MSAA) has its own `[perf]` test: GPU median 1.07 ms (933 fps),
+p95 1.16 ms on the same GPU, against the spec's 30 fps; the headless
+`--benchmark` of `app.md` measures the full frame without a window.
+
 ## 16. Approximations
 
 Every item is marked `// APPROXIMATION:` in the code.
@@ -700,6 +712,210 @@ Every item is marked `// APPROXIMATION:` in the code.
 | `shaders/body.frag.glsl` | procedural surfaces from value noise | no textures or maps | look of each body class; no real geography |
 | `shaders/body.frag.glsl` | PBR-lite: Lambert + normalised Blinn-Phong with Schlick Fresnel, small ambient; no atmosphere, shadows or eclipses | restrained shading for bodies seen from space | plausible; no mutual shadowing |
 | `shaders/body.frag.glsl` | photosphere: linear limb darkening (u = 0.6), faint granulation | display of emissive stars | Sun-like stars |
-| `shaders/body.frag.glsl` | black hole: unlensed black disc of the shadow radius with a faint ring | lensing renderer is Phase 5 | position and apparent size of the shadow only |
+| `shaders/body.frag.glsl` | black-hole marker: unlensed black disc of the shadow radius with a faint ring | used only when lensing is off or the shadow is below the minimum screen size (section 17) | position and apparent size of the shadow only |
+| `black_hole.cpp` | thin disk around a non-rotating hole: zero thickness, plane normal to +Z, ISCO to 30 M, Newtonian-limit temperature profile, black body without limb darkening | rendering model; ADR-003 defers Kerr | shape and Doppler/redshift pattern of a thin, optically thick disk; luminosity display-scaled |
+| `black_hole.cpp` | one lens; bodies drawn unlensed and hidden by the shadow and disk through depth | each body would need its own lensed images | a single dominant hole and the sky at infinity |
+| `shaders/black_hole_trace.comp.glsl` | static camera; rays that exhaust the step budget count as captured; disk opacity fade and streak texture | the space camera has no physical velocity; display only | exact at rest; at 512 steps only rays within about 1e-4 of b_c are cut short |
+| `shaders/black_hole_trace.comp.glsl`, `black_hole_composite.frag.glsl` | radiance bound: lensing-pass light scaled down (hue kept) to at most 1e4 per component | near the horizon the blueshift g grows without limit and B(g T) would overflow the half-float HDR target (Inf, then NaN in tone mapping) | display only: 4500 x the disk peak, white at any exposure; reached only for g >= 2 (camera within a few M of the horizon) |
+| `shaders/black_hole_composite.frag.glsl` | half-resolution trace upsampled edge-aware; occlusion depth from the nearest sample | ADR-017 | exact at the critical curve; near it the sky is filtered rather than resolved |
+| `shaders/sky_cube_stars.vert.glsl` | lensed stars keep the angular brightness of a 1080-row, 40 degree screen | a cube map has no screen pixels | within about 10 percent of the sprite sky at 1440 x 810 .. 1920 x 1080 |
+| `blackbody_spectrum.cpp` | CIE 1931 colour matching functions from an analytic fit; out-of-gamut components clipped | no tabulated data bundled | about 1e-3 in black-body xy; exact gamut above about 1900 K |
 | `shaders/glow.frag.glsl` | star glare: analytic point spread function (Moffat core, r^-3 wings) | stands in for optical glare until the bloom pass | display only |
 | `shaders/milky_way.frag.glsl` | Milky Way: Gaussian disc, bulge, noise star clouds and filamentary dust lanes along the plane | no survey data | band position and overall shape, not detail |
+
+## 17. Black hole (Phase 5)
+
+Spec 7.3, ADR-003 (Schwarzschild, Kerr deferred) and ADR-017 (half-resolution
+strategy, step budget). Sources: `black_hole.h` (CPU side: selection, sample
+grid, rays), `black_hole_pass.{h,cpp}` (GPU side, private), `blackbody_spectrum.h`,
+shaders `black_hole_trace.comp.glsl`, `black_hole_composite.frag.glsl`,
+`sky_cube_stars.{vert,frag}.glsl`; the double-precision reference of the geodesics is
+`orrery/core/schwarzschild_geodesic.h` (graphics-free, in orrery_core).
+
+### Frame
+
+```
+lensed hole?  select_lensed_black_hole: largest Einstein angle sqrt(4M/D) on screen >= 0.25 px
+   | yes
+environment   cube map 6 x 2048^2 R11G11B10F + mips: Milky Way and starfield rendered once
+   |          (again only when the sky brightness settings change)
+trace         compute, one ray per half-resolution sample (8 x 8 groups), RGBA32F field:
+   |          disk light + sky transmittance, escape direction + depth of the first opaque hit
+composite     fullscreen, full resolution, additive into the HDR scene target, depth ALWAYS:
+   |          edge-aware upsampling, one cube-map lookup per pixel, analytic shadow edge,
+   |          log depth where the shadow or the disk covers the sky
+bodies, trails, glow sprites as before (depth-tested against the shadow and the disk)
+```
+
+Without a lensed hole (or with "Lensing" off) the sky is drawn as in section
+11. The pass replaces that sky draw: the cube map is the same Milky Way shader
+and the same star buffer, so the lensed and the unlensed sky look alike.
+
+### Geodesics
+
+Units are geometrized (G = c = 1, lengths in M = G M / c^2, horizon r = 2).
+The camera is a static observer at r0 (no aberration from its motion). A
+pixel ray leaves it at an angle alpha from the outward radial direction e1;
+it stays in the plane of e1 and e2 = (d - cos(alpha) e1) / sin(alpha), with
+impact parameter b = r0 sin(alpha) / sqrt(1 - 2/r0). With u = 1/r and phi
+the angle in that plane:
+
+    u'' = -u + 3 u^2,   u(0) = 1/r0,   u'(0) = -u0 sqrt(1 - 2 u0) cot(alpha)
+
+- RK4 with step h = min(4 pi / N, 0.25 max(u, 0.01) / |u'|), N the step budget
+  (Render Settings "Steps", 64 .. 512, default 512): the budget covers two
+  turns of the photon plane; the second term limits the change of u per step
+  for nearly radial rays.
+- Captured when u >= 1/2 (horizon); escaped when u <= 0, with the escape
+  angle phi + atan2(u, -u') from the end of that step (near u = 0 the orbit is
+  the straight line u = A sin(phi_inf - phi)), escape direction
+  cos(phi_inf) e1 + sin(phi_inf) e2; a ray that uses up the budget has
+  circled the photon sphere and is treated as captured.
+- Disk-plane crossings: with a = e1.N and c = e2.N (N the disk axis) the
+  plane is crossed at phi = atan2(c, a) + pi/2 + k pi, known in advance; u
+  there comes from the cubic Hermite dense output of the RK4 step. Every
+  crossing between the ISCO and the outer radius contributes, front to back,
+  until the transmittance falls below 1e-3, so rays that pass the plane
+  inside the ISCO or beyond the disk and meet it again behind the hole draw
+  the higher-order images (the arc over the shadow, the underside below it
+  and the thin photon ring).
+
+### Disk
+
+Thin, in the plane normal to world +Z (spin is not modelled), from the ISCO
+(6 M = 3 r_s) to 30 M, gas on prograde circular geodesics with
+Omega = r^(-3/2).
+
+- Temperature (Shakura and Sunyaev 1973; Page and Thorne 1974 in the
+  Newtonian limit), zero torque at the inner edge:
+  T(r) = T_peak f(r/r_in) / f(49/36), f(x) = x^(-3/4) (1 - x^(-1/2))^(1/4);
+  T ~ r^(-3/4) far out, maximum at 49/36 r_in, zero at r_in. T_peak is the
+  Render Settings "Temp." slider (2000 .. 20000 K, default 4500 K).
+- Frequency ratio g = nu_obs / nu_em = sqrt(1 - 3/r) / (1 - Omega lambda) /
+  sqrt(1 - 2/r0), lambda = -b (e1 x e2).N the photon's angular momentum about
+  the axis per unit energy: gravitational redshift, transverse Doppler shift
+  and the Doppler shift of the orbital motion (approaching side g > 1).
+- Colour and beaming: I_nu / nu^3 is invariant, so the observed specific
+  intensity is g^3 times the emitted one at nu / g; for a black body that is
+  exactly the black body at g T, whose bolometric intensity scales as g^4.
+  The pass applies neither power as a separate factor: it shades each hit
+  with the visible-band radiance of the black body at g T, so beaming and
+  colour shift follow from the one exact transformation (in the visible the
+  boost is steeper than g^4 on the cool side, the Wien tail). Tested: the
+  identity g^3 B_nu(nu/g, T) = B_nu(nu, g T) to 1e-9 and the bolometric
+  ratio g^4 to 1e-4 for g = 0.5 .. 1.9.
+- Planck to linear RGB (`blackbody_spectrum.h`): the Planck spectrum
+  integrated over 360 .. 830 nm (1 nm trapezoid) against the CIE 1931
+  colour-matching functions in the analytic fit of Wyman, Sloan and Shirley
+  (2013), XYZ to linear sRGB (D65), out-of-gamut components clipped to 0;
+  uploaded as a 1024-texel table even in ln T from 400 to 200000 K. Its
+  chromaticity agrees with the Planckian-locus fit of section 10 within
+  0.006 in x and y from 2000 to 20000 K.
+- Brightness: radiance = 2.2 x "Brightness" x (black body at g T) / Y(T_peak),
+  so the hottest ring at g = 1 has luminance 2.2: the approaching side
+  saturates to white, the receding side stays orange. The disk is opaque out
+  to 0.82 of its outer radius and thins to transparent at it; its emission
+  carries a sheared streak texture (display only, see the approximations).
+- Radiance bound: a camera close to the horizon sees the disk blueshifted
+  by the observer factor 1 / sqrt(1 - 2/r0) (about 14 at r0 = 2.01 M), and
+  B(g T) then outgrows B(T) by 10^5 and more, beyond the largest half float
+  (65504) of the HDR target. The trace scales each sample's light down, hue
+  kept, to at most 1e4 per component, and the composite does the same for
+  the pixel it writes (APPROXIMATION, physics.md R11). The look-up of B(g T)
+  itself is clamped to the table's 200000 K.
+
+### Upsampling and sky
+
+The trace samples sit at the pixel corners (2i + 1, 2j + 1), so every pixel
+centre has four samples around it. The composite blends them bilinearly,
+but leaves out (weight x 1e-4) samples on the other side of the critical
+curve b = 3 sqrt(3) M, which it evaluates analytically for the pixel and for
+each sample (camera outside the photon sphere: a ray is captured exactly
+when it moves inwards with b < b_c). Escape directions, not colours, are
+interpolated; where a neighbour's direction differs by more than about 5.7
+degrees (close to the critical curve) the nearest sample's direction is
+used. The sky is then looked up once per pixel, at the mip level of the
+angular footprint of the lensed direction against the cube texel angle
+(2/N) m^(3/2) (m the largest direction component), so stars stay sharp and
+the compressed sky near the shadow is filtered. The shadow edge is
+anti-aliased from the analytic b over its screen derivative. Rays within 8
+percent of b_c, where the higher-order images of the disk and of the sky
+(the photon ring) are thinner than a sample and escape directions change
+faster than the composite can interpolate, are traced four times (the pixel
+centres of the sample, those on the sample's side of the critical curve) and
+their light is resolved in the compute pass: disk light averaged, the sky
+looked up per sub-ray at the mip level of the spread of their escape
+directions. Such a sample hands no sky to the composite.
+
+Stars are drawn into the cube map with the angular width and the summed
+brightness they have on a reference screen of 1080 rows over 40 degrees
+(sprites narrower than 0.6 texels are widened at constant flux). The
+unlensed sprite sky keeps a per-pixel brightness instead, so the two agree
+at window sizes around 1440 x 810 .. 1920 x 1080 and the cube-map stars are
+dimmer in small offscreen images. Each star is a Gaussian in the angle
+between the texel's direction and the star (`sky_cube_stars.frag.glsl`), so
+its profile does not depend on where it falls on the cube; near an edge or
+a corner its footprint is split over two or three faces. Point sprites are
+clipped by their centre, so the stars are drawn through a viewport that
+reaches 16 texels past each face (projection widened to match): a face also
+draws the stars whose centres lie just beyond it and keeps its own share.
+Tested: a star a quarter texel from an edge or a corner keeps its
+face-centre flux within 10 percent (before, a star at a corner kept 0.77 of
+it, each face holding a quarter of a plane Gaussian over a third of the
+angles around the corner).
+
+### Space view
+
+- `select_lensed_black_hole` picks the hole with the largest Einstein angle
+  in pixels (at least 0.25 px); only that hole lenses (others keep their
+  marker). `prepare_bodies` leaves its instance and ring sprite out while its
+  shadow is at least the clamped minimum size (4 px); a smaller, unresolved
+  shadow keeps the marker of section 10 on top of the lensed sky.
+- Bodies, trails and sprites are not lensed: they are drawn in the normal
+  passes and hidden where the shadow or the opaque disk covers them (the
+  composite writes the log depth of the hole, or of the first opaque disk
+  hit, for pixels whose sky transmittance is below one half).
+- Render Settings show a BLACK HOLE section when the scene holds one:
+  Lensing, Disk, Brightness, Temp. and Steps (tooltips explain the last
+  two); the section disables what has no effect.
+- The `black_hole` experiment frames a lone hole 12 degrees above its disk
+  (app.md, "Space view"). The distance fits the disk in both directions
+  with an 8 percent margin: its width in perspective
+  (R / sqrt(D^2 - R^2 cos^2 i), widest at the rim points nearer than the
+  hole), the near rim below the hole and the lensed far rim above it (weak-
+  field lens equation to third order), and never less than 1.08 R, outside
+  the disk and the horizon. At 16:9 the width decides (D = 58.0 M); in
+  windows wider than about 2.4:1 the height does (D = 47.9 M). Tested with
+  the double-precision geodesics: rays through the frame border miss the
+  disk and rays at 65 percent of the frame meet it, from 8192 x 64 to
+  256 x 1024.
+
+### Tests and measured values
+
+AMD Radeon RX 9060 XT, OpenGL 4.6, Release MSVC:
+
+| Test | Measured |
+|---|---|
+| GPU (float) against the CPU reference (double), 3724 rays at 40 M, 60 degree view, excluding 1 percent around b_c | fates identical; escape direction median 6.1e-7 rad, worst 3.5e-5 rad; b 4.9e-6 relative; first disk radius 5.0e-5 relative; g 8.6e-6 |
+| Shadow radius from the captured samples, 400 x 400 at 70 degrees, camera at 12 / 30 / 80 M | 122.8 / 48.5 / 18.1 px against tan(psi) x pixel scale 122.9 / 48.5 / 18.4 px |
+| Einstein ring of a star exactly behind the hole, 60 M, 640 x 360 | brightness-weighted radius 143.52 px, geodesic prediction 143.52 px; closed in all eight sectors; shadow interior luma below 1 |
+| Doppler asymmetry, 80 M, 9 degrees, boxes at 12 and 18 M on both sides | mean luma approaching 235.5, receding 20.2 (required: more than twice); blue/red 0.93 against 0.08 |
+| Weak lens far behind the camera, 1440 x 810 | Milky Way SSIM 0.998, mean luma 8.42 against 8.48 unlensed; summed star luma within 7 percent; brightest star at the same pixel |
+| No NaN or Inf in the HDR target | checked on both golden scenes |
+| Frame time, 1920 x 1080, 4x MSAA, disk on, 512 steps, 65 frames | GPU median 1.07 ms (933 fps), p95 1.16 ms (spec: at least 30 fps, i.e. below 33.3 ms; the test requires p95 below 33.3 ms) |
+
+The core tests (`tests/core/test_schwarzschild_geodesic.cpp`) check the
+reference on its own: deflection within the second-order expansion
+4/b + 15 pi/(4 b^2) (remainder below the third-order term plus 2e-8 rad) for
+b = 1000 .. 5000 M, the strong-deflection limit -ln(b/b_c - 1) - 0.4002
+(Bozza 2002) at 1 and 0.1 percent above b_c, capture just below b_c and
+escape just above it, g against the emitter four-velocity, and the
+temperature profile.
+
+Golden snapshots (`ORRERY_UPDATE_GOLDEN=1 orrery_test_render "[golden]"`,
+SSIM > 0.98):
+
+| Reference | Size | Scene |
+|---|---|---|
+| `black_hole_einstein_ring.png` | 640x360 | lone 4.3e6 Msun hole, camera 60 M away along the galactic plane, disk off, Milky Way x3, one bright point-like star (V = -4.5, 9500 K) exactly behind the hole: Einstein ring, shadow, lensed band |
+| `black_hole_disk_doppler.png` | 640x360 | same hole, camera 80 M away and 9 degrees above the disk, default settings: thin disk with the far side lensed over the shadow, the underside below it, the photon ring and the Doppler-bright left side |

@@ -89,7 +89,7 @@ Every simplification used by the solvers, with the range in which it is acceptab
 | A10 | No rotation; heat shield always forward | Entry dynamics, ADR-012 | Statically stable capsule shape | Tumbling, attitude oscillation, lift-induced skip are not modelled |
 | A11 | Tabulated Cd(Mach) with linear interpolation | Atmosphere bridge | Smooth Cd variation between table points | Sharp changes near Mach 1 are under-resolved with few points |
 | A12 | Paczynski-Wiita pseudo-Newtonian potential | Black hole dynamics, ADR-004 | Radial structure at ISCO and horizon scale | No frame dragging, gravitational waves, or correct periapsis precession |
-| A13 | Schwarzschild metric only; thin-disk emission | Black hole rendering, ADR-003 | Non-rotating hole | Spinning holes (Kerr) have different shadow and disk appearance |
+| A13 | Schwarzschild metric only; thin-disk emission | Black hole rendering, ADR-003, ADR-017 (details R1 to R10 in "Black hole rendering") | Non-rotating hole | Spinning holes (Kerr) have different shadow and disk appearance |
 | A14 | Plummer softening | N-body force | Used to bound close-encounter forces | Alters dynamics at separations comparable to eps |
 | A15 | Barnes-Hut multipole truncation | N-body force | Controlled by opening angle theta | Larger theta increases acceleration error |
 | A16 | Rayleigh + Mie atmosphere with 16-sample ray march | Rendering | Visual plausibility | Not a radiative transfer solution |
@@ -274,6 +274,92 @@ Fixed-step integrators cannot follow the final plunge, where the PW force diverg
 | Event determinism (1e6 Msun hole, 300 bodies, 400 steps, run twice) | 36 collisions, 171 horizon crossings, 183 disruptions (with re-swept survivors), 94 bodies left; identical event lists and state hash; total mass change 5.8e-16 |
 | Pericentre plunge with IAS15 (a = 1.05 AU, e = 19/21, 0.2 AU star or tidal radius), one period as 1 / 7 / 64 output intervals | one event each; entry time minus Kepler -9.1e-4 / -3.1e-4 / -8.4e-4 d (collision), -9.0e-4 / -3.1e-4 / -8.3e-4 d (tidal) |
 | Loose-octree broad phase, regular grid + 1e6 AU sweeper, 513 / 4097 / 32769 bodies | 11232 / 110048 / 901361 box tests, no pairs |
+
+## Black hole rendering (Phase 5)
+
+Sources: `orrery/core/schwarzschild_geodesic.h` (double-precision reference,
+graphics-free), `src/render/shaders/black_hole_trace.comp.glsl` (the GPU ray
+marcher), `orrery/render/blackbody_spectrum.h`; rendering design in
+`rendering.md` section 17; decisions ADR-003 (Schwarzschild, Kerr deferred)
+and ADR-017 (half resolution, step budget); tests:
+tests/core/test_schwarzschild_geodesic.cpp, tests/render/test_black_hole.cpp,
+tests/render/test_black_hole_render.cpp.
+
+### Null geodesics
+- Geometrized units G = c = 1 with lengths in M = G M / c^2 (r_s = 2 M; for
+  4.3e6 Msun, M = 6.35e9 m). The image does not depend on the mass in these
+  units.
+- A photon moves in the plane of its position and direction; with u = 1/r
+  and the angle phi in that plane, the Schwarzschild orbit equation is
+  u'' = -u + 3 u^2, first integral (u')^2 = 1/b^2 - u^2 (1 - 2u) with the
+  impact parameter b = L/E.
+- Static observer at r0, ray at angle alpha from the outward radial
+  direction: b = r0 sin(alpha) / sqrt(1 - 2/r0), u'(0) = -u0 sqrt(1 - 2 u0)
+  cot(alpha).
+- Integration: classical RK4 in phi, step min(4 pi / N, 0.25 max(u, 0.01)
+  / |u'|) with the step budget N <= 512. Capture at u = 1/2, escape at u = 0
+  (escape angle phi + atan2(u, -u') from the end of the last step), cubic
+  Hermite dense output for the disk-plane crossings, which lie at
+  phi = atan2(e2.N, e1.N) + pi/2 + k pi.
+- Critical impact parameter 3 sqrt(3) M (photon sphere r = 3 M): from
+  outside the photon sphere an inward ray is captured exactly when b < b_c.
+  Shadow angular radius for a static observer:
+  sin(psi) = 3 sqrt(3) sqrt(1 - 2/r0) / r0.
+- Deflection of a ray from infinity: 4/b + 15 pi/(4 b^2) + 128/(3 b^3) + ...
+  (weak field); -ln(b/b_c - 1) + ln(216 (7 - 4 sqrt 3)) - pi near b_c
+  (strong-deflection limit, Bozza 2002).
+
+### Thin disk
+- Gas on prograde circular geodesics about the disk axis (world +Z),
+  Omega = r^(-3/2), from the ISCO 6 M to 30 M.
+- Temperature: T(r) = T_peak f(r/r_in) / f(49/36),
+  f(x) = x^(-3/4) (1 - x^(-1/2))^(1/4) (Shakura and Sunyaev 1973 with a
+  zero-torque inner edge, the Newtonian limit of Page and Thorne 1974);
+  T ~ r^(-3/4) for r >> r_in, maximum at r = 49/36 r_in, zero at r_in.
+- Frequency ratio for an emitter at r and a static observer at r0:
+  g = sqrt(1 - 3/r) / (1 - Omega lambda) / sqrt(1 - 2/r0), with
+  lambda = L_z / E of the photon (u^t = 1/sqrt(1 - 3/r) for a circular
+  geodesic; the observer's factor is the blueshift of falling to r0).
+  Approaching gas has lambda > 0 and g > 1. Example: light emitted along the
+  orbit at the ISCO (v = c/2 for a local static observer) reaches infinity
+  with g = sqrt(2) forwards and sqrt(2)/3 backwards.
+- Beaming: I_nu / nu^3 is invariant along a ray, so I_obs(nu) =
+  g^3 I_em(nu/g). For a black body this is exactly a black body at g T, whose
+  bolometric intensity is g^4 times the emitted one (Stefan-Boltzmann). The
+  renderer evaluates the visible-band radiance of B(g T) (Planck spectrum
+  times the CIE 1931 colour matching functions, converted to linear sRGB), so
+  neither power is applied as a separate factor; in the visible band the
+  boost is steeper than g^4 on the cool (Wien) side, which is why the
+  receding side dims and reddens strongly.
+
+### Measured (MSVC 19.44 x64 Release; GPU: AMD Radeon RX 9060 XT)
+| Quantity | Reference | Measured |
+|---|---|---|
+| Deflection, b = 1000 / 2000 / 5000 M | 4/b + 15 pi/(4 b^2), remainder 128/(3 b^3) | within the third-order term plus 2e-8 rad (RK4 at 4 pi / 512) |
+| Strong deflection at b = b_c (1 + 1e-2), b_c (1 + 1e-3) | Bozza 2002 | within 0.03 and 0.005 rad |
+| Capture, camera at 40 M | b < b_c inwards | b = 0.5 .. 0.999 b_c captured, 1.001 .. 6 b_c escape; outward rays escape |
+| g against the emitter four-velocity | p.u contraction | 1e-12 relative, r = 6 .. 60 M, lambda = -12 .. 7 |
+| Thin-disk profile | analytic | peak at 49/36 r_in, T(2r)/T(r) = 2^(-3/4) to 1e-3 far out |
+| GPU (float) against the CPU reference (double), 3724 rays | same algorithm | escape direction median 6.1e-7 rad (worst 3.5e-5), b 4.9e-6, disk radius 5.0e-5, g 8.6e-6 |
+| Shadow radius on screen, 12 / 30 / 80 M | tan(psi) x pixel scale | 122.8 / 48.5 / 18.1 px for 122.9 / 48.5 / 18.4 px |
+| Einstein ring of a source behind the hole, 60 M | CPU geodesic root | 143.52 px for 143.52 px |
+
+### Approximations (black hole rendering)
+Every item is marked `// APPROXIMATION:` in the code.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| R1 | Non-rotating hole: Schwarzschild metric, spin stored but ignored (ADR-003, A13) | `lensing_disk`, trace shader | a* = 0 | Kerr holes have an asymmetric, smaller shadow, frame dragging and a closer ISCO |
+| R2 | Thin disk: zero thickness, plane normal to world +Z, ISCO to 30 M, circular geodesics, Newtonian-limit temperature profile, optically thick black body without limb darkening or returning radiation | `lensing_disk` (black_hole.cpp), trace shader | Shape, inner edge, colour gradient and Doppler/redshift pattern of a thin, optically thick disk | Thick or radiatively inefficient flows (such as Sgr A*'s actual flow), relativistic Novikov-Thorne factors (tens of percent near the ISCO), absolute luminosity (display-scaled) |
+| R3 | Disk opacity and texture: opaque to 0.82 of the outer radius, thinning to the edge; sheared streak pattern (factor 0.4 .. 1.8) on the emission | trace shader | Display only; temperature, Doppler and redshift are not affected | No physical surface structure is implied |
+| R4 | Static camera; a ray that exhausts the step budget counts as captured | trace shader | Camera at rest; at 512 steps only rays within about 1e-4 of b_c are cut short | A moving observer would see aberration and an extra Doppler shift |
+| R5 | Escape angle from the straight-line solution near u = 0 | `infinity_offset` (core), trace shader | Error second order in the last step's overshoot, below 1e-12 rad | - |
+| R6 | One lens; bodies drawn unlensed, hidden by the shadow and disk through depth | `select_lensed_black_hole` | A single dominant hole; the sky at infinity | Bodies near the hole appear at unlensed positions; a second hole does not lens |
+| R7 | Edge-aware upsampling of a half-resolution trace; occlusion depth from the nearest sample | composite shader (ADR-017) | Exact at the critical curve (analytic); smooth ray map over two pixels | Near the critical curve the sky is filtered, not resolved; bodies within the disk thickness of the hole may be ordered wrongly by one sample |
+| R8 | Lensed stars keep the angular brightness of the reference screen (1080 rows, 40 degrees); in the cube map each star is a Gaussian in the angle from it, drawn on every face within 16 texels of it, so it keeps its flux across edges and corners (within 10 percent, tested) | `sky_cube_stars.vert.glsl` | Window sizes about 1440 x 810 to 1920 x 1080 at 40 degrees (within 10 percent) | Small offscreen images show the lensed stars dimmer than the sprite sky |
+| R9 | CIE 1931 colour matching functions from the Wyman-Sloan-Shirley fit | `cie_colour_matching` | A few percent of the CIE table over 380 .. 780 nm, about 1e-3 in black-body xy | - |
+| R10 | Negative linear sRGB components clipped (gamut) | `blackbody_radiance_srgb` | Exact above about 1900 K | Black bodies below 1900 K lose a few percent of their luminance in blue |
+| R11 | Radiance bound: the light of a trace sample and of a composited pixel is scaled down, hue kept, to at most 1e4 (scene-linear) per component; the look-up of B(g T) stops at 200000 K | trace and composite shaders | Display only: the bound is 4500 times the disk's peak (2.2) and maps to white at any exposure (1/64 .. 64); it is reached only for g >= 2 with the coolest, brightest disk (2000 K, brightness 4), that is for a static camera within a few M of the horizon (g = 13.4 at r0 = 2.01 M) | Without it, B(g T) / B(T) exceeds 10^5 near the horizon and the half-float HDR target (max 65504) stores infinity, NaN after tone mapping. Radiance ratios above the bound are not shown (they would be white anyway) |
 
 ## 3a: Barnes-Hut tree gravity, IAS15 and embedded scenarios (orrery_core, Phase 3a)
 
