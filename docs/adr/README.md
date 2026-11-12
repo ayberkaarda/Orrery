@@ -17,5 +17,6 @@
 | [013](013-no-monolithic-domain.md) | No monolithic PhysicsDomain; abstract on second use | Accepted |
 | [014](014-typed-coupling.md) | Typed data flow for cross-domain coupling | Accepted |
 | [015](015-roadmap-layers.md) | Three-layer roadmap with no future-domain code in v1 | Accepted |
+| [016](016-app-loop-timing.md) | Integral time accumulator with a dropping step budget | Accepted |
 
 Each record has Context, Decision, Consequences (including rejected alternatives) and Status sections.

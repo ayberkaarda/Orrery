@@ -15,7 +15,7 @@ Checks:
          the first-party targets reachable from each target (also through
          non-first-party wrapper, interface and imported targets) match the
          intended transitive closure exactly;
-       - orrery_core, orrery_geom and orrery_atmo do not reach OpenGL, GLFW or
+       - orrery_core, orrery_geom, orrery_atmo and orrery_sim do not reach OpenGL, GLFW or
          ImGui through linkLibraries, interfaceLinkLibraries, build or compile
          dependencies, imported/interface (abstract) targets, raw link
          fragments or artifact names; an imported library without artifact
@@ -69,7 +69,12 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
     "orrery_aero": {"orrery_core", "orrery_geom"},
     "orrery_scene": {"orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo"},
     "orrery_render": {"orrery_core", "orrery_geom", "orrery_aero"},
-    "orrery_app": {"orrery_scene", "orrery_render"},
+    # Phase 4c: the simulation side of the application (physics thread,
+    # commands, experiments) is graphics-free; the command line and headless
+    # renderer join it with render; the executable links only those.
+    "orrery_sim": {"orrery_core", "orrery_scene"},
+    "orrery_app_core": {"orrery_sim", "orrery_render"},
+    "orrery_app": {"orrery_app_core"},
 }
 
 # Approved third-party link dependencies, per first-party target, as spelled
@@ -82,14 +87,17 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # orrery_render only; GRAPHICS_FREE_TARGETS below are still checked.
 # orrery_render (Phase 4b): Dear ImGui (docking branch, GLFW and OpenGL 3
 # backends) and ImPlot for the UI layer, both private.
+# orrery_sim (Phase 4c): oneTBB's concurrent_queue carries SimCommands from the
+# render thread to the physics thread, private like in core.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_core": {"TBB::tbb"},
+    "orrery_sim": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
                       "implot::implot"},
 }
 
-GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo")
+GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim")
 PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
 
 # Graphics libraries, matched against each link name after the linker-flag

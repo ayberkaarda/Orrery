@@ -264,8 +264,10 @@ current again (nothing is current afterwards if it was the renderer's own).
 `render` makes its context current again after the scene callback, and
 `render_snapshot` restores the caller's context, so a snapshot nested in
 another renderer's frame leaves that renderer working.
-The `--headless` application flags and EGL/Mesa contexts for CI (spec 7.7)
-arrive with the application loop.
+The `--headless` application flags (spec 7.7) are described in `app.md`
+(Phase 4c); they use this offscreen path with a hidden GLFW window. EGL/Mesa
+contexts for display-less CI are not part of V1 Phase 4: there the `[gl]`
+tests skip unless `ORRERY_REQUIRE_GL=1`.
 
 PNG output (`png.h`) is dependency-free: 8-bit RGBA, non-interlaced, CRC-32
 per chunk, Adler-32 over the data. The writer picks a row filter per row
@@ -337,8 +339,9 @@ is by copying the `shared_ptr`. Capturing reads the state once, so the source
 `SimState` must not change during `capture`, and spans returned by the
 accessors are valid while their snapshot is alive. The type lives in
 core and depends only on core headers (no GL; `tools/check_deps.py` still
-reports core graphics-free and float-free). Handing snapshots from the
-physics thread to the render thread (triple buffer) is Phase 4c.
+reports core graphics-free and float-free). The physics thread hands
+snapshots to the render thread through a lock-free triple buffer
+(`app.md`, "Physics thread").
 
 ## 10. Bodies
 

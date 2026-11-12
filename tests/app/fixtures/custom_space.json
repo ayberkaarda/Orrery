@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../../../assets/scenarios/figure_eight.json" },
+  "conditions": { "time_warp": 50000, "paused": 1 },
+  "solver": {
+    "name": "rk4",
+    "version": "1",
+    "settings": { "dt_days": 0.25, "force": "newtonian", "softening_au": 0.001, "max_steps_per_frame": 64 }
+  },
+  "result": {}
+}

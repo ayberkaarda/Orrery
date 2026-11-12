@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "../../../assets/scenarios/sun_earth.json" },
+  "conditions": { "time_warp": 2.5 },
+  "solver": { "name": "leapfrog_kdk" }
+}

@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "domain": "space",
+  "inputs": { "scenario": "no_such_scenario.json" },
+  "solver": { "name": "leapfrog_kdk" }
+}

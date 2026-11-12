@@ -186,12 +186,93 @@ target_compile_definitions(orrery_test_scene PRIVATE
 orrery_configure_target(orrery_test_scene)
 catch_discover_tests(orrery_test_scene DISCOVERY_MODE PRE_TEST)
 
-# The application has no library surface; smoke-test the executable itself.
+# Phase 4c: the application loop. orrery_test_sim links only the graphics-free
+# simulation library (triple buffer, command queue, accumulator, physics
+# thread, experiments); orrery_test_app covers the command line, the headless
+# renderer (golden: ORRERY_UPDATE_GOLDEN=1 orrery_test_app "[golden]") and the
+# application bar. Bundled assets are found through ORRERY_SCENARIO_DIR.
+add_executable(orrery_test_sim
+    app/app_test_support.h
+    app/test_triple_buffer.cpp
+    app/test_command_queue.cpp
+    app/test_simulation.cpp
+    app/test_physics_thread.cpp
+    app/test_space_experiment.cpp)
+target_link_libraries(orrery_test_sim PRIVATE orrery_sim Catch2::Catch2WithMain)
+target_compile_definitions(orrery_test_sim PRIVATE
+    ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
+orrery_configure_target(orrery_test_sim)
+catch_discover_tests(orrery_test_sim DISCOVERY_MODE PRE_TEST)
+
+add_executable(orrery_test_app
+    app/app_test_support.h
+    app/test_cli.cpp
+    app/test_headless.cpp
+    app/test_app_bar.cpp
+    app/test_frame_stats.cpp)
+target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
+target_compile_definitions(orrery_test_app PRIVATE
+    ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
+    ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")
+orrery_configure_target(orrery_test_app)
+set(app_discover_props)
+if(ORRERY_SANITIZE AND NOT MSVC)
+    set(app_discover_props PROPERTIES ENVIRONMENT
+        "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+endif()
+catch_discover_tests(orrery_test_app DISCOVERY_MODE PRE_TEST ${app_discover_props})
+
+# The executable itself: version, help, module graph, and the documented exit
+# codes of the command line (2 for usage errors, 1 for missing files).
 add_test(NAME app.version COMMAND orrery_app --version)
 set_tests_properties(app.version PROPERTIES
     PASS_REGULAR_EXPRESSION "Orrery ${PROJECT_VERSION}"
     FAIL_REGULAR_EXPRESSION "modules:")
 
-add_test(NAME app.module_graph COMMAND orrery_app)
+add_test(NAME app.help COMMAND orrery_app --help)
+set_tests_properties(app.help PROPERTIES
+    PASS_REGULAR_EXPRESSION "--headless --experiment <name-or-path> --out <file.png>")
+
+add_test(NAME app.module_graph COMMAND orrery_app --modules)
 set_tests_properties(app.module_graph PROPERTIES
     PASS_REGULAR_EXPRESSION "render -> core geom aero")
+
+# Exit codes are checked by a small CMake script (PASS_REGULAR_EXPRESSION
+# alone ignores them).
+set(ORRERY_EXPECT_EXIT ${CMAKE_CURRENT_SOURCE_DIR}/app/expect_exit.cmake)
+add_test(NAME app.cli_unknown_option
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=2
+        "-DEXPECT_STDERR=unknown option '--bogus'" "-DARGS=--bogus"
+        -P ${ORRERY_EXPECT_EXIT})
+add_test(NAME app.cli_headless_without_out
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=2
+        "-DEXPECT_STDERR=requires --out" "-DARGS=--headless;--experiment;solar_system"
+        -P ${ORRERY_EXPECT_EXIT})
+add_test(NAME app.cli_missing_experiment
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=1
+        "-DEXPECT_STDERR=experiment 'no_such_experiment' not found"
+        "-DARGS=--headless;--experiment;no_such_experiment;--out;${CMAKE_CURRENT_BINARY_DIR}/app_output/never.png"
+        -P ${ORRERY_EXPECT_EXIT})
+# End to end: renders the bundled solar system experiment. Exit code 3 (no
+# OpenGL 4.6 context) is reported as skipped; the Catch2 [gl] tests enforce
+# ORRERY_REQUIRE_GL.
+add_test(NAME app.headless_png
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=0
+        "-DEXPECT_STDOUT=wrote .*app_output/cli_solar_system.png \\(480x270\\)"
+        "-DARGS=--headless;--experiment;solar_system;--frame;60;--size;480x270;--out;${CMAKE_CURRENT_BINARY_DIR}/app_output/cli_solar_system.png"
+        -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
+        -P ${ORRERY_EXPECT_EXIT})
+set_tests_properties(app.headless_png PROPERTIES SKIP_RETURN_CODE 77)
+# Started by its bare name through PATH from another directory, the
+# executable still finds the assets next to itself.
+add_test(NAME app.bare_name_finds_its_assets
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app>
+        -DSCENARIO_DIR=${PROJECT_SOURCE_DIR}/assets/scenarios
+        -DWORK=${CMAKE_CURRENT_BINARY_DIR}/app_output/bare_name
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/app/bare_name_launch.cmake)
+set_tests_properties(app.bare_name_finds_its_assets PROPERTIES SKIP_RETURN_CODE 77)
+if(ORRERY_SANITIZE AND NOT MSVC)
+    # The executable calls glfwInit without a display; see lsan.supp.
+    set_tests_properties(app.headless_png app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
+        "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+endif()
