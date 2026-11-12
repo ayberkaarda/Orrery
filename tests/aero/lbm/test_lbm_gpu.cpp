@@ -24,11 +24,14 @@
 #include "orrery/aero/lbm/d2q9.h"
 #include "orrery/aero/lbm/force_history.h"
 #include "orrery/aero/lbm/lbm2d.h"
+#include "orrery/aero/lbm/lbm_aero_solver.h"
 #include "orrery/render/embedded_lbm_shaders.h"
 
 using namespace orrery;
 using namespace orrery::aero::lbm;
 using namespace orrery::aero::lbm::test;
+using orrery::aero::AeroGeometry;
+using orrery::aero::FlowConditions;
 
 namespace {
 
@@ -237,6 +240,41 @@ TEST_CASE("GPU and CPU agree on the cylinder channel", "[aero][lbm][gl]") {
         compare(*gl.backend, les.config, les.mask, 4000, nullptr, "cylinder Re 100 LES");
     CHECK(closure.velocity < 1e-4);
     CHECK(closure.force_x < 1e-4);
+    CHECK(gl.context.debug_error_count() == 0);
+}
+
+TEST_CASE("The IAeroSolver adapter runs on the GPU backend", "[aero][lbm][gl]") {
+    GlCompute gl = gl_compute_or_skip();
+    AeroGeometry geometry;
+    for (int k = 0; k < 96; ++k) {
+        const double a = 2.0 * std::numbers::pi * static_cast<double>(k) / 96.0;
+        geometry.section.push_back({0.01 * std::cos(a), 0.01 * std::sin(a)});
+    }
+    geometry.reference.length = 0.02;
+    geometry.reference.area = 0.02;
+    FlowConditions conditions;
+    conditions.speed = 0.1;
+    conditions.density = 1000.0;
+    conditions.viscosity = 1000.0 * 0.1 * 0.02 / 100.0; // Re 100
+
+    LbmSolverOptions options;
+    options.resolution = LatticeResolution{10.0, 0.05};
+    options.duration = 10.0;
+    options.steps_per_call = 2000;
+    LbmAeroSolver2D cpu(options);
+    options.backend = gl.backend.get();
+    LbmAeroSolver2D gpu(options);
+    cpu.setup(geometry, conditions);
+    gpu.setup(geometry, conditions);
+    while (!cpu.step()) {
+    }
+    while (!gpu.step()) {
+    }
+    std::cout << "measured: adapter cd CPU " << cpu.result().cd << " GPU " << gpu.result().cd
+              << "\n";
+    CHECK(gpu.result().cd == Catch::Approx(cpu.result().cd).epsilon(1e-4));
+    CHECK(gpu.result().iterations == cpu.result().iterations);
+    CHECK(gpu.result().surface.cp.size() == cpu.result().surface.cp.size());
     CHECK(gl.context.debug_error_count() == 0);
 }
 

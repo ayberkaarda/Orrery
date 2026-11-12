@@ -334,7 +334,8 @@ add_executable(orrery_test_aero_lbm
     aero/lbm/test_solid_mask.cpp
     aero/lbm/test_force_history.cpp
     aero/lbm/test_lbm2d_flows.cpp
-    aero/lbm/test_lbm2d_gpu_driver.cpp)
+    aero/lbm/test_lbm2d_gpu_driver.cpp
+    aero/lbm/test_lbm_aero_solver.cpp)
 target_link_libraries(orrery_test_aero_lbm PRIVATE orrery_aero Catch2::Catch2WithMain)
 orrery_configure_target(orrery_test_aero_lbm)
 catch_discover_tests(orrery_test_aero_lbm DISCOVERY_MODE PRE_TEST)
