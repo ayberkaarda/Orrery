@@ -42,6 +42,15 @@ ImportError import_error(ImportErrorCode code, std::string message) {
     return e;
 }
 
+// Field-by-field copy for forwarding an error out of a core::Result. The
+// implicit copy constructor trips a clang-analyzer false positive on the
+// Result's variant storage (uninitialized field).
+ImportError copy_error(const ImportError& error) {
+    const MeshValidationError& mesh = error.mesh_error;
+    return ImportError{error.code, error.message,
+                       MeshValidationError{mesh.code, mesh.element, mesh.message}};
+}
+
 std::filesystem::path path_from_utf8(const char* text) {
     std::u8string u8;
     for (const char* c = text; *c != '\0'; ++c) {
@@ -607,7 +616,7 @@ core::Result<ImportedMesh, ImportError> import_mesh_file(const std::filesystem::
                                                          const ImportLimits& limits) {
     auto format = format_from_extension(utf8_from_path(path.extension()));
     if (!format) {
-        return core::failure(format.error());
+        return core::failure(copy_error(format.error()));
     }
     std::error_code ec;
     if (!std::filesystem::is_regular_file(path, ec)) {
@@ -622,7 +631,7 @@ core::Result<ImportedMesh, ImportError> import_mesh_file(const std::filesystem::
     try {
         auto bytes = read_file(absolute, limits.max_file_bytes);
         if (!bytes) {
-            return core::failure(bytes.error());
+            return core::failure(copy_error(bytes.error()));
         }
         if (!needs_directory(format.value())) {
             return import_mesh_memory(bytes.value(), format.value(), limits);
