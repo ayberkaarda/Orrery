@@ -362,7 +362,7 @@ TEST_CASE("unsupported and invalid inputs return explicit errors", "[core][keple
 }
 
 TEST_CASE("signed anomaly reduction keeps precision near periapsis", "[core][kepler]") {
-    // ASTRA-01: small negative angles must not detour through [0, 2 pi).
+    // small negative angles must not detour through [0, 2 pi).
     for (const double x : {1e-16, 1e-12, 0.5, 3.0}) {
         CHECK(wrap_pi(Angle::from_radians(-x)).radians() == -x);
         CHECK(wrap_pi(Angle::from_radians(x)).radians() == x);
@@ -395,7 +395,7 @@ TEST_CASE("signed anomaly reduction keeps precision near periapsis", "[core][kep
 }
 
 TEST_CASE("anomaly conversions keep the revolution at the branch cut", "[core][kepler]") {
-    // ASTRA-02: raw radians are compared, so an extra revolution is detected.
+    // raw radians are compared, so an extra revolution is detected.
     const double inf = std::numeric_limits<double>::infinity();
     for (const double e : {0.0, 0.3}) {
         for (const double base : {pi, -pi, 3.0 * pi, -3.0 * pi}) {
@@ -412,7 +412,7 @@ TEST_CASE("anomaly conversions keep the revolution at the branch cut", "[core][k
 }
 
 TEST_CASE("extreme finite inputs never succeed with non-finite results", "[core][kepler]") {
-    // ASTRA-04: a^3 overflows although n and T are representable.
+    // a^3 overflows although n and T are representable.
     const space::GravitationalParameter unit_mu(1.0);
     const auto n = mean_motion(space::Length(1e110), unit_mu);
     REQUIRE(n);

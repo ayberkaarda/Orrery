@@ -201,7 +201,7 @@ static_assert(std::is_nothrow_move_constructible_v<BodyStore>);
 static_assert(std::is_nothrow_move_assignable_v<BodyStore>);
 
 TEST_CASE("copy assignment is all-or-nothing under allocation failure", "[core][body_store]") {
-    // ASTRA-03: assign a larger store with long (heap-allocated) names to a
+    // assign a larger store with long (heap-allocated) names to a
     // smaller one, failing each allocation in turn.
     const std::string padding(48, '#');
     BodyStore source;

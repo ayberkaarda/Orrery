@@ -19,7 +19,7 @@ static_assert(space_to_si_factor<dim::Dimensionless>() == 1.0);
 static_assert(space_to_si_factor<dim::Length>() == 149597870700.0);
 static_assert(space_to_si_factor<dim::Time>() == 86400.0);
 // Constant evaluation diagnoses undefined behaviour, so these also prove the
-// minimum exponent is handled without signed overflow (ASTRA-05).
+// minimum exponent is handled without signed overflow.
 static_assert(detail::integer_power(2.0, std::numeric_limits<int>::min()) == 0.0);
 static_assert(detail::integer_power(2.0, -1074) == std::numeric_limits<double>::denorm_min());
 static_assert(detail::integer_power(3.0, 5) == 243.0);
@@ -80,7 +80,7 @@ TEST_CASE("conversion commutes with dimension algebra", "[core][units]") {
 }
 
 TEST_CASE("documented GM agreement bound", "[core][units]") {
-    // ASTRA-06: k^2 AU^3 / day^2 differs from the measured 1.32712440041e20
+    // k^2 AU^3 / day^2 differs from the measured 1.32712440041e20
     // by about 7.08e-12 relative; docs/physics.md and units.h state 7.1e-12.
     const double measured = 1.32712440041e20;
     const double relative = std::abs(constants::gm_sun_si.value() - measured) / measured;
@@ -89,7 +89,7 @@ TEST_CASE("documented GM agreement bound", "[core][units]") {
 }
 
 TEST_CASE("integer powers are defined over the whole exponent range", "[core][units]") {
-    // ASTRA-05: the minimum exponent must not negate INT_MIN. The exponents
+    // the minimum exponent must not negate INT_MIN. The exponents
     // are read through volatile so the calls are evaluated at run time.
     volatile int min_exponent = std::numeric_limits<int>::min();
     volatile int max_exponent = std::numeric_limits<int>::max();
