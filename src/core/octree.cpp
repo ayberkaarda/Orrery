@@ -93,8 +93,8 @@ bool Octree::build(std::span<const Vec3<space::Length>> positions, std::span<con
     // The three upper bounds start from the same value on purpose.
     // cppcheck-suppress duplicateAssignExpression
     double hi_x = -lo_x;
-    double hi_y = -lo_x;
     // cppcheck-suppress duplicateAssignExpression
+    double hi_y = -lo_x;
     double hi_z = -lo_x;
     for (const std::uint32_t s : source_index) {
         const Vec3<space::Length>& p = positions[s];
