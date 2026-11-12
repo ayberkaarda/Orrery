@@ -271,3 +271,8 @@ add_test(NAME app.bare_name_finds_its_assets
         -DWORK=${CMAKE_CURRENT_BINARY_DIR}/app_output/bare_name
         -P ${CMAKE_CURRENT_SOURCE_DIR}/app/bare_name_launch.cmake)
 set_tests_properties(app.bare_name_finds_its_assets PROPERTIES SKIP_RETURN_CODE 77)
+if(ORRERY_SANITIZE AND NOT MSVC)
+    # The executable calls glfwInit without a display; see lsan.supp.
+    set_tests_properties(app.headless_png app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
+        "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+endif()
