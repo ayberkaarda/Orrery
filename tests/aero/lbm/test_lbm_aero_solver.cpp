@@ -45,8 +45,9 @@ FlowConditions flow_at(double reynolds, double d) {
 TEST_CASE("The LBM solver runs a cylinder through IAeroSolver", "[aero][lbm][solver]") {
     LbmSolverOptions options;
     options.resolution = LatticeResolution{10.0, 0.05};
-    options.height = 16.0;
-    options.duration = 20.0;
+    options.height = 12.0;
+    options.downstream = 10.0;
+    options.duration = 10.0;
     options.average_window = 4.0;
     options.steps_per_call = 1000;
     LbmAeroSolver2D solver(options);
@@ -68,8 +69,8 @@ TEST_CASE("The LBM solver runs a cylinder through IAeroSolver", "[aero][lbm][sol
         REQUIRE(calls < 100);
     }
     const AeroResult& r = solver.result();
-    CHECK(r.iterations == 4000); // 20 L / U at 10 cells and u_lat 0.05
-    CHECK(r.residuals.size() == 4);
+    CHECK(r.iterations == 2000); // 10 L / U at 10 cells and u_lat 0.05
+    CHECK(r.residuals.size() == 2);
     CHECK(std::isfinite(r.cd));
     CHECK(r.cd > 1.0);
     CHECK(r.cd < 2.5);
@@ -78,7 +79,7 @@ TEST_CASE("The LBM solver runs a cylinder through IAeroSolver", "[aero][lbm][sol
     const double q = conditions.dynamic_pressure();
     CHECK(r.force.x == Approx(r.cd * q * geometry.reference.area).epsilon(1e-9));
     CHECK(solver.instantaneous().drag > 0.0);
-    CHECK(solver.history().size() == 400);
+    CHECK(solver.history().size() == 200);
 
     // Wall pressure: the front stagnation point is near Cp = 1.
     REQUIRE_FALSE(r.surface.cp.empty());

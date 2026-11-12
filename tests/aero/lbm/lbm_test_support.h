@@ -94,7 +94,7 @@ inline Lbm2DConfig poiseuille_config(std::size_t nx, std::size_t ny, double tau,
 
 inline double poiseuille_velocity(const Lbm2DConfig& config, double y) {
     const double nu = viscosity_of_tau(config.tau);
-    const double h = static_cast<double>(config.ny);
+    const auto h = static_cast<double>(config.ny);
     return config.body_force_x / (2.0 * nu) * (y + 0.5) * (h - 0.5 - y);
 }
 

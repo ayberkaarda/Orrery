@@ -36,7 +36,7 @@ TEST_CASE("The dominant oscillation of a shedding-like signal", "[aero][lbm]") {
     std::vector<double> t;
     std::vector<double> v;
     for (int k = 0; k < 40000; k += 10) {
-        const double time = static_cast<double>(k);
+        const auto time = static_cast<double>(k);
         t.push_back(time);
         v.push_back(1.3 + 0.3 * std::sin(2.0 * std::numbers::pi * frequency * time + 0.4) +
                     std::exp(-time / 500.0));

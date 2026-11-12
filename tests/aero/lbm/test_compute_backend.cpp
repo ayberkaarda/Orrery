@@ -93,9 +93,9 @@ TEST_CASE("Null backend validates, records and runs dispatches", "[aero][compute
             const std::span<std::byte> out = bound.at(1);
             for (std::uint32_t k = 0; k < command.global.x; ++k) {
                 std::uint32_t v = 0;
-                std::memcpy(&v, in.data() + 4 * k, 4);
+                std::memcpy(&v, in.data() + std::size_t{4} * k, 4);
                 v *= 2U;
-                std::memcpy(out.data() + 4 * k, &v, 4);
+                std::memcpy(out.data() + std::size_t{4} * k, &v, 4);
             }
             return Status(std::monostate{});
         });

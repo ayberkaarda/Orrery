@@ -72,8 +72,8 @@ Lbm2DConfig periodic_box(std::size_t nx, std::size_t ny, double tau) {
 InitialState taylor_green(std::size_t n, double u0) {
     const double k = 2.0 * std::numbers::pi / static_cast<double>(n);
     return [k, u0](std::size_t xi, std::size_t yi) {
-        const double x = static_cast<double>(xi);
-        const double y = static_cast<double>(yi);
+        const auto x = static_cast<double>(xi);
+        const auto y = static_cast<double>(yi);
         const double rho = 1.0 - 0.75 * u0 * u0 * (std::cos(2.0 * k * x) + std::cos(2.0 * k * y));
         return orrery::aero::lbm::d2q9::Moments{rho, -u0 * std::cos(k * x) * std::sin(k * y),
                                                 u0 * std::sin(k * x) * std::cos(k * y)};

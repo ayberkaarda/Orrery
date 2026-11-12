@@ -70,7 +70,7 @@ TEST_CASE("GPU solver allocates its buffers and uploads the shifted state", "[ae
     CHECK(worst < 1e-9);
     CHECK(worst > 0.0);
     CHECK(take(solver->mass()) ==
-          Catch::Approx(static_cast<double>(40 * 20 - setup.mask.count())).epsilon(1e-7));
+          Catch::Approx(static_cast<double>(std::size_t{800} - setup.mask.count())).epsilon(1e-7));
 }
 
 TEST_CASE("GPU solver steps ping-pong between its population buffers", "[aero][lbm][gpu]") {
@@ -114,7 +114,7 @@ TEST_CASE("GPU solver steps ping-pong between its population buffers", "[aero][l
 TEST_CASE("GPU solver converts the kernel outputs on readback", "[aero][lbm][gpu]") {
     compute::NullComputeBackend backend;
     const CylinderSetup setup = cylinder_setup(16, 8, 3.0, 6.0, 4.0, 0.05, 20.0);
-    const std::size_t cells = 16 * 8;
+    const std::size_t cells = std::size_t{16} * 8;
     const std::vector<BoundaryLink> links = boundary_links(setup.config, setup.mask);
 
     // Stand-ins for the kernels that write recognisable values.
@@ -134,7 +134,7 @@ TEST_CASE("GPU solver converts the kernel outputs on readback", "[aero][lbm][gpu
     backend.register_kernel(std::string(kernel_force),
                             [](const compute::DispatchCommand& command,
                                const compute::NullComputeBackend::Bindings& b) {
-                                std::vector<double> parts(2 * command.global.x, 0.0);
+                                std::vector<double> parts(std::size_t{2} * command.global.x, 0.0);
                                 const std::vector<std::byte> bytes = compute::pack_float32(parts);
                                 std::memcpy(b.at(5).data(), bytes.data(), bytes.size());
                                 return compute::Status(std::monostate{});
