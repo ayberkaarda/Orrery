@@ -279,7 +279,11 @@ add_executable(orrery_test_sim
 # Phase 9b: the Entry workspace's graphics-free side (inputs, solver thread,
 # comparison and CSV).
 target_sources(orrery_test_sim PRIVATE app/test_entry_model.cpp)
-target_link_libraries(orrery_test_sim PRIVATE orrery_sim Catch2::Catch2WithMain)
+# Downloads of experiment models against the loader's mock server
+# (tests/geom/net): cancellation, the recorded digest, permission.
+target_sources(orrery_test_sim PRIVATE app/test_aero_download.cpp)
+target_link_libraries(orrery_test_sim PRIVATE orrery_sim orrery_geom_net test_net_support
+    Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_sim PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
 orrery_configure_target(orrery_test_sim)

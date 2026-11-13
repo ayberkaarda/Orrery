@@ -348,6 +348,22 @@ struct AeroWorkspace::Impl {
             });
     }
 
+    void cancel_work() {
+        rebuild_queued = false;
+        geometry_task.request_stop();
+        import_task.request_stop();
+    }
+
+    // Errors go to the modal; a cancellation the user asked for only to the
+    // status line.
+    void report_failure(const sim::GeometryError& cause) {
+        if (cause.title == sim::cancelled_error().title) {
+            set_notice("Cancelled", false);
+            return;
+        }
+        show_error({cause.title, cause.detail});
+    }
+
     void import_file() {
         const std::filesystem::path path(w::from_buffer(path_buffer));
         if (path.empty()) {
@@ -428,8 +444,7 @@ struct AeroWorkspace::Impl {
                 pending_up = model.imported.up.axis == geom::UpAxis::y_up ? 1 : 0;
                 pending_import = std::move(model);
             } else {
-                const sim::GeometryError& cause = imported.error();
-                show_error({cause.title, cause.detail});
+                report_failure(imported.error());
             }
         }
         if (geometry_task.done()) {
@@ -443,8 +458,7 @@ struct AeroWorkspace::Impl {
                 // The inputs no longer describe the body prepared before:
                 // nothing may run or be saved against it.
                 drop_geometry();
-                const sim::GeometryError& cause = prepared.error();
-                show_error({cause.title, cause.detail});
+                report_failure(prepared.error());
             }
         }
     }
@@ -778,6 +792,12 @@ void AeroWorkspace::Impl::draw_geometry_panel() {
         ImGui::Dummy(ImVec2(0.0F, 2.0F));
         const char* stage = import_task.started() ? import_task.stage() : geometry_task.stage();
         w::muted(std::string("Working: ") + stage + dots());
+        ImGui::SameLine();
+        if (ImGui::SmallButton("Cancel##work")) {
+            cancel_work();
+        }
+        w::tooltip("Stop the download, import or repair (a download stops within about a "
+                   "second)");
     }
     draw_geometry_report();
     ImGui::End();
@@ -1977,6 +1997,10 @@ std::optional<std::filesystem::path> AeroWorkspace::save() {
 
 void AeroWorkspace::set_view_problem(std::string problem) {
     impl_->view_problem = std::move(problem);
+}
+
+void AeroWorkspace::cancel_work() {
+    impl_->cancel_work();
 }
 
 void AeroWorkspace::set_conditions(const scene::AeroConditions& conditions) {

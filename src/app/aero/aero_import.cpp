@@ -123,9 +123,18 @@ ImportResult fetch_model_url(std::string_view url, const UrlImportOptions& optio
     geom::net::FetchOptions fetch;
     fetch.cache_dir = options.cache_dir;
     fetch.license_note = options.license_note;
+    fetch.ca_bundle_override = options.ca_bundle_override;
+    if (progress != nullptr) {
+        // A stop request (Cancel, closing the window) ends even a stalled
+        // download within about a second.
+        fetch.cancel_requested = [progress] { return progress->stop_requested(); };
+    }
     auto fetched = geom::net::fetch_model(url, fetch);
     if (!fetched) {
         const geom::net::FetchError& error = fetched.error();
+        if (error.kind == geom::net::FetchErrorKind::cancelled) {
+            return core::failure(cancelled_error());
+        }
         return core::failure(GeometryError{
             fetch_title(error.kind),
             std::string(geom::net::fetch_error_kind_name(error.kind)) + ": " + error.message});

@@ -116,6 +116,9 @@ public:
     // What the scene could not show (AeroViewport::problem()); the View panel
     // shows it until it is cleared with an empty string.
     void set_view_problem(std::string problem);
+    // Stops the running download, import or geometry build (the Cancel
+    // button): a download ends within about a second.
+    void cancel_work();
     // Replace the flow conditions or the solver settings as their panels do.
     void set_conditions(const scene::AeroConditions& conditions);
     void set_solver_settings(const scene::AeroSolverSettings& settings);

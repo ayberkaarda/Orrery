@@ -13,11 +13,11 @@
 // https URL through the secure loader of orrery_geom_net (ADR-010) and then
 // the same importer. Both are blocking and meant for a BackgroundTask; every
 // failure carries a title and the full detail for the error modal. A task
-// whose progress reports stop_requested() ends at the next stage boundary
-// with the title "Cancelled"; a running download, parse or repair call is
-// not interrupted (orrery_geom has no cancellation hook): a stalled download
-// ends at the fetch limits (geom::net::FetchLimits, 30 s below 1 KiB/s,
-// 300 s in all).
+// whose progress reports stop_requested() ends with the title "Cancelled":
+// a download stops within about a second (also a stalled or trickling one;
+// geom::net::FetchOptions::cancel_requested), and the other stages stop at
+// their next boundary (a running parse or repair call is not interrupted:
+// orrery_geom has no cancellation hook).
 namespace orrery::sim {
 
 using ImportResult = core::Result<ImportedModel, GeometryError>;
@@ -41,6 +41,9 @@ struct UrlImportOptions {
     // Cache root; empty uses the platform cache (geom::net::default_model_cache_dir).
     std::filesystem::path cache_dir;
     std::string license_note;
+    // Test seam (geom::net::FetchOptions::ca_bundle_override): a PEM file
+    // replacing the system trust store. Production code leaves it empty.
+    std::filesystem::path ca_bundle_override;
 };
 
 // Downloads (or takes from the cache) and imports a model from an https URL.
