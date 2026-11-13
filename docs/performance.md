@@ -112,16 +112,17 @@ GCC's LTO speed has not been measured.
 
 ## 3. Results
 
-Release preset (MSVC 19.44, LTO), 2026-11-13, measured with
-`run_benchmarks.py` while no other Orrery process ran (the machine was
-shared with other builds earlier; runs taken under that load are not used:
-the GPU rows dropped two to four times and the force rows varied by 30
-percent).
+Release preset (MSVC 19.44, LTO), 2026-11-13, one run of
+`run_benchmarks.py` on an otherwise idle machine; the tables below are its
+`make_report.py` output. Two limits of this machine against the targets: the
+GPU is not a GTX 1660-class part (it is newer and faster, section 4), and the
+Barnes-Hut targets assume 8 cores while this CPU has 6 cores / 12 logical
+CPUs (single-thread times are listed as context).
 
 | | |
 |---|---|
 | OS | Windows 11 |
-| CPU | AMD Ryzen 5 7600 class: 6 cores, 12 hardware threads (Zen 4 desktop) |
+| CPU | AMD Ryzen 5 7600 class: 6 cores, 12 logical CPUs (Zen 4 desktop) |
 | Memory | 32 GB |
 | GPU | AMD Radeon RX 9060 XT class (RDNA 4 mid-range desktop) |
 
@@ -134,18 +135,18 @@ build to print their values (`ctest` hides the output of passing tests).
 | Energy drift, solar system 1000 years, Yoshida4 | abs(dE/E0) < 1e-9 | max 1.41e-10 (final 2.6e-14) | pass | `Sun and eight planets, 1000 years with Yoshida4` (orrery_test_core) |
 | Two-body circular, 100 orbits, Leapfrog | < 1e-6 AU | 3.77e-7 AU | pass | `circular two-body orbit, 100 orbits with Leapfrog` |
 | Barnes-Hut theta 0.5, N = 2000, acceleration error | median < 1e-3 | median 4.70e-4 (p99 1.97e-3) | pass | `Barnes-Hut accuracy against direct summation, N = 2000` |
-| Force N = 10k (8 cores) | < 8 ms | **16.8 ms** (12 threads; 12.3 to 16.8 over five runs) | **miss** | `orrery_bench_core` |
-| Force N = 100k (8 cores) | < 120 ms | **245 ms** (213 to 245) | **miss** | `orrery_bench_core` |
-| LBM D3Q19 128^3, GTX 1660 class | >= 60 steps/s | 671 steps/s (RX 9060 XT class) | pass on this GPU; target class not measured | `orrery_bench_lbm_gpu` |
-| LBM D2Q9 2048 x 1024 | >= 200 steps/s | 1511 steps/s (GPU) | pass | `orrery_bench_lbm_gpu` |
-| Panel 3D N = 2000 solve | < 3 s | 0.68 s (2048 panels, setup and solve) | pass | `orrery_bench_aero` |
-| Newtonian 100k triangles | < 100 ms | 2.08 ms (100352 triangles) | pass | `orrery_bench_aero` |
+| Force N = 10k (8 cores) | < 8 ms | **13.3 ms** (6 cores / 12 logical CPUs; one thread 73.8 ms) | **miss** | `orrery_bench_core` |
+| Force N = 100k (8 cores) | < 120 ms | **226 ms** (6 cores / 12 logical CPUs; one thread 1301 ms) | **miss** | `orrery_bench_core` |
+| LBM D3Q19 128^3, GTX 1660 class | >= 60 steps/s | 682 steps/s (RX 9060 XT class) | pass on this GPU; target class not measured | `orrery_bench_lbm_gpu` |
+| LBM D2Q9 2048 x 1024 | >= 200 steps/s | 1521 steps/s (GPU) | pass | `orrery_bench_lbm_gpu` |
+| Panel 3D N = 2000 solve | < 3 s | 0.66 s (2048 panels, setup and solve) | pass | `orrery_bench_aero` |
+| Newtonian 100k triangles | < 100 ms | 1.98 ms (100352 triangles) | pass | `orrery_bench_aero` |
 | NACA 0012 Cl slope | 2 pi / rad +-10% | 6.90 / rad = 1.098 x 2 pi | pass (0.2 percent inside the bound) | `NACA 0012 lift slope is 2 pi per radian within 10 percent` |
 | Cylinder Re = 150 Strouhal | 0.16 to 0.20 | St 0.189 (nightly CPU case, D = 40); pull-request case Re 100: St 0.167 | pass (nightly) | `orrery_nightly_lbm_validation`, `test_cylinder.cpp` |
 | Sphere Cd Re = 100 | 1.0 to 1.2 | 1.186 (CPU, 12 cells/D), 1.140 (GPU, 16 cells/D) | pass | `test_sphere.cpp` |
-| Render Space 1080p | >= 60 fps | 397 fps (mean 2.52 ms, GPU median 2.33 ms) | pass | headless `--benchmark 600` |
-| Render black hole, half-resolution trace | >= 30 fps | 815 fps at 1920x1080 (mean 1.23 ms) | pass | headless `--benchmark 300` |
-| Model import 500k triangles glTF (local), with report | < 5 s | 1.06 s with the report, 1.82 s with the full repair | pass | `orrery_bench_geom` |
+| Render Space 1080p | >= 60 fps | 398 fps (mean 2.52 ms, GPU median 2.34 ms) | pass | headless `--benchmark 600` |
+| Render black hole, half-resolution trace | >= 30 fps | 802 fps at 1920x1080 (mean 1.25 ms) | pass | headless `--benchmark 300` |
+| Model import 500k triangles glTF (local), with report | < 5 s | 0.97 s with the report, 1.74 s with the full repair | pass | `orrery_bench_geom` |
 | Determinism (core), 10k steps | bit-identical | identical, equal to the golden hashes (LTO build) | pass | `orrery_bench_core`, `test_determinism.cpp` |
 | Binary + asset | < 80 MB | 17.4 MB (executable 3.5, libraries 13.9, assets 0.02) | pass | `run_benchmarks.py` |
 | Idle RAM (solar system) | < 400 MB | 172 MB peak working set (headless; peak commit 429 MB) | pass, with the caveat of section 4 | `run_benchmarks.py` |
@@ -156,25 +157,25 @@ Context measurements of the same run:
 
 | Measurement | Value |
 |---|---|
-| Barnes-Hut, one thread, N = 100 / 1k / 10k / 100k | 0.064 / 3.49 / 82.3 / 1370 ms |
-| Direct summation, one thread, N = 100 / 1k / 10k | 0.034 / 3.49 / 241 ms |
-| Barnes-Hut N = 10k, all threads, leaf 16 / 32 | 14.0 / 15.4 ms |
-| LBM on the CPU (double precision, 12 threads), D2Q9 2048 x 1024 / D3Q19 128^3 | 79.0 / 32.0 steps/s (166 / 67 million lattice updates per second) |
-| LBM on the GPU with the Smagorinsky closure, D2Q9 / D3Q19 | 1527 / 680 steps/s |
-| Cold start, median of four later runs | 0.59 s |
+| Barnes-Hut, one thread, N = 100 / 1k / 10k / 100k | 0.039 / 2.69 / 73.8 / 1301 ms |
+| Direct summation, one thread, N = 100 / 1k / 10k | 0.024 / 2.28 / 231 ms |
+| Barnes-Hut N = 10k, all threads, leaf 16 / 32 | 12.3 / 15.4 ms |
+| LBM on the CPU (double precision, 12 threads), D2Q9 2048 x 1024 / D3Q19 128^3 | 75.9 / 33.5 steps/s (159 / 70 million lattice updates per second) |
+| LBM on the GPU with the Smagorinsky closure, D2Q9 / D3Q19 | 1475 / 677 steps/s |
+| Cold start, median of four later runs | 0.57 s |
 
 ## 4. Deviations
 
-**Force N = 10k and 100k: missed by about a factor of two.** Measured
-12.3 to 16.8 ms and 213 to 245 ms on 6 cores / 12 threads (the spec's 8
-cores are not available here); one thread takes 74 to 82 ms and 1.31 to
-1.37 s, so the parallel speed-up is about 5.5. Reason (unchanged since phase
+**Force N = 10k and 100k: missed by a factor of 1.7 and 1.9.** Measured
+13.3 ms and 226 ms with all 12 logical CPUs of a 6-core machine (the targets
+assume 8 cores, which this machine does not have); one thread takes 73.8 ms
+and 1301 ms, so the parallel speed-up is 5.5 and 5.8. Reason (unchanged since phase
 3a, physics.md "Barnes-Hut"): the walk is scalar double arithmetic with a
 correctly rounded square root and division per interaction and a quadrupole
 term, under the determinism contract (`/fp:precise`, no contraction, no
 approximate reciprocal square root), and MSVC does not vectorise the receiver
 loop under those rules; LTO does not change it (section 2). Linear scaling
-to 8 cores gives about 9 to 12 ms and 160 to 185 ms: still a miss.
+from 6 to 8 cores gives about 10 ms and 170 ms: still a miss.
 Recommendation, in order of payoff: explicit SIMD over receivers (each lane
 performs the same IEEE operations in the same order, so the results stay
 bit-identical); reuse of the tree between the substeps of one frame (the
@@ -182,8 +183,9 @@ build is part of every evaluation); a monopole-only mode with a smaller
 opening angle for interactive use. Re-measure on an 8-core machine.
 
 **LBM D3Q19 target class not measured.** The target names a GTX 1660-class
-GPU; this machine has a newer, faster one (671 steps/s, 11 times the
-target). The kernel is bandwidth-bound: 671 steps/s moves about 214 GB/s
+GPU; this machine's GPU is not one: it is a newer, faster part (682
+steps/s, 11 times the target). The kernel is bandwidth-bound: 682 steps/s
+moves about 217 GB/s
 (19 binary32 populations read and written per node), two thirds of this
 GPU's 322 GB/s peak. A GTX 1660 has 192 GB/s peak, so at the same efficiency
 about 400 steps/s, well above 60.
