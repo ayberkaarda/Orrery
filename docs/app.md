@@ -185,7 +185,7 @@ Bundled experiments (`assets/experiments`):
 | `solar_system` | J2000 solar system | leapfrog, 0.05 d | 1e6 (11.6 d/s) |
 | `sun_earth_moon` | Sun, Earth, Moon | leapfrog, 0.02 d | 2e5 |
 | `figure_eight` | three-body choreography | Yoshida4, 0.5 d | 2e6 |
-| `sgr_a_s2` | Sgr A* and S2 | IAS15, 2 d | 1e7 |
+| `sgr_a_s2` | Sgr A* and S2 (Newtonian point masses: the experiment sets `"force": "newtonian"`) | IAS15, 2 d | 1e7 |
 | `black_hole` | a lone 4.3e6 Msun Schwarzschild hole (its thin disk is a rendering model, `rendering.md` section 17) | leapfrog, 1 d | 1 |
 
 Bundled aero experiments: `aero_naca0012_panel` (2D panel method, 4 deg),
