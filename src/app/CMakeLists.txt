@@ -38,12 +38,14 @@ target_sources(orrery_sim PRIVATE
     aero/aero_import.cpp
     aero/aero_runner.cpp
     aero/aero_solve.cpp
+    aero/aero_view_data.cpp
     aero/include/orrery/sim/aero_comparison.h
     aero/include/orrery/sim/aero_flow.h
     aero/include/orrery/sim/aero_geometry.h
     aero/include/orrery/sim/aero_import.h
     aero/include/orrery/sim/aero_runner.h
     aero/include/orrery/sim/aero_solve.h
+    aero/include/orrery/sim/aero_view_data.h
     aero/include/orrery/sim/background_task.h)
 target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/aero/include)
 target_link_libraries(orrery_sim PUBLIC orrery_aero orrery_geom)
