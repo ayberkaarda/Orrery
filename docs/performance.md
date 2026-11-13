@@ -169,8 +169,11 @@ Context measurements of the same run:
 **Force N = 10k and 100k: missed by a factor of 1.7 and 1.9.** Measured
 13.3 ms and 226 ms with all 12 logical CPUs of a 6-core machine (the targets
 assume 8 cores, which this machine does not have); one thread takes 73.8 ms
-and 1301 ms, so the parallel speed-up is 5.5 and 5.8. Reason (unchanged since phase
-3a, physics.md "Barnes-Hut"): the walk is scalar double arithmetic with a
+and 1301 ms, so the parallel speed-up is 5.5 and 5.8. The Phase 3a figures in
+physics.md (11.7 ms and 191 to 205 ms) come from an earlier Catch2 timing
+test in a build without LTO; the numbers here are the benchmark suite's and
+are the reference. Reason (unchanged since Phase 3a, physics.md
+"Barnes-Hut"): the walk is scalar double arithmetic with a
 correctly rounded square root and division per interaction and a quadrupole
 term, under the determinism contract (`/fp:precise`, no contraction, no
 approximate reciprocal square root), and MSVC does not vectorise the receiver

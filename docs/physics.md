@@ -634,8 +634,16 @@ Measured (MSVC 19.44 x64 Release, /fp:precise, AMD Ryzen 5 7600, 6 cores / 12 th
 | theta = 0 vs `NewtonianGravity` | same cluster | max relative difference 2.4e-14 (summation order only) | < 1e-12 |
 | Potential energy | theta = 0.5 | relative error 2.2e-6 | < 1e-3 |
 | Momentum (observation) | N = 2000 starting at rest, leapfrog 50 x 0.5 d, eps = 1e-2 AU | abs(P) / sum m abs(v) = 3.0e-5 | < 1e-3 |
-| Force timing N = 10k (test tagged `[.benchmark]`, not in ctest) | theta = 0.5, eps = 1e-3 AU, Plummer | 11.7 ms (12 threads, leaf 8 or 16), 72 ms single thread | target < 8 ms on 8 cores: missed |
-| Force timing N = 100k | same | 191 to 205 ms (12 threads), 1.27 s single thread | target < 120 ms on 8 cores: missed |
+| Force timing N = 10k (Phase 3a measurement: Catch2 test tagged `[.benchmark]`, not in ctest, Release build without LTO) | theta = 0.5, eps = 1e-3 AU, Plummer | 11.7 ms (12 threads, leaf 8 or 16), 72 ms single thread | target < 8 ms on 8 cores: missed |
+| Force timing N = 100k (same Phase 3a measurement) | same | 191 to 205 ms (12 threads), 1.27 s single thread | target < 120 ms on 8 cores: missed |
+
+The reference figures for these targets are those of the benchmark suite
+(`orrery_bench_core`, Phase 11, LTO release build, one `run_benchmarks.py`
+run on an idle machine): 13.3 ms and 226 ms with all threads, 73.8 ms and
+1301 ms on one thread ([performance.md](performance.md#3-results)). The two
+sets differ by the harness, the build and the run-to-run spread of the
+machine (performance.md section 2 measures 12.3 to 12.9 ms and 213 to
+214 ms as medians of three rounds); the verdict is the same.
 
 Timing deviation: the kernel is scalar double arithmetic with one correctly rounded sqrt and one division per interaction (no fast-math, no approximate reciprocal square roots, no architecture-specific SIMD flags), and the quadrupole term costs about twice a monopole. The parallel speed-up is 6.2 to 6.7 on 6 physical cores, so the work is compute-bound rather than build-bound; scaled to 8 physical cores the estimate is about 9 ms and 150 ms. Tried and rejected: a per-leaf group walk (one interaction list per leaf) was slower (19 to 26 ms, 300 to 450 ms) because the conservative group criterion adds interactions and MSVC does not vectorise the receiver loop under /fp:precise; leaf sizes 8 to 32 change the time by less than 15 percent; a compact 48-byte walk array gave no measurable gain (kept, identical results). Options to reach the target: SIMD intrinsics over receivers (bit-identical per lane, each lane performing the same IEEE operations), a monopole-only mode with a smaller theta, or reusing the tree between substeps. Run with `orrery_test_core "[benchmark]"`.
 
