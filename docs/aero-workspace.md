@@ -212,8 +212,10 @@ finite`); angles stay in degrees in the file so a record round-trips
 exactly (tested, together with the bundled space experiments).
 
 **Experiments panel**: a name, Save (inputs and, when the last finished run
-used exactly these inputs, its result; written to a temporary file and
-renamed into place), the saved list of the experiments folder (unreadable
+or the loaded record used exactly these inputs, its result: a loaded result
+is dropped once a condition, a solver setting or the geometry changes, and
+comes back when they are restored; written to a temporary file and renamed
+into place), the saved list of the experiments folder (unreadable
 aero files are listed as problems, other domains skipped), Load, and the
 **comparison table**: runs grouped by identical geometry, sorted by angle of
 attack, with Cd, Cl, Cm, their differences to the lowest angle, L/D, and the
