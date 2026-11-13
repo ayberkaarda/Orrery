@@ -143,6 +143,10 @@ a body or outlives `lifetime` is released again on a seed with a
 deterministic jitter. On the first `advance()` the particles are spread over
 the whole fluid with random ages, so the view is full at once.
 
+Lines and traces are pulled towards the camera in depth by about 0.05
+percent of their distance, so a section plane in the same plane (a 2D field)
+cannot hide them through depth fighting.
+
 Both run on the GPU (kernels `aero_vis_flow_streamlines` and
 `aero_vis_flow_particles`, binary32, positions in grid index units); the
 double-precision CPU functions are their references in the tests.
