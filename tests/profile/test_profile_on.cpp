@@ -11,6 +11,7 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <algorithm>
+#include <barrier>
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -115,11 +116,18 @@ TEST_CASE("zones record their name, nesting and duration", "[profile]") {
     CHECK(total->max_ns == inner[0].duration_ns);
 }
 
-TEST_CASE("every thread gets its own number", "[profile]") {
+TEST_CASE("threads alive together get their own numbers", "[profile]") {
     profile::start_capture();
-    std::thread first(zoned_work);
+    // Neither worker ends before both have recorded, so the three threads
+    // (main included) are alive at once and their ids are distinct.
+    std::barrier both(2);
+    const auto worker = [&both] {
+        zoned_work();
+        both.arrive_and_wait();
+    };
+    std::thread first(worker);
+    std::thread second(worker);
     first.join();
-    std::thread second(zoned_work);
     second.join();
     zoned_work();
     profile::stop_capture();
@@ -130,6 +138,30 @@ TEST_CASE("every thread gets its own number", "[profile]") {
         threads.insert(e.thread);
     }
     CHECK(threads == std::set<std::uint32_t>{1, 2, 3});
+}
+
+TEST_CASE("a thread id reused after a join may keep its number", "[profile]") {
+    profile::start_capture();
+    std::thread first(zoned_work);
+    first.join();
+    // The system may hand the finished thread's id to the next one; the
+    // sink then (correctly) gives it the same number.
+    std::thread second(zoned_work);
+    second.join();
+    zoned_work();
+    profile::stop_capture();
+    const auto events = events_named(profile::capture_snapshot(), "test_thread_zone");
+    REQUIRE(events.size() == 3); // in completion order: first, second, main
+    const std::uint32_t first_number = events[0].thread;
+    const std::uint32_t second_number = events[1].thread;
+    const std::uint32_t main_number = events[2].thread;
+    // The main thread was alive with each worker: never one of their numbers.
+    CHECK(main_number != first_number);
+    CHECK(main_number != second_number);
+    // Numbers are dense from 1 in the order threads first recorded.
+    CHECK(first_number == 1);
+    CHECK(second_number <= 2);
+    CHECK(main_number == second_number + 1);
 }
 
 TEST_CASE("the event cap drops events but keeps the totals", "[profile]") {
