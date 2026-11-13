@@ -1,6 +1,7 @@
 #pragma once
 
 #include <atomic>
+#include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -15,6 +16,7 @@
 #include "orrery/aero/regime.h"
 #include "orrery/scene/aero_experiment.h"
 #include "orrery/sim/aero_solve.h"
+#include "orrery/sim/aero_view_data.h"
 #include "orrery/sim/triple_buffer.h"
 
 // The solver thread of the Aero workspace (docs/aero-workspace.md, "Solver
@@ -96,7 +98,17 @@ struct AeroProgress {
     std::shared_ptr<const AeroRunSpec> spec;
     FlowSummary flow;
     aero::ReferenceValues reference;
+    // View data (aero_view_data.h), refreshed at most every
+    // kViewRefreshSeconds while running and on every pause, step and finish:
+    // Cp per triangle of the body mesh (3D) or per section panel (2D), and
+    // the lattice flow field (lattice Boltzmann only).
+    std::shared_ptr<const std::vector<double>> surface_cp;
+    std::shared_ptr<const FlowSnapshot> flow_field;
+    // Increments whenever surface_cp or flow_field is replaced.
+    std::uint64_t view_revision = 0;
 };
+
+inline constexpr double kViewRefreshSeconds = 0.25;
 
 class AeroRunner {
 public:
@@ -133,6 +145,8 @@ private:
     // One IAeroSolver::step() call; false once the run cannot continue.
     bool step_once();
     void publish(bool with_result);
+    // Recomputes the view data when due (or `force`).
+    void refresh_view(bool force);
     void fail(const std::string& what);
 
     std::unique_ptr<Queue> queue_;
@@ -144,6 +158,7 @@ private:
     std::atomic<std::uint64_t> step_calls_{0};
     // Frames requested by wake() since the solver last advanced one.
     std::atomic<std::uint32_t> frames_pending_{0};
+    std::chrono::steady_clock::time_point last_view_{}; // solver thread only
     std::jthread thread_; // last: started after, joined before the others
 };
 

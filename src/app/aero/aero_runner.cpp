@@ -196,6 +196,9 @@ void AeroRunner::start(StartAeroRun& start_run, const std::stop_token& stop) {
     status_.two_dimensional = run->plan.two_dimensional;
     published_.result.reset();
     published_.diagnostics.reset();
+    published_.surface_cp.reset();
+    published_.flow_field.reset();
+    ++published_.view_revision;
     published_.spec = run->spec;
     published_.flow = run->flow;
     published_.reference = run->reference;
@@ -251,9 +254,32 @@ void AeroRunner::publish(bool with_result) {
         published_.result = std::make_shared<const aero::AeroResult>(run_->solver->result());
         published_.diagnostics = std::make_shared<const RunDiagnostics>(
             diagnostics(*run_->solver, run_->spec->experiment.solver));
+        refresh_view(status_.state != AeroRunState::running || status_.run != published_.status.run);
     }
     published_.status = status_;
     progress_.publish(published_);
+}
+
+void AeroRunner::refresh_view(bool force) {
+    const Clock::time_point now = Clock::now();
+    if (!force && now - last_view_ < std::chrono::duration<double>(kViewRefreshSeconds)) {
+        return;
+    }
+    last_view_ = now;
+    const PreparedGeometry& geometry = *run_->spec->geometry;
+    const aero::AeroResult& result = run_->solver->result();
+    published_.surface_cp = std::make_shared<const std::vector<double>>(
+        geometry.two_dimensional ? panel_cp(geometry.section, result.surface)
+                                 : triangle_cp(geometry.mesh, result.surface));
+    if (run_->plan.kind == aero::SolverKind::lattice_boltzmann) {
+        auto flow = capture_flow(*run_->solver, geometry, run_->flow.flow, run_->reference);
+        if (flow) {
+            published_.flow_field = std::make_shared<const FlowSnapshot>(std::move(flow).value());
+        }
+    } else {
+        published_.flow_field.reset();
+    }
+    ++published_.view_revision;
 }
 
 void AeroRunner::fail(const std::string& what) {
