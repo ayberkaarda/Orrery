@@ -24,4 +24,10 @@ target_sources(orrery_scene PRIVATE
     aero_experiment.cpp
     include/orrery/scene/aero_experiment.h)
 
+# Phase 9a: typed records of entry-domain experiments (planet, atmosphere,
+# vehicle and Cd table, initial state, integration settings, result).
+target_sources(orrery_scene PRIVATE
+    entry_experiment.cpp
+    include/orrery/scene/entry_experiment.h)
+
 orrery_configure_target(orrery_scene)
