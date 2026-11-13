@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <numbers>
 #include <optional>
 #include <vector>
@@ -51,6 +52,9 @@ TEST_CASE("Streamlines of a circular flow close on themselves", "[render][aero][
                 drift = std::max(drift, std::abs(glm::length(p) - radius));
             }
             INFO("radius " << radius << " drift " << drift);
+            std::cout << "measured: circular-flow streamline r = " << radius << " nz = " << nz
+                      << ": radius drift " << drift << " m over " << line.points.size()
+                      << " steps\n";
             CHECK(drift < 1.0e-7); // RK4 on the exact field
             // After one revolution (2 pi r of arc) the line is back at its seed.
             const auto revolution =
@@ -183,6 +187,8 @@ TEST_CASE("Streamlines on the GPU match the CPU reference", "[render][aero][stre
         }
     }
     INFO("compared " << compared << " points, worst " << worst << " m");
+    std::cout << "measured: streamlines GPU vs CPU: " << compared << " points, worst " << worst
+              << " m\n";
     CHECK(compared > 1000);
     CHECK(worst < 1.0e-4); // binary32 against binary64 over up to 300 steps
 }
@@ -211,6 +217,7 @@ TEST_CASE("Particles on the GPU match the CPU reference", "[render][aero][stream
         }
     }
     INFO("worst " << worst);
+    std::cout << "measured: particles GPU vs CPU, one step: worst " << worst << " m\n";
     CHECK(worst < 1.0e-5);
     CHECK_FALSE(gpu.value().back().has_value());
 }

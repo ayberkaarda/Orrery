@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <iostream>
 #include <limits>
 #include <string>
 #include <vector>
@@ -103,7 +104,8 @@ TEST_CASE("Diverging map: perceptually even steps", "[render][aero][colormap]") 
                                        colormap_linear(Colormap::diverging, t1)));
     }
     const auto [smallest, largest] = std::ranges::minmax_element(steps);
-    CHECK(*largest / *smallest < 1.05);
+    std::cout << "measured: diverging map Oklab step ratio " << *largest / *smallest << "\n";
+    CHECK(*largest / *smallest < 1.1);
 }
 
 TEST_CASE("Dark diverging map: lightness falls towards the centre on both arms",

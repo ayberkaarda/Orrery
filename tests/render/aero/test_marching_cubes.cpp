@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <iostream>
 #include <numbers>
 #include <random>
 #include <vector>
@@ -110,6 +111,8 @@ TEST_CASE("Marching cubes: sphere area within 2 percent, closed and outward",
         const double area = surface_area(s);
         const double exact = 4.0 * std::numbers::pi * radius * radius;
         INFO("radius " << radius << " area " << area << " exact " << exact);
+        std::cout << "measured: marching cubes sphere r = " << radius << " cells: area error "
+                  << area / exact - 1.0 << ", " << s.triangle_count() << " triangles\n";
         CHECK(std::abs(area / exact - 1.0) < 0.02);
         const MeshTopology t = topology(s);
         CHECK(t.closed());
@@ -183,6 +186,8 @@ TEST_CASE("Marching cubes on the GPU matches the CPU reference",
             worst = std::max(worst, glm::length(g.positions[v] - cpu.positions[v]));
         }
         INFO("worst vertex difference " << worst);
+        std::cout << "measured: marching cubes GPU vs CPU, seed " << seed << ": "
+                  << g.triangle_count() << " triangles, worst vertex " << worst << " m\n";
         CHECK(worst < 1.0e-5);
         CHECK(topology(g).closed());
     }

@@ -150,6 +150,8 @@ TEST_CASE("Golden snapshot: NACA 0012 wing Cp at 4 degrees with legend",
 
     const WingCase c = solve_wing();
     INFO("CL " << c.result.cl << " CD " << c.result.cd);
+    std::cout << "measured: NACA 0012 wing, " << c.wing.mesh.triangles.size() << " panels: CL "
+              << c.result.cl << " CD " << c.result.cd << "\n";
     CHECK(c.result.cl > 0.2);
     auto surface = surface_from_result(c.wing.mesh, c.result);
     REQUIRE(surface.has_value());
