@@ -196,10 +196,18 @@ jobs:
         # processes; the simulation thread tests run alone, RUN_SERIAL).
         run: ctest --preset ${{ matrix.preset }} --output-on-failure --parallel "$(nproc)"
 
-  asan:
-    name: asan (ubuntu-24.04-gcc-13)
+  # The sanitizer suite (30 minutes serial) runs in two shards of
+  # alternating test numbers, each with one test process per core. Each
+  # shard builds the same tree (ccache keeps the second build cheap); the
+  # `asan` job below reports their combined result under the required name.
+  asan-shard:
+    name: asan (ubuntu-24.04-gcc-13) shard ${{ matrix.shard }}/2
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
@@ -264,16 +272,34 @@ jobs:
           cmake --build --preset linux-debug-asan
           ccache --show-stats
       - name: Save ccache
-        if: github.event_name == 'push'
+        if: github.event_name == 'push' && matrix.shard == 1
         uses: actions/cache/save@v4
         with:
           path: .ccache
           key: ccache-asan-${{ github.run_id }}
-      - name: Test
+      - name: Test (shard ${{ matrix.shard }} of 2)
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --preset linux-debug-asan --output-on-failure
+        # -I <start>,,2: every second test number from the shard's start,
+        # so the long lattice Boltzmann tests (adjacent numbers) are split.
+        run: |
+          ctest --preset linux-debug-asan --output-on-failure --parallel "$(nproc)" \
+            -I "${{ matrix.shard }},,2"
+
+  asan:
+    name: asan (ubuntu-24.04-gcc-13)
+    needs: asan-shard
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both shards passed
+        env:
+          SHARDS: ${{ needs.asan-shard.result }}
+        run: |
+          echo "asan shards: $SHARDS"
+          test "$SHARDS" = "success"
 
   lint:
     name: lint (format, tidy, cppcheck, deps)
