@@ -166,11 +166,11 @@ HdrSettings entry_hdr_settings() {
 struct EntryView::State {
     State(Program planet_program, Program atmosphere_program, Program line_program,
           Program curtain_program, Program marker_program, Buffer planet_vertices,
-          Buffer planet_indices, VertexArray planet_vao, GLsizei planet_count)
+          Buffer planet_indices, VertexArray planet_array, GLsizei planet_count)
         : planet(std::move(planet_program)), atmosphere(std::move(atmosphere_program)),
           line(std::move(line_program)), curtain(std::move(curtain_program)),
           marker(std::move(marker_program)), planet_vbo(std::move(planet_vertices)),
-          planet_ibo(std::move(planet_indices)), planet_vao(std::move(planet_vao)),
+          planet_ibo(std::move(planet_indices)), planet_vao(std::move(planet_array)),
           planet_index_count(planet_count) {}
 
     Program planet;

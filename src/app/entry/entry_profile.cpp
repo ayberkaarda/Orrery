@@ -257,6 +257,54 @@ void EntryWorkspace::Impl::draw_cursor_line(const sim::EntryTrace& trace) {
                "flux. Hover a plot or the map to move the cursor, click to pin it.");
 }
 
+namespace {
+
+// The ticked experiments' runs as thin lines; true when there was one.
+bool plot_overlays(const sim::EntryListing& listing, const std::vector<char>& compared,
+                   const Plot& plot) {
+    bool any = false;
+    for (std::size_t i = 0; i < listing.entries.size() && i < compared.size(); ++i) {
+        const sim::StoredEntry& e = listing.entries[i];
+        if (compared[i] == 0 || !e.result || !e.result->series.consistent()) {
+            continue;
+        }
+        any = true;
+        std::string name = e.setup.name.empty() ? e.path.stem().string() : e.setup.name;
+        name += "##o";
+        name += std::to_string(i);
+        plot_series(name.c_str(), e.result->series, plot, kOverlayColors[i % kOverlayColors.size()],
+                    1.2F);
+    }
+    return any;
+}
+
+void plot_cursor(std::optional<double> t) {
+    if (!t) {
+        return;
+    }
+    const double x = *t;
+    ImPlotSpec spec;
+    spec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
+    spec.LineWeight = 1.0F;
+    spec.Flags = ImPlotItemFlags_NoLegend;
+    ImPlot::PlotInfLines("##cursor", &x, 1, spec);
+}
+
+} // namespace
+
+void EntryWorkspace::Impl::track_plot_hover() {
+    if (!ImPlot::IsPlotHovered()) {
+        return;
+    }
+    const double x = ImPlot::GetPlotMousePos().x;
+    hover_time = x;
+    if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
+        pinned_time = x;
+    }
+    if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
+        pinned_time.reset();
+    }
+}
 void EntryWorkspace::Impl::draw_plots(const sim::EntryTrace* trace) {
     const ImVec2 avail = ImGui::GetContentRegionAvail();
     if (avail.y < ImGui::GetFontSize() * 6.0F) {
@@ -285,43 +333,16 @@ void EntryWorkspace::Impl::draw_plots(const sim::EntryTrace* trace) {
         if (row == 0) {
             ImPlot::SetupLegend(ImPlotLocation_NorthEast);
         }
-        bool overlays = false;
-        for (std::size_t i = 0; i < listing.entries.size() && i < compared.size(); ++i) {
-            const sim::StoredEntry& e = listing.entries[i];
-            if (compared[i] == 0 || !e.result || !e.result->series.consistent()) {
-                continue;
-            }
-            overlays = true;
-            std::string name = e.setup.name.empty() ? e.path.stem().string() : e.setup.name;
-            name += "##o";
-            name += std::to_string(i);
-            plot_series(name.c_str(), e.result->series, plot,
-                        kOverlayColors[i % kOverlayColors.size()], 1.2F);
-        }
+        const bool overlays = plot_overlays(listing, compared, plot);
         if (trace != nullptr && trace->series.consistent()) {
             plot_series(shows_record() ? "recorded" : "this run", trace->series, plot, current,
                         2.0F, overlays);
         }
-        if (t) {
-            ImPlotSpec spec;
-            spec.LineColor = ImGui::GetStyleColorVec4(ImGuiCol_Text);
-            spec.LineWeight = 1.0F;
-            spec.Flags = ImPlotItemFlags_NoLegend;
-            ImPlot::PlotInfLines("##cursor", &*t, 1, spec);
-        }
+        plot_cursor(t);
         ImPlot::PushPlotClipRect();
         plot_title(plot.title);
         ImPlot::PopPlotClipRect();
-        if (ImPlot::IsPlotHovered()) {
-            const double x = ImPlot::GetPlotMousePos().x;
-            hover_time = x;
-            if (ImGui::IsMouseClicked(ImGuiMouseButton_Left)) {
-                pinned_time = x;
-            }
-            if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                pinned_time.reset();
-            }
-        }
+        track_plot_hover();
         ImPlot::EndPlot();
     }
     ImPlot::EndSubplots();
@@ -477,6 +498,95 @@ void EntryWorkspace::Impl::draw_ground_track_panel() {
 }
 // --- Scene overlay ----------------------------------------------------------------
 
+namespace {
+
+struct OverlayBox {
+    float x = 0.0F;
+    float y = 0.0F;
+    float w = 0.0F;
+    float h = 0.0F;
+};
+
+ImU32 overlay_panel() {
+    return ImGui::GetColorU32(w::color(w::theme().window, 0.86F));
+}
+
+// Outcome banner, top centre, with an edge in the outcome's colour.
+void draw_banner(ImDrawList* draw, const OverlayBox& scene, const std::string& text,
+                 const render::UiColor& tint) {
+    const float pad = ImGui::GetFontSize() * 0.8F;
+    const ImVec2 size = ImGui::CalcTextSize(text.c_str());
+    const ImVec2 b0(scene.x + (scene.w - size.x) * 0.5F - pad, scene.y + pad * 0.8F);
+    const ImVec2 b1(b0.x + size.x + 2.0F * pad, b0.y + size.y + pad);
+    draw->AddRectFilled(b0, b1, overlay_panel(), 6.0F);
+    draw->AddRect(b0, b1, ImGui::GetColorU32(w::color(tint, 0.8F)), 6.0F, 0, 1.2F);
+    draw->AddRectFilled(ImVec2(b0.x, b0.y + 3.0F), ImVec2(b0.x + 3.0F, b1.y - 3.0F),
+                        ImGui::GetColorU32(w::color(tint)));
+    draw->AddText(ImVec2(b0.x + pad, b0.y + pad * 0.5F), ImGui::GetColorU32(ImGuiCol_Text),
+                  text.c_str());
+}
+
+// Key of the markers and the exaggeration under the legend's colour bar.
+void draw_legend_key(ImDrawList* draw, ImVec2 at, const std::string& scale_note) {
+    const float font = ImGui::GetFontSize();
+    const ImU32 muted = ImGui::GetColorU32(ImGuiCol_TextDisabled);
+    draw->AddText(ImVec2(at.x, at.y - font * 0.5F), muted, scale_note.c_str());
+    float x = at.x + ImGui::CalcTextSize(scale_note.c_str()).x;
+    for (const auto& [fill, label] :
+         {std::pair<ImU32, const char*>{ImGui::GetColorU32(w::color(w::theme().accent)), "peak   "},
+          std::pair<ImU32, const char*>{IM_COL32(242, 244, 248, 255), "cursor"}}) {
+        draw->AddCircleFilled(ImVec2(x + font * 0.35F, at.y), font * 0.32F, IM_COL32(4, 5, 8, 255));
+        draw->AddCircleFilled(ImVec2(x + font * 0.35F, at.y), font * 0.25F, fill);
+        x += font * 0.9F;
+        draw->AddText(ImVec2(x, at.y - font * 0.5F), muted, label);
+        x += ImGui::CalcTextSize(label).x;
+    }
+}
+
+// Legend, bottom right: title, colour bar with ticks, the key.
+void draw_legend(ImDrawList* draw, const OverlayBox& scene, const std::string& title,
+                 const render::ScalarRange& range, double altitude_scale) {
+    const float font = ImGui::GetFontSize();
+    const float pad = font * 0.8F;
+    const std::string scale_note =
+        "Altitude x" + w::fixed(std::max(1.0, altitude_scale), 0) + "   ";
+    const float key_w = ImGui::CalcTextSize((scale_note + "peak   cursor").c_str()).x + font * 1.8F;
+    const float bar_w = std::max({font * 14.0F, ImGui::CalcTextSize(title.c_str()).x, key_w});
+    const float bar_h = font * 0.7F;
+    const float panel_w = bar_w + 2.0F * pad;
+    const float panel_h = pad + font + 6.0F + bar_h + font * 1.4F + font + pad;
+    const ImVec2 l0(scene.x + scene.w - panel_w - pad, scene.y + scene.h - panel_h - pad);
+    const ImVec2 l1(l0.x + panel_w, l0.y + panel_h);
+    draw->AddRectFilled(l0, l1, overlay_panel(), 6.0F);
+    draw->AddRect(l0, l1, ImGui::GetColorU32(ImGuiCol_Border), 6.0F);
+    draw->AddText(ImVec2(l0.x + pad, l0.y + pad), ImGui::GetColorU32(ImGuiCol_Text), title.c_str());
+    colour_bar(draw, ImVec2(l0.x + pad, l0.y + pad + font + 6.0F), bar_w, bar_h, range);
+    draw_legend_key(draw, ImVec2(l0.x + pad, l1.y - pad - font * 0.5F), scale_note);
+}
+
+} // namespace
+
+std::pair<std::string, render::UiColor>
+EntryWorkspace::Impl::banner_text(const sim::EntryTrace& trace) const {
+    const sim::EntrySummary& s = trace.summary;
+    if (s.outcome != sim::EntryOutcome::none) {
+        std::string text(sim::outcome_label(s.outcome));
+        text += kDot;
+        text += "peak " + w::fixed(s.peak_g, 2) + " g";
+        text += kDot;
+        text += heat_text(s.peak_heat_flux_w_m2);
+        text += kDot;
+        text += duration_text(s.duration_s);
+        return {text, outcome_tint(s.outcome)};
+    }
+    std::string text(active() ? "In flight" : "Incomplete");
+    text += kDot;
+    text += "t " + w::fixed(trace.series.time_s.back(), 0) + " s";
+    text += kDot;
+    text += "peak so far " + w::fixed(s.peak_g, 2) + " g";
+    return {text, w::theme().text_muted};
+}
+
 void EntryWorkspace::Impl::draw_scene_overlay(const render::UiRect& scene) {
     if (scene.width < 40.0 || scene.height < 40.0) {
         return;
@@ -486,87 +596,33 @@ void EntryWorkspace::Impl::draw_scene_overlay(const render::UiRect& scene) {
         ImGuiWindowFlags_NoBackground | ImGuiWindowFlags_NoSavedSettings |
         ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoBringToFrontOnFocus |
         ImGuiWindowFlags_NoDocking;
-    ImGui::SetNextWindowPos(ImVec2(static_cast<float>(scene.x), static_cast<float>(scene.y)));
-    ImGui::SetNextWindowSize(
-        ImVec2(static_cast<float>(scene.width), static_cast<float>(scene.height)));
+    const OverlayBox box{static_cast<float>(scene.x), static_cast<float>(scene.y),
+                         static_cast<float>(scene.width), static_cast<float>(scene.height)};
+    ImGui::SetNextWindowPos(ImVec2(box.x, box.y));
+    ImGui::SetNextWindowSize(ImVec2(box.w, box.h));
     if (!ImGui::Begin("##entry_scene_overlay", nullptr, kFlags)) {
         ImGui::End();
         return;
     }
     ImDrawList* draw = ImGui::GetWindowDrawList();
-    const auto x0 = static_cast<float>(scene.x);
-    const auto y0 = static_cast<float>(scene.y);
-    const auto sw = static_cast<float>(scene.width);
-    const auto sh = static_cast<float>(scene.height);
-    const float pad = ImGui::GetFontSize() * 0.8F;
-    const ImU32 panel = ImGui::GetColorU32(w::color(w::theme().window, 0.86F));
-    const ImU32 border = ImGui::GetColorU32(ImGuiCol_Border);
     const std::shared_ptr<const sim::EntryTrace> trace = shown();
     if (!trace || trace->series.size() < 2) {
         const char* hint = active() ? "Integrating..." : "Set up an entry and press Run (Space)";
         const ImVec2 size = ImGui::CalcTextSize(hint);
-        draw->AddText(ImVec2(x0 + (sw - size.x) * 0.5F, y0 + (sh - size.y) * 0.5F),
+        draw->AddText(ImVec2(box.x + (box.w - size.x) * 0.5F, box.y + (box.h - size.y) * 0.5F),
                       ImGui::GetColorU32(ImGuiCol_TextDisabled), hint);
         ImGui::End();
         return;
     }
-    // Outcome banner, top centre.
-    const sim::EntrySummary& s = trace->summary;
-    std::string banner;
-    render::UiColor tint = w::theme().text_muted;
-    if (s.outcome != sim::EntryOutcome::none) {
-        banner = std::string(sim::outcome_label(s.outcome)) + kDot + "peak " +
-                 w::fixed(s.peak_g, 2) + " g" + kDot + heat_text(s.peak_heat_flux_w_m2) + kDot +
-                 duration_text(s.duration_s);
-        tint = outcome_tint(s.outcome);
-    } else {
-        banner = std::string(active() ? "In flight" : "Incomplete") + kDot + "t " +
-                 w::fixed(trace->series.time_s.back(), 0) + " s" + kDot + "peak so far " +
-                 w::fixed(s.peak_g, 2) + " g";
-    }
-    const ImVec2 banner_size = ImGui::CalcTextSize(banner.c_str());
-    const ImVec2 b0(x0 + (sw - banner_size.x) * 0.5F - pad, y0 + pad * 0.8F);
-    const ImVec2 b1(b0.x + banner_size.x + 2.0F * pad, b0.y + banner_size.y + pad);
-    draw->AddRectFilled(b0, b1, panel, 6.0F);
-    draw->AddRect(b0, b1, ImGui::GetColorU32(w::color(tint, 0.8F)), 6.0F, 0, 1.2F);
-    draw->AddRectFilled(ImVec2(b0.x, b0.y + 3.0F), ImVec2(b0.x + 3.0F, b1.y - 3.0F),
-                        ImGui::GetColorU32(w::color(tint)));
-    draw->AddText(ImVec2(b0.x + pad, b0.y + pad * 0.5F), ImGui::GetColorU32(ImGuiCol_Text),
-                  banner.c_str());
-
-    // Legend, bottom right.
+    const auto [text, tint] = banner_text(*trace);
+    draw_banner(draw, box, text, tint);
     const EntryQuantity quantity = entry_quantity(layers.coloring);
-    const render::ScalarRange range = coloring_range(trace->series, layers.coloring);
-    const std::string title = std::string(quantity.title) + " [" + quantity.unit + "]";
-    const float font = ImGui::GetFontSize();
-    const std::string scale_note =
-        "Altitude x" + w::fixed(std::max(1.0, layers.altitude_scale), 0) + "   ";
-    const float key_w = ImGui::CalcTextSize((scale_note + "peak   cursor").c_str()).x + font * 1.8F;
-    const float bar_w = std::max({font * 14.0F, ImGui::CalcTextSize(title.c_str()).x, key_w});
-    const float bar_h = font * 0.7F;
-    const float panel_w = bar_w + 2.0F * pad;
-    const float panel_h = pad + font + 6.0F + bar_h + font * 1.4F + font + pad;
-    const ImVec2 l0(x0 + sw - panel_w - pad, y0 + sh - panel_h - pad);
-    draw->AddRectFilled(l0, ImVec2(l0.x + panel_w, l0.y + panel_h), panel, 6.0F);
-    draw->AddRect(l0, ImVec2(l0.x + panel_w, l0.y + panel_h), border, 6.0F);
-    draw->AddText(ImVec2(l0.x + pad, l0.y + pad), ImGui::GetColorU32(ImGuiCol_Text), title.c_str());
-    colour_bar(draw, ImVec2(l0.x + pad, l0.y + pad + font + 6.0F), bar_w, bar_h, range);
-    // Key of the markers: amber disc = peak, white disc = cursor.
-    const float ky = l0.y + panel_h - pad - font * 0.5F;
-    float kx = l0.x + pad;
-    const ImU32 muted = ImGui::GetColorU32(ImGuiCol_TextDisabled);
-    draw->AddText(ImVec2(kx, ky - font * 0.5F), muted, scale_note.c_str());
-    kx += ImGui::CalcTextSize(scale_note.c_str()).x;
-    for (const auto& [fill, label] :
-         {std::pair<ImU32, const char*>{ImGui::GetColorU32(w::color(w::theme().accent)), "peak   "},
-          std::pair<ImU32, const char*>{IM_COL32(242, 244, 248, 255), "cursor"}}) {
-        draw->AddCircleFilled(ImVec2(kx + font * 0.35F, ky), font * 0.32F, IM_COL32(4, 5, 8, 255));
-        draw->AddCircleFilled(ImVec2(kx + font * 0.35F, ky), font * 0.25F, fill);
-        kx += font * 0.9F;
-        draw->AddText(ImVec2(kx, ky - font * 0.5F), muted, label);
-        kx += ImGui::CalcTextSize(label).x;
-    }
+    std::string title(quantity.title);
+    title += " [";
+    title += quantity.unit;
+    title += "]";
+    draw_legend(draw, box, title, coloring_range(trace->series, layers.coloring),
+                layers.altitude_scale);
     ImGui::End();
 }
-
 } // namespace orrery::app

@@ -37,6 +37,15 @@ std::vector<EntryTrackPoint> equatorial_track(std::size_t n) {
     return track;
 }
 
+// A copy of 	rack whose point index has no latitude.
+std::vector<EntryTrackPoint> with_nan_latitude(std::vector<EntryTrackPoint> track,
+                                               std::size_t index) {
+    if (index < track.size()) {
+        track[index].latitude_deg = std::numeric_limits<double>::quiet_NaN();
+    }
+    return track;
+}
+
 } // namespace
 
 TEST_CASE("The entry view frame puts the track overhead and its flight along +x",
@@ -61,9 +70,7 @@ TEST_CASE("The entry view frame puts the track overhead and its flight along +x"
     CHECK(frame.bounds.min.z < globe.radius_m);
 
     // Non-finite points are ignored; an empty track still frames a patch.
-    std::vector<EntryTrackPoint> broken = track;
-    broken[3].latitude_deg = std::numeric_limits<double>::quiet_NaN();
-    const EntryFrame tolerant = make_entry_frame(broken, globe);
+    const EntryFrame tolerant = make_entry_frame(with_nan_latitude(track, 3), globe);
     CHECK(std::isfinite(tolerant.bounds.min.x));
     const EntryFrame empty = make_entry_frame({}, globe);
     CHECK(empty.bounds.max.z > empty.bounds.min.z);

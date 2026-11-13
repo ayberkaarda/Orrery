@@ -65,8 +65,7 @@ render_entry_headless(const sim::EntrySetup& setup, const EntryHeadlessRequest& 
     EntryWorkspace workspace(EntryWorkspaceOptions{});
     sim::StoredEntry shown;
     shown.setup = setup;
-    shown.result =
-        std::make_shared<const sim::EntryTrace>(sim::EntryTrace{out.run.series, out.run.summary});
+    shown.result = std::make_shared<const sim::EntryTrace>(out.run);
     workspace.present(std::move(shown));
 
     std::string draw_error;

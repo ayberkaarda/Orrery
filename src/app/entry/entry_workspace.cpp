@@ -52,7 +52,7 @@ const char* state_label(sim::EntryRunState state) {
 // Linear-light value of an sRGB theme colour (the view's colours are linear).
 glm::dvec3 linear_of(const render::UiColor& c) {
     const auto channel = [](float v) {
-        const double s = static_cast<double>(v);
+        const auto s = static_cast<double>(v);
         return s <= 0.04045 ? s / 12.92 : std::pow((s + 0.055) / 1.055, 2.4);
     };
     return {channel(c.r), channel(c.g), channel(c.b)};
@@ -172,7 +172,7 @@ bool EntryWorkspace::Impl::start_run() {
         set_notice("Cannot run: " + errors.front(), true);
         return false;
     }
-    run_setup = setup;
+    run_setup = std::make_shared<const sim::EntrySetup>(setup);
     // The runner numbers its runs from 1 in the order they were sent.
     run_number = ++starts_sent;
     runner.send(sim::StartEntryRun{setup});
@@ -189,7 +189,7 @@ void EntryWorkspace::Impl::open(sim::StoredEntry entry) {
     loaded_trace = std::move(entry.result);
     loaded_setup.reset();
     if (loaded_trace) {
-        loaded_setup = setup;
+        loaded_setup = std::make_shared<const sim::EntrySetup>(setup);
     }
     pinned_time.reset();
     cd_label.clear();
@@ -245,7 +245,7 @@ std::optional<std::filesystem::path> EntryWorkspace::Impl::export_comparison() {
     const std::vector<sim::EntryComparisonRow> rows = sim::compare_entries(inputs);
     std::error_code error;
     std::filesystem::create_directories(options.experiment_dir, error);
-    const std::filesystem::path csv_path =
+    std::filesystem::path csv_path =
         sim::new_experiment_path(options.experiment_dir, "entry comparison")
             .replace_extension(".csv");
     std::ofstream out(csv_path, std::ios::binary | std::ios::trunc);

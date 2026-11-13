@@ -45,57 +45,54 @@ using CdTaskResult = core::Result<sim::CdSamples, std::string>;
 struct EntryWorkspace::Impl {
     explicit Impl(EntryWorkspaceOptions o);
 
-    EntryWorkspaceOptions options;
-    sim::EntrySetup setup;
-    sim::EntryRunner runner;
+    // Members are ordered by size (8-byte scalars and handles, then the
+    // larger objects, then 4-byte and 1-byte scalars and the text buffer) so
+    // that the struct carries little padding.
 
-    // Inputs of the last run started; the record loaded from a file and the
-    // inputs it was recorded with.
-    std::optional<sim::EntrySetup> run_setup;
-    std::uint64_t run_number = 0; // the runner's number of our latest run
+    // Run bookkeeping: the runner's number of our latest run, starts sent,
+    // the key the camera framed last, the pace.
+    std::uint64_t run_number = 0;
     std::uint64_t starts_sent = 0;
+    std::uint64_t framed_key = 0;
+    double pace = 100.0;
+    // The record loaded from a file (its inputs in loaded_setup).
     std::shared_ptr<const sim::EntryTrace> loaded_trace;
-    std::optional<sim::EntrySetup> loaded_setup;
-    bool loaded_is_record = true; // false for present()
-
-    // Cd sampling from the aero solver.
-    sim::BackgroundTask<CdTaskResult> cd_task;
-    sim::CdBody cd_body = sim::CdBody::apollo_capsule;
-    std::string cd_label;
-    std::vector<std::string> cd_warnings;
-
-    // Experiments.
-    sim::EntryListing listing;
-    std::vector<char> compared; // per listed experiment
-    bool listing_dirty = true;
-    std::string notice;
-    bool notice_is_error = false;
-
-    // Problem modal: title and detail.
-    std::optional<std::pair<std::string, std::string>> modal;
-    bool modal_requested = false;
-
     // Shared cursor: hovered in this frame (plots, map), else pinned by a
     // click, else the peak g-load.
     std::optional<double> hover_time;
     std::optional<double> pinned_time;
-
-    // View.
+    std::vector<std::string> cd_warnings;
+    std::vector<char> compared; // per listed experiment
     EntryLayers layers;
-    render::Camera camera;
+    // Cd sampling from the aero solver.
+    sim::BackgroundTask<CdTaskResult> cd_task;
+    std::string cd_label;
+    std::string notice;
     render::UiRect camera_scene;
+    std::string view_problem;
+    EntryWorkspaceOptions options;
+    sim::EntryListing listing;
     render::CameraInput camera_input;
+    // Problem modal: title and detail.
+    std::optional<std::pair<std::string, std::string>> modal;
+    sim::EntrySetup setup;
+    // Inputs of the last run started.
+    std::shared_ptr<const sim::EntrySetup> run_setup;
+    std::shared_ptr<const sim::EntrySetup> loaded_setup;
+    render::Camera camera;
+    sim::EntryRunner runner;
+
     int camera_width = 0;
     int camera_height = 0;
-    std::uint64_t framed_key = 0;
-    bool reframe_pending = true;
-    std::string view_problem;
-
-    double pace = 100.0;
-    bool layout_built = false;
     int layout_frames = 0;
+    bool loaded_is_record = true; // false for present()
+    sim::CdBody cd_body = sim::CdBody::apollo_capsule;
+    bool listing_dirty = true;
+    bool notice_is_error = false;
+    bool modal_requested = false;
+    bool reframe_pending = true;
+    bool layout_built = false;
     std::array<char, 160> name_buffer{};
-
     // --- State -------------------------------------------------------------
     [[nodiscard]] bool active() const; // running or paused
     [[nodiscard]] std::shared_ptr<const sim::EntryTrace> shown() const;
@@ -131,11 +128,14 @@ struct EntryWorkspace::Impl {
     void draw_readouts(const sim::EntryTrace* trace);
     void draw_cursor_line(const sim::EntryTrace& trace);
     void draw_plots(const sim::EntryTrace* trace);
+    void track_plot_hover();
     void draw_ground_track_panel();
     void draw_experiments_panel();
     void draw_saved_table();
     void draw_comparison_table();
     void draw_view_panel();
+    [[nodiscard]] std::pair<std::string, render::UiColor>
+    banner_text(const sim::EntryTrace& trace) const;
     void draw_scene_overlay(const render::UiRect& scene);
     void draw_modal();
 };

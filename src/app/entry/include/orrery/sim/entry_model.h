@@ -196,7 +196,7 @@ flight_path_angle_for_periapsis(EntryPlanet planet, double altitude_m, double sp
 
 // Starting points of the setup panel; the first is the workspace default.
 struct EntryPreset {
-    const char* label;
+    const char* label = "";
     EntrySetup setup;
 };
 [[nodiscard]] std::vector<EntryPreset> entry_presets();
