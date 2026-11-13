@@ -1,5 +1,17 @@
 cmake_minimum_required(VERSION 4.1)
 
+# Profiling (docs/observability.md). Declared before project() because the
+# vcpkg toolchain installs the manifest there: ORRERY_TRACY adds the manifest
+# feature "profiling" (the Tracy client), so default builds install nothing more.
+option(ORRERY_PROFILING "Compile the profiling zones in (off: the zone macros are empty)" OFF)
+option(ORRERY_TRACY "Make every profiling zone a Tracy zone (requires ORRERY_PROFILING)" OFF)
+if(ORRERY_TRACY AND NOT ORRERY_PROFILING)
+    message(FATAL_ERROR "ORRERY_TRACY requires ORRERY_PROFILING=ON")
+endif()
+if(ORRERY_TRACY)
+    list(APPEND VCPKG_MANIFEST_FEATURES "profiling")
+endif()
+
 project(Orrery
     VERSION 0.0.1
     DESCRIPTION "Physics laboratory: space dynamics, aerodynamics and atmospheric entry"

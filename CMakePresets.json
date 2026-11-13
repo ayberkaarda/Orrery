@@ -69,6 +69,16 @@
       }
     },
     {
+      "name": "cfg-profile",
+      "hidden": true,
+      "inherits": "base",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ORRERY_PROFILING": "ON",
+        "ORRERY_TRACY": "ON"
+      }
+    },
+    {
       "name": "debug-asan",
       "displayName": "Debug + AddressSanitizer (MSVC)",
       "inherits": [ "cfg-debug-asan", "windows-msvc" ]
@@ -97,6 +107,16 @@
       "name": "linux-ci-headless",
       "displayName": "CI headless, warnings as errors (Linux)",
       "inherits": [ "cfg-ci-headless", "linux" ]
+    },
+    {
+      "name": "profile",
+      "displayName": "Profiling zones + Tracy client (MSVC; not used by CI)",
+      "inherits": [ "cfg-profile", "windows-msvc" ]
+    },
+    {
+      "name": "linux-profile",
+      "displayName": "Profiling zones + Tracy client (Linux; not used by CI)",
+      "inherits": [ "cfg-profile", "linux" ]
     }
   ],
   "buildPresets": [
@@ -105,7 +125,9 @@
     { "name": "ci-headless", "configurePreset": "ci-headless" },
     { "name": "linux-debug-asan", "configurePreset": "linux-debug-asan" },
     { "name": "linux-release", "configurePreset": "linux-release" },
-    { "name": "linux-ci-headless", "configurePreset": "linux-ci-headless" }
+    { "name": "linux-ci-headless", "configurePreset": "linux-ci-headless" },
+    { "name": "profile", "configurePreset": "profile" },
+    { "name": "linux-profile", "configurePreset": "linux-profile" }
   ],
   "testPresets": [
     {
@@ -119,6 +141,8 @@
     { "name": "ci-headless", "inherits": "test-base", "configurePreset": "ci-headless" },
     { "name": "linux-debug-asan", "inherits": "test-base", "configurePreset": "linux-debug-asan" },
     { "name": "linux-release", "inherits": "test-base", "configurePreset": "linux-release" },
-    { "name": "linux-ci-headless", "inherits": "test-base", "configurePreset": "linux-ci-headless" }
+    { "name": "linux-ci-headless", "inherits": "test-base", "configurePreset": "linux-ci-headless" },
+    { "name": "profile", "inherits": "test-base", "configurePreset": "profile" },
+    { "name": "linux-profile", "inherits": "test-base", "configurePreset": "linux-profile" }
   ]
 }

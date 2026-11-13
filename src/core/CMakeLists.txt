@@ -70,4 +70,7 @@ target_sources(orrery_core PRIVATE
     schwarzschild_geodesic.cpp
     include/orrery/core/schwarzschild_geodesic.h)
 
+# Phase 10a: profiling zones (orrery/core/profile.h) for every module.
+target_link_libraries(orrery_core PUBLIC orrery_profile)
+
 orrery_configure_target(orrery_core)
