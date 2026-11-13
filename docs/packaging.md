@@ -360,3 +360,11 @@ it too; Linux uses the PNG and SVG through the desktop entry.
 | MSI contents and the installed application | locally: administrative extract, then the extracted `orrery_app.exe` run headless with a system-only `PATH` |
 | Linux: build, install test, tarball, AppImage of the real application | release workflow only (no Linux build environment locally) |
 | `build-appimage.sh` end to end | locally under WSL with a stand-in executable: tools downloaded and verified, AppDir built, AppImage packed and run (`--version` found the assets) |
+
+Status of the Linux packages: the first release-workflow run (run
+43515216687, 2026-11-13) built `linux-package` and ran the relocated
+executable's `--version`, then failed `install.relocated` because the
+statically linked OpenSSL and curl keep build-tree paths in the
+executable. No tarball or AppImage of the real application has been
+produced or run yet, and the hosted runner has no display, so the headless
+renders there exit with code 3.
