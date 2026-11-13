@@ -97,6 +97,8 @@ optimisation settings) and add:
 | `ORRERY_INSTALL_TEST` | `ON` | registers `install.relocated` (section 4) |
 | `ORRERY_SOURCE_ASSET_FALLBACK` | `OFF` | no source tree path in the executable |
 | `CMAKE_EXE_LINKER_FLAGS` (Linux) | `-static-libstdc++ -static-libgcc` | the binary needs only glibc from the host's C++ runtime side |
+| `CMAKE_C_FLAGS`, `CMAKE_CXX_FLAGS` (Linux) | `-ffile-prefix-map=<source>=orrery` | no source path through `__FILE__` (section 4) |
+| `VCPKG_OVERLAY_TRIPLETS` (Linux) | `packaging/linux/triplets` | the same for the statically linked vcpkg libraries (section 4) |
 
 ### Windows
 
@@ -220,12 +222,58 @@ through XWayland). The vcpkg libraries are linked statically.
    directory, its scenario resolved relative to it) and on the bundled
    `solar_system`, timing each run;
 4. with `ORRERY_SOURCE_ASSET_FALLBACK=OFF`, requires that the executable
-   holds no source tree path.
+   holds no path of the source tree, the build tree or the vcpkg checkout
+   (below).
 
 Without an OpenGL 4.6 context the application exits with code 3 after it
 has found and loaded the experiment; the test then still passes (the lookup
-is proven) unless `ORRERY_REQUIRE_GL=1`. Hosted Linux runners have no such
-context, so there the images are not rendered.
+is proven) unless `ORRERY_REQUIRE_GL=1`. Hosted runners (Linux and Windows)
+have no such context, so there the images are not rendered; the release
+workflow does not set `ORRERY_REQUIRE_GL`.
+
+### Paths in the executable
+
+`packaging/embedded_paths.cmake` reads the printable strings of the
+installed executable and fails on any that contains the source directory,
+the build directory or the vcpkg root (taken from the vcpkg toolchain
+file), written with `/` or `\`. Such a string is a lookup that cannot work
+on a user's machine, or at least a leak of the build machine's layout.
+`packaging.embedded_paths` tests the check itself on fake binaries: a
+`__FILE__` of the project's own code, a Windows path, a generated file in
+the build tree, a vcpkg build tree path, an installed dependency header and
+compiler flags recorded by a library are all reported.
+
+On Linux the vcpkg libraries are linked statically, so their strings end up
+in the executable. The first Linux release run found curl's `__FILE__`
+(`<vcpkg>/buildtrees/curl/src/.../lib/vtls/openssl.c`, expanded by
+OpenSSL's `OPENSSL_free` macro) and OpenSSL's `ENGINESDIR` and
+`MODULESDIR`. The linux-package preset therefore builds the vcpkg libraries
+with an overlay of the `x64-linux` triplet
+(`packaging/linux/triplets/x64-linux.cmake`: the builtin settings plus
+`-ffile-prefix-map` for the project root, the vcpkg root, the port's build
+tree and the installed tree) and the application with
+`-ffile-prefix-map=<source>=orrery`, so every `__FILE__` is relative.
+OpenSSL is left out of the maps: it records its compiler flags in the
+library (`compiler: ...`, `OpenSSL_version(OPENSSL_CFLAGS)`), so a map would
+put the absolute prefix back in, and its make-based build compiles relative
+source paths anyway. The maps are skipped for a directory whose path
+contains a space (`VCPKG_C_FLAGS` is split on spaces); the check then
+reports what remains.
+
+What no prefix map reaches, because it is a preprocessor definition and not
+`__FILE__`, is tolerated, exactly and only as these strings:
+
+| String | Origin | Why it is harmless |
+|---|---|---|
+| `ENGINESDIR: "<vcpkg_installed>/<triplet>/lib/engines-3"` and the bare path | OpenSSL's `Configure`, from the install prefix vcpkg passes | read only when a dynamic engine is loaded by name; Orrery never does, and OpenSSL is built with static engines |
+| `MODULESDIR: "<vcpkg_installed>/<triplet>/lib/ossl-modules"` and the bare path | the same | read only when a provider module is loaded from disk; the build is `no-module`, so every provider is built in |
+
+Changing them would need an overlay of the OpenSSL port. Any other string
+under the installed tree (a header, `OPENSSLDIR`, a file below the two
+directories) still fails. `OPENSSLDIR` itself is `/etc/ssl` (vcpkg's port
+sets it), and the CA locations compiled into curl and OpenSSL are not used:
+the URL loader finds the certificates of the machine it runs on
+([url-import-security.md](url-import-security.md#ca-certificates)).
 
 ## 5. Versioning
 
