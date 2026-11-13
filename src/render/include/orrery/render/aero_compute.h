@@ -9,13 +9,14 @@
 
 // GPU kernels of the aero visualisation (docs/aero-visualisation.md, "GPU
 // paths"). They run through aero::compute::IComputeBackend like the LBM
-// kernels: GLSL 460 compute shaders embedded from src/render/shaders/aero
-// (aero_vis_*.comp.glsl, sharing aero_vis_common.glsl), dispatched by name.
+// kernels: GLSL 460 compute shaders embedded from src/render/shaders/aero/
+// compute (aero_vis_*.comp.glsl; the aero_vis_flow_* kernels share
+// aero_vis_flow_common.glsl), dispatched by name.
 // The CPU references live in aero_streamlines.h and aero_isosurface.h.
 namespace orrery::render {
 
-inline constexpr std::string_view kernel_streamlines = "aero_vis_streamlines";
-inline constexpr std::string_view kernel_particles = "aero_vis_particles";
+inline constexpr std::string_view kernel_streamlines = "aero_vis_flow_streamlines";
+inline constexpr std::string_view kernel_particles = "aero_vis_flow_particles";
 inline constexpr std::string_view kernel_marching_cubes = "aero_vis_marching_cubes";
 
 // An OpenGL compute backend with the LBM kernels and the aero visualisation
