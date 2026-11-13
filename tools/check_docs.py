@@ -25,12 +25,17 @@ Checks:
      first cell of a row in one of the approximation tables of
      docs/physics.md.
 
+With --tree DIR only the links are checked, in every Markdown file under
+DIR, and no link may point outside DIR: this validates the documentation of
+a staged install tree (packaging/install_smoke.cmake).
+
 Exit status is 0 and the last line is "OK" when every check passes;
 otherwise every problem is printed on its own line and the status is 1.
 """
 
 from __future__ import annotations
 
+import argparse
 import json
 import re
 import sys
@@ -61,9 +66,9 @@ SOURCE_SUFFIXES = {".h", ".hpp", ".cpp", ".glsl"}
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:")
 
 
-def rel(path: Path) -> str:
+def rel(path: Path, base: Path | None = None) -> str:
     try:
-        return path.resolve().relative_to(ROOT).as_posix()
+        return path.resolve().relative_to(base or ROOT).as_posix()
     except ValueError:
         return path.as_posix()
 
@@ -166,15 +171,18 @@ def link_targets(text: str) -> list[tuple[int, str]]:
 
 
 def check_link(source: Path, number: int, target: str, cache: dict[Path, set[str]],
-               errors: list[str]) -> None:
+               errors: list[str], tree: Path | None = None) -> None:
     if target.startswith(EXTERNAL_PREFIXES):
         return
     path_part, _, fragment = target.partition("#")
     path_part, fragment = unquote(path_part), unquote(fragment)
     resolved = (source.parent / path_part).resolve() if path_part else source.resolve()
-    where = f"{rel(source)}:{number}"
+    where = f"{rel(source, tree)}:{number}"
+    if tree is not None and resolved != tree and tree not in resolved.parents:
+        errors.append(f"{where}: link '{target}' points outside {tree.as_posix()}")
+        return
     if not resolved.exists():
-        errors.append(f"{where}: broken link '{target}' ({rel(resolved)} does not exist)")
+        errors.append(f"{where}: broken link '{target}' ({rel(resolved, tree)} does not exist)")
         return
     if not fragment or resolved.suffix.lower() != ".md" or resolved.is_dir():
         return
@@ -182,10 +190,10 @@ def check_link(source: Path, number: int, target: str, cache: dict[Path, set[str
         text = read_text(resolved, errors)
         cache[resolved] = anchors_of(text) if text is not None else set()
     if fragment.lower() not in cache[resolved]:
-        errors.append(f"{where}: link '{target}' names no heading of {rel(resolved)}")
+        errors.append(f"{where}: link '{target}' names no heading of {rel(resolved, tree)}")
 
 
-def check_files(files: list[Path], errors: list[str]) -> int:
+def check_files(files: list[Path], errors: list[str], tree: Path | None = None) -> int:
     cache: dict[Path, set[str]] = {}
     checked = 0
     for source in files:
@@ -194,15 +202,27 @@ def check_files(files: list[Path], errors: list[str]) -> int:
             continue
         targets, undefined = scan_links(text)
         for number, target in targets:
-            check_link(source, number, target, cache, errors)
+            check_link(source, number, target, cache, errors, tree)
             checked += 1
         for number, label in undefined:
-            errors.append(f"{rel(source)}:{number}: reference '[{label}]' has no definition")
+            errors.append(f"{rel(source, tree)}:{number}: reference '[{label}]' has no "
+                          "definition")
     return checked
 
 
 def check_links(errors: list[str]) -> int:
     return check_files(markdown_files(), errors)
+
+
+def check_tree(tree: Path) -> list[str]:
+    """Check the links of every Markdown file under tree, which none may leave."""
+    tree = tree.resolve()
+    errors: list[str] = []
+    files = sorted(tree.rglob("*.md"))
+    if not files:
+        errors.append(f"{tree.as_posix()}: no Markdown file")
+    check_files(files, errors, tree)
+    return errors
 
 
 def section_lines(text: str, title: str) -> list[str]:
@@ -365,14 +385,7 @@ def check_approximations(entries: list[dict], approx_ids: set[str],
     return sum(len(h) for h in sites.values())
 
 
-def main() -> int:
-    errors: list[str] = []
-    links = check_links(errors)
-    print(f"links: {links} links checked in {len(markdown_files())} files")
-    entries, approx_ids = check_physics_index(errors)
-    print(f"physics index: {len(entries)} entries, {len(approx_ids)} approximation IDs")
-    markers = check_approximations(entries, approx_ids, errors)
-    print(f"approximations: {markers} markers checked")
+def report(errors: list[str]) -> int:
     for error in errors:
         print(f"error: {error}")
     if errors:
@@ -380,6 +393,25 @@ def main() -> int:
         return 1
     print("OK")
     return 0
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
+    parser.add_argument("--tree", type=Path,
+                        help="check only the links of the Markdown files under this directory")
+    args = parser.parse_args()
+    if args.tree is not None:
+        files = len(list(args.tree.resolve().rglob("*.md")))
+        print(f"links: {files} files under {args.tree.resolve().as_posix()}")
+        return report(check_tree(args.tree))
+    errors: list[str] = []
+    links = check_links(errors)
+    print(f"links: {links} links checked in {len(markdown_files())} files")
+    entries, approx_ids = check_physics_index(errors)
+    print(f"physics index: {len(entries)} entries, {len(approx_ids)} approximation IDs")
+    markers = check_approximations(entries, approx_ids, errors)
+    print(f"approximations: {markers} markers checked")
+    return report(errors)
 
 
 if __name__ == "__main__":

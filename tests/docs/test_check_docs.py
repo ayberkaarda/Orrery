@@ -5,7 +5,8 @@ Each case writes a small Markdown tree into a temporary directory and runs
 the link checker on it: links that resolve must pass, broken ones must fail.
 Covered: inline, reference-style (full, collapsed, shortcut) links and
 images, heading anchors with inline code, repeated headings, fences of mixed
-lengths, and URL-encoded paths and fragments (spaces, Turkish characters).
+lengths, URL-encoded paths and fragments (spaces, Turkish characters), and
+the check of an installed tree (--tree), where no link may leave the tree.
 """
 
 from __future__ import annotations
@@ -139,6 +140,42 @@ class RepositoryLinks(unittest.TestCase):
         self.assert_clean(f"[Notlar]({encoded}#çalıştırma-ve-ölçüm)\n")
         self.assert_broken(f"[Notlar]({encoded}#%C3%A7al%C4%B1%C5%9Fma)\n")
         self.assert_clean(f"# Özet\n\n[Özet](#%C3%B6zet)\n")
+
+
+class InstalledTree(unittest.TestCase):
+    """check_docs.py --tree: every Markdown file of a staged install tree."""
+
+    def setUp(self) -> None:
+        self._tmp = tempfile.TemporaryDirectory()
+        self.base = Path(self._tmp.name).resolve()
+        self.tree = self.base / "share" / "doc" / "orrery"
+        (self.tree / "docs" / "images").mkdir(parents=True)
+        (self.tree / "docs" / "images" / "a.png").write_text("x\n", encoding="utf-8")
+        (self.tree / "docs" / "guide.md").write_text("# Guide\n\n[Back](../README.md)\n",
+                                                      encoding="utf-8")
+        (self.base / "outside.md").write_text("# Outside\n", encoding="utf-8")
+
+    def tearDown(self) -> None:
+        self._tmp.cleanup()
+
+    def tree_errors(self, readme: str) -> list[str]:
+        (self.tree / "README.md").write_text(readme, encoding="utf-8")
+        return check_docs.check_tree(self.tree)
+
+    def test_valid_tree(self) -> None:
+        self.assertEqual(self.tree_errors("[G](docs/guide.md#guide) ![A](docs/images/a.png)\n"), [])
+
+    def test_missing_target(self) -> None:
+        self.assertNotEqual(self.tree_errors("[T](README.tr.md)\n"), [])
+        self.assertNotEqual(self.tree_errors("![B](docs/images/b.png)\n"), [])
+
+    def test_link_out_of_the_tree(self) -> None:
+        # The target exists, but not inside the installed documentation.
+        self.assertNotEqual(self.tree_errors("[O](../../../outside.md)\n"), [])
+
+    def test_nested_file_is_checked(self) -> None:
+        (self.tree / "docs" / "guide.md").write_text("[Gone](gone.md)\n", encoding="utf-8")
+        self.assertNotEqual(self.tree_errors("# Readme\n"), [])
 
 
 if __name__ == "__main__":
