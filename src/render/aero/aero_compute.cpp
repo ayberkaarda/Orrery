@@ -154,8 +154,9 @@ advect_particles_gpu(aero::compute::IComputeBackend& backend, const VectorGrid& 
         return core::failure("particles: " + done.error());
     }
     backend.barrier();
-    if (auto read = backend.readback(particles.value().id(), 0,
-                                     std::as_writable_bytes(std::span<glm::vec4>(state)));
+    const aero::compute::BufferId particle_id = particles.value().id();
+    if (auto read =
+            backend.readback(particle_id, 0, std::as_writable_bytes(std::span<glm::vec4>(state)));
         !read) {
         return core::failure("particles: " + read.error());
     }

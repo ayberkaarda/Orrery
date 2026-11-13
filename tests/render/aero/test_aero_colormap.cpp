@@ -176,9 +176,10 @@ TEST_CASE("The maps stay distinguishable for protanopes and deuteranopes",
         // The sequential map keeps its lightness ordering.
         double previous = -1.0;
         for (std::size_t i = 0; i <= 32; ++i) {
-            const glm::dvec3 c =
-                glm::clamp(simulate(colormap_linear(Colormap::sequential, i / 32.0), protan),
-                           glm::dvec3(0.0), glm::dvec3(1.0));
+            const glm::dvec3 c = glm::clamp(
+                simulate(colormap_linear(Colormap::sequential, static_cast<double>(i) / 32.0),
+                         protan),
+                glm::dvec3(0.0), glm::dvec3(1.0));
             const double l = cie_lightness(c);
             CHECK(l > previous);
             previous = l;
@@ -207,11 +208,11 @@ TEST_CASE("Display pre-compensation inverts the ACES display transform",
     for (const Colormap map :
          {Colormap::diverging, Colormap::diverging_dark, Colormap::sequential}) {
         for (std::size_t i = 0; i <= 64; ++i) {
-            const glm::dvec3 display = colormap_linear(map, i / 64.0);
+            const glm::dvec3 display = colormap_linear(map, static_cast<double>(i) / 64.0);
             for (const double exposure : {1.0, 0.5}) {
                 const glm::dvec3 scene = scene_linear_for_display(display, exposure);
                 const glm::dvec3 shown = tone_map_aces(scene * exposure);
-                INFO("t " << i / 64.0 << " exposure " << exposure);
+                INFO("t " << static_cast<double>(i) / 64.0 << " exposure " << exposure);
                 // Within half an 8-bit step after encoding.
                 CHECK(std::abs(srgb_encode(shown.x) - srgb_encode(display.x)) < 0.5 / 255.0);
                 CHECK(std::abs(srgb_encode(shown.y) - srgb_encode(display.y)) < 0.5 / 255.0);
@@ -254,6 +255,7 @@ TEST_CASE("Colour scale ranges", "[render][aero][colormap]") {
 TEST_CASE("Legend ticks are round numbers with consistent labels", "[render][aero][colormap]") {
     const std::vector<LegendTick> cp = legend_ticks({-1.5, 1.5}, 5);
     std::vector<std::string> labels;
+    labels.reserve(cp.size());
     for (const LegendTick& t : cp) {
         labels.push_back(t.label);
     }

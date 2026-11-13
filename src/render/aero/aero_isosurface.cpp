@@ -34,7 +34,7 @@ constexpr std::array<std::array<std::uint8_t, 4>, 6> kFaces{{
 // (x + 2 y).
 std::uint8_t edge_between(std::uint8_t a, std::uint8_t b) noexcept {
     const auto lo = static_cast<unsigned>(std::min(a, b));
-    const unsigned axis_bit = static_cast<unsigned>(a ^ b);
+    const auto axis_bit = static_cast<unsigned>(a ^ b);
     const unsigned x = lo & 1U;
     const unsigned y = (lo >> 1U) & 1U;
     const unsigned z = (lo >> 2U) & 1U;
@@ -197,7 +197,7 @@ std::uint64_t global_edge(const GridGeometry& grid, std::size_t i, std::size_t j
                           std::uint8_t e) noexcept {
     const std::uint8_t lower = kEdgeCorners[e][0];
     const std::uint64_t axis = e / 4U;
-    return 3U * static_cast<std::uint64_t>(corner_node(grid, i, j, k, lower)) + axis;
+    return std::uint64_t{3} * corner_node(grid, i, j, k, lower) + axis;
 }
 
 // Node gradient by central differences (one-sided at the grid edges).
@@ -247,12 +247,12 @@ double edge_fraction(double a, double b, double level) noexcept {
 }
 
 std::size_t node_of_edge(std::uint64_t edge) noexcept {
-    return static_cast<std::size_t>(edge / 3U);
+    return edge / 3U;
 }
 
 std::size_t neighbour_of_edge(const GridGeometry& g, std::uint64_t edge) noexcept {
     const std::size_t node = node_of_edge(edge);
-    const auto axis = static_cast<std::size_t>(edge % 3U);
+    const std::size_t axis = edge % 3U;
     const std::size_t stride = axis == 0 ? 1 : (axis == 1 ? g.dims[0] : g.dims[0] * g.dims[1]);
     return node + stride;
 }
@@ -269,7 +269,8 @@ glm::dvec3 vertex_normal(const ScalarGrid& field, std::uint64_t edge, double t) 
 // placed by `place(edge)`; triangles are rotated to start at their smallest
 // vertex and sorted, so the result does not depend on emission order.
 template <typename Place>
-IsoSurface assemble(std::vector<std::array<std::uint64_t, 3>> triangles, const Place& place) {
+IsoSurface assemble(const std::vector<std::array<std::uint64_t, 3>>& triangles,
+                    const Place& place) {
     std::vector<std::uint64_t> edges;
     edges.reserve(triangles.size() * 3);
     for (const auto& t : triangles) {
@@ -349,7 +350,7 @@ IsoSurface marching_cubes(const ScalarGrid& field, double level) {
             }
         }
     }
-    return assemble(std::move(triangles), [&](std::uint64_t e) {
+    return assemble(triangles, [&](std::uint64_t e) {
         const std::size_t a = node_of_edge(e);
         const std::size_t b = neighbour_of_edge(g, e);
         const double t = edge_fraction(field.values[a], field.values[b], level);
@@ -465,7 +466,7 @@ core::Result<IsoSurface, std::string> marching_cubes_gpu(aero::compute::ICompute
         }
         triangles.push_back(t);
     }
-    return assemble(std::move(triangles), [&](std::uint64_t e) {
+    return assemble(triangles, [&](std::uint64_t e) {
         const std::size_t a = node_of_edge(e);
         const std::size_t b = neighbour_of_edge(g, e);
         const double t = edge_fraction(field.values[a], field.values[b], level);
