@@ -528,3 +528,10 @@ target_link_libraries(orrery_test_lbm3d_validation PRIVATE orrery_render Catch2:
 orrery_configure_target(orrery_test_lbm3d_validation)
 catch_discover_tests(orrery_test_lbm3d_validation DISCOVERY_MODE PRE_TEST
     ${lbm_gl_discover_props})
+
+# Phase 11: benchmarks (spec section 8) and the nightly CPU validation
+# (tests/bench). Compiled with the tests, never run by ctest.
+option(ORRERY_BUILD_BENCHMARKS "Build the benchmark and nightly executables (tests/bench)" ON)
+if(ORRERY_BUILD_BENCHMARKS)
+    add_subdirectory(bench)
+endif()
