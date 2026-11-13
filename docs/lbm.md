@@ -371,7 +371,12 @@ edge between two slip walls is reflected by both.
   q < 1/2: f_j(x, t+1) = 2q f*_o(x) + (1 - 2q) f*_o(x + c_j),
   q >= 1/2: f_j(x, t+1) = f*_o(x) / (2q) + (2q - 1)/(2q) f*_j(x),
   o = opposite(j). A link with q < 1/2 whose second node is not fluid falls
-  back to q = 1/2. The distance comes from the analytic masks (`sphere_mask`,
+  back to q = 1/2, and so does a link whose distances place no wall on it:
+  a non-finite distance (validation refuses only NaN), a negative distance
+  at the fluid node or a positive one at the solid node, or zero at both.
+  q is computed without overflow for any finite pair (the halves are
+  subtracted when d(x) - d(x - c_j) overflows), and both solvers read the
+  same q (the GPU gets the host's fractions in binary32). The distance comes from the analytic masks (`sphere_mask`,
   `box_mask`, `mask_from_sdf_3d`) or, for meshes, from
   `geom::signed_distance_band` (exact within three cells of the surface,
   signed by the voxel classification; `place_distance`). Measured: the
@@ -437,6 +442,7 @@ GPU against CPU (relative L2, `test_lbm3d_gpu.cpp`):
 | same with Smagorinsky | 800 | 7.7e-6 | 6.4e-6 | 1.0e-5 |
 | same, interpolated wall | 800 | 7.6e-6 | 6.4e-6 | 1.1e-5 |
 | same, extrapolation outlet, periodic y | 800 | 2.7e-6 | 1.8e-6 | 1.3e-5 |
+| Sphere 48 x 24 x 24, D 8, interpolated wall, unusable distances on half the body | 400 | 5.6e-6 | 2.8e-6 | 5.5e-6 |
 | Sphere through `IAeroSolver`, Re 50, D 10 | 1000 | | | 1.1e-5 (Cd 1.85151 / 1.85149) |
 
 The 1e-4 bound holds on these laminar cases; the binary32 caveat of

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstddef>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <regex>
 #include <string>
@@ -154,6 +155,36 @@ TEST_CASE("GPU and CPU D3Q19 agree on a laminar sphere channel", "[aero][lbm3d][
     const Comparison other = compare(*gl.backend, extrapolated.config, extrapolated.mask, 800,
                                      "sphere Re 20, extrapolation outlet, periodic y");
     CHECK(other.velocity < 1e-4);
+    CHECK(gl.context.debug_error_count() == 0);
+}
+
+TEST_CASE("GPU and CPU D3Q19 agree on links with unusable wall distances", "[aero][lbm3d][gl]") {
+    GlCompute gl = gl_compute_or_skip();
+    // The sphere channel of the interpolated-wall comparison with the
+    // distances spoilt on the front half of the body (infinite on the fluid
+    // side) and on its rear half (positive inside): those links take the
+    // halfway wall on both solvers, the others keep their fraction.
+    SphereSetup setup = sphere_channel(48, 24, 24, 8.0, 2.0, 0.05, 20.0);
+    setup.config.solid_wall = SolidWall::interpolated;
+    const double centre = 2.0 * setup.diameter;
+    for (std::size_t z = 0; z < 24; ++z) {
+        for (std::size_t y = 0; y < 24; ++y) {
+            for (std::size_t x = 0; x < 48; ++x) {
+                const std::size_t c = setup.mask.index(x, y, z);
+                const bool front = static_cast<double>(x) < centre;
+                if (front && setup.mask.solid[c] == 0) {
+                    setup.mask.distance[c] = std::numeric_limits<double>::infinity();
+                } else if (!front && setup.mask.solid[c] != 0) {
+                    setup.mask.distance[c] = 1.0;
+                }
+            }
+        }
+    }
+    const Comparison spoilt =
+        compare(*gl.backend, setup.config, setup.mask, 400, "sphere Re 20, unusable distances");
+    CHECK(spoilt.velocity < 1e-4);
+    CHECK(spoilt.populations < 1e-4);
+    CHECK(spoilt.force_x < 1e-4);
     CHECK(gl.context.debug_error_count() == 0);
 }
 

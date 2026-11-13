@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <optional>
@@ -131,7 +132,9 @@ apply_side(const Wall& low, const Wall& high, std::ptrdiff_t& s, std::ptrdiff_t 
 // Wall fraction q of the link from fluid node (x, y, z) towards its solid
 // source x - c_i (SolidWall): 1/2 for the halfway wall; otherwise the zero of
 // the linear interpolation of the mask distance between the two nodes,
-// clamped to [0, 1], falling back to 1/2 for inconsistent signs and for
+// q = d_f / (d_f - d_s) in [0, 1] (without overflow for finite distances).
+// Distances that place no wall on the link fall back to 1/2: a non-finite
+// one, or inconsistent signs (d_f < 0 or d_s > 0, or both zero). So does
 // q < 1/2 when the second node x + c_i is not a fluid node of the domain.
 [[nodiscard]] inline double link_fraction(const Lbm3DConfig& config, const SolidMask3D& mask,
                                           std::size_t x, std::size_t y, std::size_t z,
@@ -153,10 +156,15 @@ apply_side(const Wall& low, const Wall& high, std::ptrdiff_t& s, std::ptrdiff_t 
     const double fluid = mask.distance[mask.index(x, y, z)];
     const double solid = mask.distance[mask.index(
         static_cast<std::size_t>(sx), static_cast<std::size_t>(sy), static_cast<std::size_t>(sz))];
-    if (!(fluid >= 0.0) || !(fluid - solid > 0.0)) {
+    if (!std::isfinite(fluid) || !std::isfinite(solid) || fluid < 0.0 || solid > 0.0 ||
+        (fluid == 0.0 && solid == 0.0)) {
         return 0.5;
     }
-    const double q = std::clamp(fluid / (fluid - solid), 0.0, 1.0);
+    // d_f - d_s > 0; where it overflows, the halves (both large) do not.
+    const double span = fluid - solid;
+    const double ratio =
+        std::isfinite(span) ? fluid / span : 0.5 * fluid / (0.5 * fluid - 0.5 * solid);
+    const double q = std::min(ratio, 1.0);
     if (q < 0.5) {
         const auto fx = static_cast<std::ptrdiff_t>(x) + d3q19::cx[i];
         const auto fy = static_cast<std::ptrdiff_t>(y) + d3q19::cy[i];

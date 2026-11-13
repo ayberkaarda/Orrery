@@ -74,8 +74,10 @@ struct Sponge {
 //   q < 1/2:  f_j(x, t+1) = 2q f*_o(x) + (1 - 2q) f*_o(x + c_j),
 //   q >= 1/2: f_j(x, t+1) = f*_o(x) / (2q) + (2q - 1) / (2q) f*_j(x),
 // o = opposite(j); a link with q < 1/2 whose second node x + c_j is not a
-// fluid node of the domain falls back to q = 1/2. Not mass conserving
-// exactly (APPROXIMATION D2).
+// fluid node of the domain falls back to q = 1/2, and so does a link whose
+// distances place no wall on it (a non-finite distance, a negative one at
+// the fluid node, a positive one at the solid node, or zero at both). Not
+// mass conserving exactly (APPROXIMATION D2).
 enum class SolidWall : std::uint8_t { halfway, interpolated };
 
 struct Lbm3DConfig {
@@ -106,7 +108,8 @@ struct Lbm3DConfig {
 // parameters, a lattice Mach number of the inlet and walls below 0.1,
 // periodic walls on both sides of an axis or neither, a fluid inlet and
 // outlet face, a positive inlet speed for the convective outlet, absorbing
-// layers that fit, and finite mask distances for the interpolated wall.
+// layers that fit, and mask distances without NaN for the interpolated wall
+// (infinite or inconsistent ones give the halfway wall on their links).
 [[nodiscard]] std::optional<std::string> validate(const Lbm3DConfig& config,
                                                   const SolidMask3D& mask);
 

@@ -221,6 +221,110 @@ TEST_CASE("The CPU D3Q19 solver is deterministic", "[aero][lbm3d]") {
     CHECK(take(a->populations()) == take(b->populations()));
 }
 
+namespace {
+
+// Wall fraction q of the link from the fluid node (3, 4, 4) to the solid
+// node (2, 4, 4) (direction 1, c = (1, 0, 0)) of a periodic 8^3 box with the
+// interpolated wall, for the distances `fluid` and `solid` at those nodes
+// (1 at the other nodes). `second_solid` makes the node behind the link,
+// (4, 4, 4), solid as well (distance -1).
+double fraction_of(double fluid, double solid, bool second_solid) {
+    Lbm3DConfig config = periodic_box(8, 8, 8, 0.7);
+    config.solid_wall = SolidWall::interpolated;
+    SolidMask3D mask = fluid_mask_3d(8, 8, 8);
+    mask.distance.assign(mask.solid.size(), 1.0);
+    mask.solid[mask.index(2, 4, 4)] = 1;
+    mask.distance[mask.index(2, 4, 4)] = solid;
+    mask.distance[mask.index(3, 4, 4)] = fluid;
+    if (second_solid) {
+        mask.solid[mask.index(4, 4, 4)] = 1;
+        mask.distance[mask.index(4, 4, 4)] = -1.0;
+    }
+    REQUIRE_FALSE(validate(config, mask));
+    for (const BoundaryLink3D& link : boundary_links(config, mask)) {
+        if (link.cell == mask.index(3, 4, 4) && link.direction == 1) {
+            return link.q;
+        }
+    }
+    FAIL("no boundary link from (3, 4, 4) in direction 1");
+    return -1.0;
+}
+
+} // namespace
+
+TEST_CASE("Wall fractions of the interpolated wall from the signed distance", "[aero][lbm3d]") {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double big = std::numeric_limits<double>::max();
+    // The zero of the linear interpolation between the two nodes.
+    CHECK(fraction_of(0.25, -0.75, false) == 0.25);
+    CHECK(fraction_of(0.75, -0.25, false) == 0.75);
+    CHECK(fraction_of(0.0, -1.0, false) == 0.0); // the wall on the fluid node
+    CHECK(fraction_of(1.0, 0.0, false) == 1.0);  // the wall on the solid node
+    CHECK(fraction_of(std::numeric_limits<double>::denorm_min(), 0.0, false) == 1.0);
+    // q < 1/2 needs a fluid node behind the link; without one, halfway.
+    CHECK(fraction_of(0.25, -0.75, true) == 0.5);
+    CHECK(fraction_of(0.0, -1.0, true) == 0.5);
+    // Distances that place no wall on the link: halfway.
+    CHECK(fraction_of(inf, -1.0, false) == 0.5);
+    CHECK(fraction_of(1.0, -inf, false) == 0.5);
+    CHECK(fraction_of(inf, -inf, false) == 0.5);
+    CHECK(fraction_of(2.0, 1.0, false) == 0.5);   // solid node outside the body
+    CHECK(fraction_of(-0.5, -1.0, false) == 0.5); // fluid node inside the body
+    CHECK(fraction_of(0.0, 0.0, false) == 0.5);
+    // Finite distances whose difference overflows: still the linear zero.
+    CHECK(fraction_of(big, -big, false) == 0.5);
+    CHECK(fraction_of(big, -0.5 * big, false) == Approx(2.0 / 3.0).epsilon(1e-15));
+}
+
+TEST_CASE("Links with unusable wall distances reflect like the halfway wall", "[aero][lbm3d]") {
+    const double inf = std::numeric_limits<double>::infinity();
+    const double big = std::numeric_limits<double>::max();
+    struct Distances {
+        double fluid;
+        double solid;
+        const char* what;
+    };
+    for (const Distances& d : {Distances{inf, -1.0, "infinite fluid distance"},
+                               Distances{1.0, -inf, "infinite solid distance"},
+                               Distances{2.0, 1.0, "positive solid distance"},
+                               Distances{big, -big, "overflowing difference"}}) {
+        INFO(d.what);
+        Lbm3DConfig halfway = periodic_box(8, 8, 8, 0.7);
+        Lbm3DConfig interpolated = halfway;
+        interpolated.solid_wall = SolidWall::interpolated;
+        SolidMask3D mask = box_mask(8, 8, 8, {3.0, 3.0, 3.0}, {4.0, 4.0, 4.0});
+        for (std::size_t c = 0; c < mask.solid.size(); ++c) {
+            mask.distance[c] = mask.solid[c] != 0 ? d.solid : d.fluid;
+        }
+        const std::vector<BoundaryLink3D> links = boundary_links(interpolated, mask);
+        REQUIRE_FALSE(links.empty());
+        std::size_t off_halfway = 0;
+        for (const BoundaryLink3D& link : links) {
+            off_halfway += link.q == 0.5 ? 0 : 1;
+        }
+        CHECK(off_halfway == 0);
+        auto a = take(make_cpu_solver(halfway, mask));
+        auto b = take(make_cpu_solver(interpolated, mask));
+        const auto shear = [](std::size_t, std::size_t y, std::size_t z) {
+            return d3q19::Moments{1.0, 0.03 + 0.01 * std::sin(0.8 * static_cast<double>(y)),
+                                  0.01 * std::cos(0.6 * static_cast<double>(z)), 0.0};
+        };
+        require_ok(a->initialize(shear));
+        require_ok(b->initialize(shear));
+        require_ok(a->step(20));
+        require_ok(b->step(20));
+        const std::vector<double> fb = take(b->populations());
+        CHECK(std::all_of(fb.begin(), fb.end(), [](double v) { return std::isfinite(v); }));
+        const bool same = fb == take(a->populations());
+        CHECK(same);
+        const Force3D fa = take(a->force());
+        const Force3D ff = take(b->force());
+        CHECK(std::isfinite(ff.force[0]));
+        CHECK(ff.force == fa.force);
+        CHECK(ff.moment == fa.moment);
+    }
+}
+
 TEST_CASE("D3Q19 configurations are validated", "[aero][lbm3d]") {
     const SolidMask3D mask = fluid_mask_3d(8, 8, 8);
     Lbm3DConfig ok = periodic_box(8, 8, 8, 0.6);
