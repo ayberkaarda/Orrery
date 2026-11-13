@@ -151,6 +151,12 @@ FORBIDDEN_NAME = re.compile(
 )
 FORBIDDEN_PART = re.compile(r"(opengl|glad|glfw|glew|imgui|implot|freeglut|epoxy)", re.IGNORECASE)
 GENEX_OPEN = re.compile(r"\$<[A-Za-z_]+(?:\s*:)?")
+# MSVC switches that look like a graphics library name once the leading
+# slash is read as a directory separator: /GL (whole-program optimisation,
+# which CMake's interprocedural optimisation puts on the link flags of the
+# LTO release builds). Matched exactly and case-sensitively, so /DEFAULTLIB:
+# items and library files are still inspected.
+MSVC_SWITCHES = frozenset({"/GL", "-GL"})
 LIBRARY_EXT = re.compile(r"\.(?:so(?:\.\d+)*|a|lib|dylib|tbd|dll|framework)$", re.IGNORECASE)
 
 # File API codemodel version that introduced linkLibraries,
@@ -278,7 +284,7 @@ def forbidden_item(item: str) -> str | None:
     """Return the graphics library named by a link item, or None."""
     text = GENEX_OPEN.sub(" ", item).replace(">", " ")
     for token in re.split(r"[\s,;\"']+|LINKER:|-Wl|-Xlinker", text):
-        if not token:
+        if not token or token in MSVC_SWITCHES:
             continue
         for name in link_names(token):
             if FORBIDDEN_PART.search(name) or FORBIDDEN_NAME.match(name):
