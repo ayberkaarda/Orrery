@@ -63,7 +63,7 @@ struct EntryEnvironment {
 struct EntryVehicleRecord {
     std::string name = "capsule";
     double mass_kg = 5560.0;
-    double reference_area_m2 = 12.0193;
+    double reference_area_m2 = 12.019532;
     double nose_radius_m = 4.694;
     // Cd(Mach) table, same length, Mach strictly increasing.
     std::vector<double> cd_table_mach{0.0};
