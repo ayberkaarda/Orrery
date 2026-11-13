@@ -45,6 +45,7 @@ struct Harness {
     static app::AeroWorkspaceOptions options(const std::filesystem::path& dir) {
         app::AeroWorkspaceOptions o;
         o.experiment_dir = dir;
+        o.model_cache_dir = dir / "models";
         o.steps_per_frame = 50;
         return o;
     }
@@ -137,6 +138,53 @@ TEST_CASE("Aero workspace shows geometry errors in its modal", "[app][ui][aero]"
     REQUIRE(modal.has_value()); // open, centred over the window
     CHECK(modal->x > 300.0);
     CHECK(h.workspace.view_state().geometry == nullptr);
+}
+
+TEST_CASE("Opening an experiment asks before it downloads its model", "[app][ui][aero][download]") {
+    Harness h(scratch("download_prompt"));
+    REQUIRE(h.frames_until([&] { return h.workspace.geometry_ready(); }));
+    scene::AeroExperiment remote;
+    remote.geometry.source = scene::GeometrySource::url;
+    // Nothing listens on the discard port: a download fails at once.
+    remote.geometry.url = "https://127.0.0.1:9/body.stl";
+    remote.geometry.path = "gone/source.stl";
+    remote.geometry.sha256 = std::string(64, 'a');
+    const std::filesystem::path base = scratch("download_prompt_base");
+
+    h.workspace.open(remote, base);
+    (void)h.frame();
+    (void)h.frame();
+    const std::optional<app::AeroDownloadRequest> pending = h.workspace.pending_download();
+    REQUIRE(pending.has_value());
+    CHECK(pending->host == "127.0.0.1");
+    CHECK(pending->url == remote.geometry.url);
+    CHECK(pending->sha256 == remote.geometry.sha256);
+    CHECK(h.ui.window_rect(app::kDownloadPrompt).has_value());
+    // Nothing runs before the answer, and the previous body is gone.
+    CHECK_FALSE(h.workspace.busy());
+    CHECK(h.workspace.view_state().geometry == nullptr);
+    CHECK_FALSE(std::filesystem::exists(base / "models"));
+
+    // Cancel: no download, no geometry.
+    h.workspace.answer_download(false);
+    (void)h.frame();
+    CHECK_FALSE(h.workspace.pending_download().has_value());
+    CHECK_FALSE(h.workspace.busy());
+    CHECK_FALSE(h.workspace.geometry_ready());
+    CHECK_FALSE(h.workspace.start_run());
+
+    // Download: the fetch runs (and fails here, shown in the error modal).
+    h.workspace.open(remote, base);
+    (void)h.frame();
+    REQUIRE(h.workspace.pending_download().has_value());
+    h.workspace.answer_download(true);
+    CHECK(h.workspace.busy());
+    REQUIRE(h.frames_until([&] { return !h.workspace.busy(); }));
+    (void)h.frame();
+    (void)h.frame();
+    CHECK_FALSE(h.workspace.pending_download().has_value());
+    CHECK(h.ui.window_rect(app::kErrorModal).has_value());
+    CHECK_FALSE(h.workspace.geometry_ready());
 }
 
 namespace {

@@ -17,8 +17,13 @@ The aim is an observable, verifiable and deterministic tool, not a game. Every
 physical simplification is marked in the code and listed in
 [docs/physics.md](docs/physics.md); no solver claims to be validated CFD.
 
-Version 0.0.1. Windows (MSVC 2022) and Linux (GCC 13, Clang 17) are supported;
-macOS is out of scope (no OpenGL 4.6).
+Version 0.0.1. Windows (MSVC 2022) is the platform it is developed and tested
+on: the window, the GPU tests and the packaged application have run there.
+Linux (GCC 13, Clang 17): the headless build and its tests run in CI, and the
+windowed build compiles there (sanitizer and nightly jobs), but the CI runners
+have no OpenGL, so the window and the GPU tests have never run on Linux, and
+the tarball and the AppImage are untested. macOS is out of scope (no OpenGL
+4.6).
 
 ## Contents
 
@@ -31,6 +36,7 @@ macOS is out of scope (no OpenGL 4.6).
 - [Limitations](#limitations)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
+- [License](#license)
 
 ## Features
 
@@ -159,9 +165,12 @@ ctest --preset release
 
 Tests tagged `[gl]` need an OpenGL 4.6 context; they skip without one, or
 fail when `ORRERY_REQUIRE_GL=1` is set. Continuous integration builds and
-tests Ubuntu with GCC 13 and Clang 17 and Windows with MSVC, runs an
-AddressSanitizer job, clang-format, clang-tidy, cppcheck and a check of the
-library dependency boundaries (`tools/check_deps.py`).
+tests the headless presets on Ubuntu with GCC 13 and Clang 17 and on Windows
+with MSVC (where there is no OpenGL, so the `[gl]` tests skip), runs an
+AddressSanitizer and UBSan job on Linux (GCC 13, windowed debug build),
+clang-format, clang-tidy, cppcheck, a check of the library dependency
+boundaries (`tools/check_deps.py`) and a check of the documentation
+(`tools/check_docs.py`); see [docs/ci.md](docs/ci.md).
 
 ## Running
 
@@ -183,8 +192,11 @@ orrery_app --help | --version | --modules
   experiments after running the solver, entry experiments as the whole
   workspace after the entry has run to its end. It never shows a window but
   needs an OpenGL 4.6 driver; without one it exits with code 3.
-- `--benchmark N` prints frame timings (in the window, or after the headless
-  image).
+- `--benchmark N` renders N frames without vsync, prints the mean frame time
+  and exits (in the window), or times N offscreen frames after the headless
+  image (space experiments only).
+- `--trace <file>` writes the profiling zones of the run to a trace file
+  ([docs/observability.md](docs/observability.md)).
 - Bundled experiments live in `assets/experiments`: `solar_system`,
   `sun_earth_moon`, `figure_eight`, `sgr_a_s2`, `black_hole`,
   `aero_naca0012_panel`, `aero_naca0012_lbm`, `aero_naca2412_wing`,
@@ -228,12 +240,12 @@ links):
 
 | Area | Reference | Result |
 |---|---|---|
-| Two-body orbits | analytic Kepler solution | Yoshida4 2.7e-8 AU after 10 orbits; Kepler period to 2.4e-10 |
-| Solar system, 1000 years, Yoshida4 | energy conservation | max abs(dE/E0) 1.4e-10 (target 1e-9) |
+| Two-body orbits | analytic Kepler solution | Yoshida4 2.7e-8 AU after 10 orbits; Kepler period relative error 2.4e-10 |
+| Sun and eight planets, 1000 years, Yoshida4 (0.25 d steps) | energy conservation | max abs(dE/E0) 1.4e-10 (target 1e-9) |
 | Circular orbit, 100 orbits, leapfrog | analytic orbit | 3.8e-7 AU (target 1e-6 AU) |
 | Determinism | state hash | bit-identical after the same number of steps, for any frame pacing and with the time-warp budget (which can change how many steps a stretch of wall-clock time takes) |
 | Paczynski-Wiita orbits and the ISCO | analytic period; stability at 3 r_s | period error 9e-12; stable above, plunging below |
-| Black hole lensing | weak-field deflection series, strong deflection (Bozza 2002), CPU geodesics | within the third-order term; Einstein ring radius matches to 0.01 px |
+| Black hole lensing | weak-field deflection series, strong deflection (Bozza 2002), CPU geodesics | within the third-order term; Einstein ring radius 143.52 px against the predicted 143.52 px (test bound 2 px) |
 | Geometry | closed-form volumes and areas | worst relative error 6.1e-14 over 65 checks |
 | Sphere voxelization | true sphere | 85184 of 85184 cells agree |
 | NACA 0012, 2D panel method | thin-airfoil slope 2 pi per rad; thick-section (Joukowski) values | slope 1.098 x 2 pi (within the 10 percent criterion); Cl within 0.7 percent of the thick-section values |
@@ -244,13 +256,14 @@ links):
 | Plate normal to the flow, LBM 3D | Cd about 1.28, 15 percent | Cd 1.158 |
 | GPU against CPU lattice Boltzmann | relative L2 below 1e-4 | met after the flow settles (see limitations) |
 | US Standard Atmosphere 1976 | published table | layer values to the printed precision |
-| Apollo-like entry | peak 6 to 8 g; energy balance within 1 percent | 6.78 g; energy error 2.1e-5 |
+| Apollo-like entry, energy balance | work-energy theorem: the change of orbital energy equals the drag work, within 1 percent | relative error 2.1e-5 (8.5e-7 at a 0.1 s step) |
+| Apollo-like entry, peak deceleration (a calibrated case, not a validation) | the 6 to 8 g band of Apollo; the entry angle -5.7 degrees was chosen so that the drag-only model (no lift, [ADR-012](docs/adr/012-entry-dynamics.md)) lands in it | 6.78 g; at the real Apollo angle, -6.5 degrees, the model gives about 15.3 g without lift |
 | Allen-Eggers ballistic entry | analytic peak deceleration | within 0.5 percent |
 
 ## Limitations
 
-- Specification items that V1 does not implement (bloom, Hill spheres and
-  ghost trajectories, the Rayleigh + Mie atmosphere, and two that are done
+- Planned items that V1 does not implement (bloom, Hill spheres and ghost
+  trajectories, the Rayleigh + Mie atmosphere, and two that are done
   differently) are listed with their status in
   [docs/limitations.md](docs/limitations.md).
 - No solver is presented as validated CFD. The panel method is inviscid
@@ -261,15 +274,15 @@ links):
   solutions differ by up to 7.1e-4 (relative L2), above the 1e-4 criterion;
   they agree again after lock-in ([docs/lbm.md](docs/lbm.md)).
 - Frame-rate and throughput figures were measured on one machine (AMD Radeon
-  RX 9060 XT); the GTX 1660 class targets of the specification were not
+  RX 9060 XT); the V1 targets stated for a GTX 1660 class GPU were not
   measured on such hardware.
 - Black holes are Schwarzschild only (no spin); the dynamics near them use a
   pseudo-Newtonian potential, not general relativity.
 - Entry: constant mass, no lift, no rotation, no ablation; the heat flux is a
   stagnation-point correlation for display.
 - The J2000 solar system is ten point masses from JPL Horizons state vectors
-  (no asteroids, oblateness or relativity); it drifts from the ephemeris by
-  about 1e-6 AU per year.
+  (no asteroids, oblateness or relativity); after one year it stays within
+  about 1e-6 AU of the ephemeris (Mercury 3.9e-7 AU).
 - The Aero workspace runs the lattice Boltzmann solver on the CPU; large 3D
   lattices are slow there.
 - Imported models are not validated; licences of downloaded models are not
@@ -289,7 +302,7 @@ links):
 | `tests` | unit, property, validation (`tests/aero_validation`) and golden image tests |
 | `assets` | bundled scenarios and experiments |
 | `docs` | reference documents and architecture decision records (`docs/adr`) |
-| `tools` | `check_deps.py` (dependency boundaries), `check_docs.py` (documentation links and the physics index), `make_screenshots.py` (README images) |
+| `tools` | `check_deps.py` (dependency boundaries), `check_docs.py` (documentation links, the physics index, no numbered references to the unpublished specification), `make_screenshots.py` (README images) |
 
 The libraries depend in one direction only: core, geom, atmo and the
 simulation side never link OpenGL, GLFW or Dear ImGui (checked in CI).
@@ -304,8 +317,20 @@ simulation side never link OpenGL, GLFW or Dear ImGui (checked in CI).
 - [docs/aero-workspace.md](docs/aero-workspace.md), [docs/aero-visualisation.md](docs/aero-visualisation.md) - Aero workspace and view
 - [docs/atmosphere.md](docs/atmosphere.md), [docs/entry-workspace.md](docs/entry-workspace.md) - atmospheres, entry and the Entry workspace
 - [docs/geometry-import.md](docs/geometry-import.md), [docs/url-import-security.md](docs/url-import-security.md) - geometry import and download limits
+- [docs/observability.md](docs/observability.md) - profiling zones, Tracy and the `--trace` output
+- [docs/performance.md](docs/performance.md) - benchmarks and measured results against the V1 targets
+- [docs/ci.md](docs/ci.md) - CI jobs, caches, measured run times and the nightly workflow
+- [docs/packaging.md](docs/packaging.md) - installers, install layout, licence notices and releases
+- [docs/limitations.md](docs/limitations.md) - planned items not implemented in V1
 - [docs/roadmap.md](docs/roadmap.md) - the V1, V2 and V3 roadmap, deferred abstractions and the coupling pattern
 - [docs/screenshots.md](docs/screenshots.md) - how the screenshots above are regenerated
 - [docs/adr](docs/adr/README.md) - architecture decision records
 
 A Turkish version of this file: [README.tr.md](README.tr.md).
+
+## License
+
+Orrery is released under the MIT License: see [LICENSE](LICENSE). The
+third-party libraries it builds on and ships in its packages keep their own
+licences; the packages install each library's notice under
+`share/doc/orrery/third_party` ([docs/packaging.md](docs/packaging.md#licence-and-third-party-notices)).

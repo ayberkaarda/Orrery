@@ -43,7 +43,7 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain
         run: |
           APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
@@ -53,7 +53,7 @@ jobs:
           else
             retry $APT install -y $LINUX_DEPS gcc-13 g++-13
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install CMake and Ninja
@@ -64,7 +64,7 @@ jobs:
         id: image
         run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Restore vcpkg binaries
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .vcpkg-cache
           key: vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
@@ -94,7 +94,7 @@ jobs:
           cat bench-results/report.md >> "$GITHUB_STEP_SUMMARY"
       - name: Upload benchmark results
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: bench-results
           path: bench-results/
@@ -111,7 +111,7 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain
         run: |
           APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
@@ -121,7 +121,7 @@ jobs:
           else
             retry $APT install -y $LINUX_DEPS gcc-13 g++-13
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install CMake and Ninja
@@ -132,7 +132,7 @@ jobs:
         id: image
         run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Restore vcpkg binaries
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .vcpkg-cache
           key: vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
@@ -159,7 +159,7 @@ jobs:
             2>&1 | tee lbm-validation/log.txt
       - name: Upload validation log
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lbm-validation
           path: lbm-validation/

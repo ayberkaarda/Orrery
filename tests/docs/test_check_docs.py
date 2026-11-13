@@ -7,6 +7,8 @@ Covered: inline, reference-style (full, collapsed, shortcut) links and
 images, heading anchors with inline code, repeated headings, fences of mixed
 lengths, URL-encoded paths and fragments (spaces, Turkish characters), and
 the check of an installed tree (--tree), where no link may leave the tree.
+The rule against numbered specification references is tested on text
+fragments: references that must be flagged and wording that must pass.
 """
 
 from __future__ import annotations
@@ -176,6 +178,45 @@ class InstalledTree(unittest.TestCase):
     def test_nested_file_is_checked(self) -> None:
         (self.tree / "docs" / "guide.md").write_text("[Gone](gone.md)\n", encoding="utf-8")
         self.assertNotEqual(self.tree_errors("# Readme\n"), [])
+
+
+class SpecificationReferences(unittest.TestCase):
+    """Numbered references into the specification, which is not in the repository."""
+
+    def problems(self, text: str) -> list[str]:
+        return check_docs.spec_reference_problems(check_docs.ROOT / "docs" / "x.md", text)
+
+    def assert_flagged(self, text: str) -> None:
+        self.assertNotEqual(self.problems(text), [], f"expected a problem in:\n{text}")
+
+    def assert_allowed(self, text: str) -> None:
+        self.assertEqual(self.problems(text), [], f"expected no problem in:\n{text}")
+
+    def test_numbered_references_fail(self) -> None:
+        self.assert_flagged("Bloom (dual filter, spec 7.6) is not done.\n")
+        self.assert_flagged("The spec (7.3) asks for a disk.\n")
+        self.assert_flagged("The time budget of spec section 8: under 20 minutes.\n")
+        self.assert_flagged("Hill spheres (Spec sections 3.6 and 7.5).\n")
+        self.assert_flagged("against the spec's 30 fps\n")
+        self.assert_flagged("(spec target: at least 30 fps at 1080p)\n")
+        self.assert_flagged("the specification phase 11 asks for LTO\n")
+        self.assert_flagged("as planned in FAZ 9\n")
+        self.assert_flagged("belirtim 8. bölüm\n")
+        self.assert_flagged("şartname 4.3\n")
+        self.assert_flagged("| Spec | Item | Status |\n|---|---|---|\n")
+
+    def test_reference_across_a_line_break(self) -> None:
+        problems = self.problems("Intro.\n\nThe output (spec\nsection 10) is a trace.\n")
+        self.assertEqual(len(problems), 1)
+        self.assertIn("x.md:3:", problems[0])
+
+    def test_other_text_passes(self) -> None:
+        self.assert_allowed("Units follow the glTF 2.0 specification.\n")
+        self.assert_allowed("The entry model is ADR-012; see section 4 of this page.\n")
+        self.assert_allowed("A planned bloom pass, not in V1.\n")
+        self.assert_allowed("Grid specs with wrapped extents are rejected.\n")
+        self.assert_allowed("Code `spec 7.6` and\n\n```\nspec section 8\n```\n")
+        self.assert_allowed("| Item | Spec column elsewhere |\n")
 
 
 if __name__ == "__main__":

@@ -51,7 +51,10 @@ enum class EntryIntegrator : std::uint8_t { ias15, yoshida4, leapfrog_kdk };
 struct EntryIntegration {
     EntryIntegrator integrator = EntryIntegrator::ias15;
     double tolerance = 1.0e-9; // IAS15
-    double time_step_s = 0.5;  // inside the atmosphere; also the series spacing
+    // Inside the atmosphere; also the series spacing. At least
+    // scene::kMinEntryTimeStepS, and the time limit at most
+    // scene::kMaxEntrySteps of it (setup_errors).
+    double time_step_s = 0.5;
     double max_coast_step_s = 30.0;
     bool stop_on_skip_out = true;
     // Entry interface altitude; nullopt uses the planet's.

@@ -1,6 +1,6 @@
 # URL model import: security
 
-Orrery can load a model from a URL (spec section 4.3, ADR-010). The download
+Orrery can load a model from a URL (ADR-010). The download
 is untrusted input from an unknown server. This page describes what the
 loader (`orrery_geom_net`, `src/geom/net`) defends against, the limits it
 enforces, and how the tests prove it.
@@ -69,7 +69,9 @@ bodies, bodies without a length, and servers that send more than they
 declared.
 
 **Time**: connect timeout, a total timeout over all hops, and a low-speed
-guard (abort when fewer than N bytes per second arrive for a window).
+guard (abort when fewer than N bytes per second arrive for a window). These
+limits bound a fetch nobody stops; a user who does not want to wait cancels
+it (see [Cancellation](#cancellation)).
 
 **Content**: the format is decided by magic bytes and structure only. The
 URL path, file name and extension are never consulted:
@@ -219,6 +221,54 @@ What the cache does not claim, by design:
   exactly that of an uncached fetch; offline, the error is then a network
   error rather than the policy error.
 
+## Cancellation
+
+`FetchOptions::cancel_requested` is a callback the loader polls while a fetch
+runs: before the first request and before every redirect hop, on every block
+of the body (libcurl's write callback), and from libcurl's progress callback
+(`CURLOPT_XFERINFOFUNCTION`), which libcurl calls frequently while data
+arrives and about once a second while a server sends nothing. Returning true
+ends the fetch with `FetchErrorKind::cancelled` within about a second, also
+when the server stalls after its headers or trickles one byte at a time,
+cases the limits above would only end after 30 s (low-speed guard) or 300 s
+(total). The partial download lives only in the fetch's staging directory,
+which is removed; nothing is committed to the cache and the URL index is not
+touched. Without a callback (the default) the transfer is configured exactly
+as before. Every limit stays in force with or without one.
+
+The Aero workspace wires the stop token of its background task into the
+callback (`sim::fetch_model_url`), so its Cancel button and closing the
+window end a stalled download within about a second
+(aero-workspace.md, "Approximations and limits").
+
+## Experiments
+
+An aero experiment that uses a URL model records the `url` and the SHA-256
+of the download. When the cached file named in the experiment is gone,
+opening it would mean contacting the server again, so the application never
+does that on its own:
+
+- **Permission first.** The window shows the prompt "This experiment wants
+  to download a model from `<host>`" with the URL and the recorded SHA-256,
+  and downloads only after **Download**; **Cancel** leaves the experiment
+  without geometry. A headless run downloads only with `--allow-download`
+  (app.md, "Command line"); without it the run fails before any network
+  access with an error that names the host, URL and recorded digest.
+  `sim::load_experiment_geometry` refuses by default
+  (`sim::ExperimentDownload::allowed`).
+- **Digest before parsing.** The recorded digest is passed to the loader as
+  `FetchOptions::expected_sha256`. The loader compares it with the SHA-256
+  it computes while streaming, as soon as the download is complete and
+  before the content is sniffed, extracted or handed to the importer. A
+  mismatch fails with `FetchErrorKind::digest_mismatch` (shown as "The model
+  changed at its source", with both digests) and the staging directory is
+  removed, so the bytes are never parsed and never cached. A cached entry
+  under another digest is not served for such a request (nor re-extracted);
+  the URL is downloaded and checked again. For a zip the digest is that of
+  the archive, as recorded.
+- An experiment without a recorded digest is downloaded after the same
+  permission, and the prompt says that none was recorded.
+
 ## Licence and source
 
 `FetchOptions::license_note` is free text entered by the user (licence,
@@ -273,7 +323,13 @@ a declared size over the cap, a 50 GiB `Content-Length`, an undeclared
 streamed body over the cap and an understated `Content-Length`; an executable
 served as `.stl`, HTML served as `text/html`, a valid model with an executable
 MIME type and a mislabelled model type; a stalled server (total timeout) and a
-trickling server (low-speed guard); a non-200 status; zip bombs (ratio about
+trickling server (low-speed guard); a cancelled fetch, with a server that
+sends one byte every 200 ms, with a server silent after ten bytes (both end
+within two seconds of the cancellation, leaving neither a cache entry, a URL
+index entry nor a staging directory behind; a normal fetch with a callback
+that never cancels is unchanged) and before the first request (no request is
+sent); a download whose digest is not the expected one (discarded unread,
+also when an entry under another digest is cached); a non-200 status; zip bombs (ratio about
 1000, a lying size header, a total size over the cap), path traversal and
 absolute names, symlinks, encrypted entries, too many entries, archives
 without a model or with only a nested archive, corrupt archives; a hard link,

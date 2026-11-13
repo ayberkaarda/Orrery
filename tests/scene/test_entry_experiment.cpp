@@ -180,3 +180,81 @@ TEST_CASE("Entry record errors name the offending key", "[scene][entry]") {
     CHECK_FALSE(
         scene::parse_entry_experiment(with_replaced(text, "\"version\": 1", "\"version\": 2")));
 }
+
+namespace {
+
+// The Apollo fixture with its time step and time limit replaced.
+orrery::core::Result<scene::EntryExperiment, std::string>
+parse_with_steps(const std::string& time_step, const std::string& max_duration) {
+    std::string text = read_file("entry_apollo.json");
+    text = with_replaced(text, "\"time_step_s\": 0.5", "\"time_step_s\": " + time_step);
+    text = with_replaced(text, "\"max_duration_s\": 4000", "\"max_duration_s\": " + max_duration);
+    return scene::parse_entry_experiment(text);
+}
+
+} // namespace
+
+TEST_CASE("Entry time steps below the documented minimum are rejected", "[scene][entry][limits]") {
+    for (const char* step : {"1e-9", "0.000999", "0"}) {
+        INFO("time_step_s " << step);
+        const auto parsed = parse_with_steps(step, "4000");
+        REQUIRE_FALSE(parsed);
+        CHECK(parsed.error().find("solver.settings.time_step_s") == 0);
+    }
+    // The minimum itself is a valid step for a run short enough.
+    const auto minimum = parse_with_steps("0.001", "200");
+    INFO((minimum ? std::string() : minimum.error()));
+    REQUIRE(minimum);
+    CHECK(minimum.value().solver.time_step_s == scene::kMinEntryTimeStepS);
+
+    // A typed record is checked again when it becomes a configuration.
+    scene::EntryExperiment typed;
+    typed.solver.time_step_s = 1.0e-9;
+    const auto config = scene::to_entry_config(typed);
+    REQUIRE_FALSE(config);
+    CHECK(config.error().find("solver.settings.time_step_s") == 0);
+}
+
+TEST_CASE("Entry runs longer than the step limit are rejected", "[scene][entry][limits]") {
+    static_assert(scene::kMaxEntrySteps == 200'000);
+    // 0.5 s steps: 100 000 s is exactly the limit, a step more is over it.
+    const auto at_limit = parse_with_steps("0.5", "100000");
+    INFO((at_limit ? std::string() : at_limit.error()));
+    REQUIRE(at_limit);
+    const auto over = parse_with_steps("0.5", "100000.5");
+    REQUIRE_FALSE(over);
+    CHECK(over.error().find("solver.settings.time_step_s") == 0);
+    CHECK(over.error().find("max_duration_s") != std::string::npos);
+    // The minimum step over the default time limit: 4 million steps.
+    const auto fine = parse_with_steps("0.001", "4000");
+    REQUIRE_FALSE(fine);
+    CHECK(fine.error().find("solver.settings.time_step_s") == 0);
+    // A step that is not a binary fraction still reaches the limit exactly.
+    CHECK(parse_with_steps("0.02", "4000"));
+}
+
+TEST_CASE("A run at the step limit stays within the row cap", "[scene][entry][limits]") {
+    // A circular orbit above the atmosphere's top: no event ends the run,
+    // and with the coast step equal to the time step every step is one row.
+    scene::EntryExperiment e;
+    const orrery::atmo::Planet earth = orrery::atmo::Planet::earth();
+    const double altitude = 2.0e6;
+    e.conditions.altitude_m = altitude;
+    e.conditions.speed_m_s = std::sqrt(earth.gm.value() / (earth.radius.value() + altitude));
+    e.conditions.flight_path_angle_deg = 0.0;
+    e.solver.integrator = orrery::atmo::EntryIntegrator::leapfrog_kdk;
+    e.solver.time_step_s = 1.0;
+    e.solver.max_coast_step_s = 1.0;
+    e.solver.max_duration_s = static_cast<double>(scene::kMaxEntrySteps);
+    const auto record = roundtrip(e);
+    auto config = scene::to_entry_config(record);
+    INFO((config ? std::string() : config.error()));
+    REQUIRE(config);
+    auto run = orrery::atmo::EntryExperiment::create(config.value());
+    REQUIRE(run);
+    REQUIRE(run.value().run());
+    CHECK(run.value().outcome() == orrery::atmo::EntryOutcome::time_limit);
+    const std::size_t rows = run.value().series().size();
+    CHECK(rows > scene::kMaxEntrySteps / 2);
+    CHECK(rows <= scene::kMaxEntrySteps + 1);
+}

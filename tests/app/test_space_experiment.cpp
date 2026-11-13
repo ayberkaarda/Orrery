@@ -60,6 +60,11 @@ TEST_CASE("Every bundled experiment loads", "[app][sim][experiment]") {
     CHECK(solar.value().config.dt_days == 0.05);
     CHECK(solar.value().config.time_warp == 1'000'000);
     CHECK(solar.value().scenario_path.filename() == "solar_system_j2000.json");
+    // The S2 scenario is the Newtonian point-mass model its title and its
+    // period test use; "auto" would pick Paczynski-Wiita for the black hole.
+    const auto s2 = load_space_experiment(app_test::experiment_dir() / "sgr_a_s2.json");
+    REQUIRE(s2.has_value());
+    CHECK(s2.value().config.force == ForceChoice::newtonian);
 }
 
 TEST_CASE("Experiment settings are read from conditions and solver", "[app][sim][experiment]") {

@@ -3,8 +3,8 @@
 ## Context
 ADR-003 fixes the physics of black-hole rendering: Schwarzschild null
 geodesics in u = 1/r, integrated with RK4 under a capped step count, and a
-thin disk with Doppler beaming and gravitational redshift. The spec (7.3)
-asks for a half-resolution compute pass, at most 512 steps per ray and at
+thin disk with Doppler beaming and gravitational redshift. The V1 requirements
+ask for a half-resolution compute pass, at most 512 steps per ray and at
 least 30 fps at 1080p on a GTX 1660-class GPU. Two decisions follow that
 ADR-003 leaves open: what the half-resolution pass stores and how it reaches
 full resolution, and what the step budget means.
