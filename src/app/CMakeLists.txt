@@ -99,12 +99,14 @@ find_package(implot CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
 target_sources(orrery_app_core PRIVATE
     config.cpp
+    shortcut_dispatch.cpp
     shortcut_input.cpp
     shortcuts.cpp
     space_experiment_panel.cpp
     error_surface.cpp
     workspace_strip.cpp
     include/orrery/app/config.h
+    include/orrery/app/shortcut_dispatch.h
     include/orrery/app/shortcut_input.h
     include/orrery/app/shortcuts.h
     include/orrery/app/space_experiment_panel.h

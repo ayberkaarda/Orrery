@@ -22,6 +22,7 @@
 #include "orrery/app/entry_viewport.h"
 #include "orrery/app/entry_workspace.h"
 #include "orrery/app/frame_stats.h"
+#include "orrery/app/shortcut_dispatch.h"
 #include "orrery/app/shortcut_input.h"
 #include "orrery/app/shortcuts.h"
 #include "orrery/app/space_experiment_panel.h"
@@ -148,9 +149,8 @@ private:
     }
 
     void take(const sim::PublishedFrame& frame);
-    void handle_shortcuts(std::span<const ShortcutAction> actions);
-    void save_experiment();
-    void open_experiments();
+    // What the shortcuts act on this frame (shortcut_dispatch.h).
+    ShortcutTargets shortcut_targets();
     void draw_space_experiment();
     void reframe(const render::UiRect& scene, int window_height);
     void build_ui(double dt, int width, int height);
@@ -261,13 +261,8 @@ void WindowApp::reframe(const render::UiRect& scene, int window_height) {
 }
 
 void WindowApp::handle_scene_input(const render::SceneInput& input, double dt) {
-    if (input.toggle_pause) {
-        physics_.send(sim::SetPaused{!status_.paused});
-    }
-    if (input.single_step) {
-        physics_.send(sim::SingleStep{});
-    }
-    if (input.reset_view) {
+    ShortcutTargets targets = shortcut_targets();
+    if (apply_space_scene_input(input, targets)) {
         reframe_pending_ = true;
     }
     camera_input_ = render::CameraInput{};
@@ -296,10 +291,12 @@ void WindowApp::build_ui(double dt, int width, int height) {
     if (const auto picked = draw_workspace_strip(workspace_)) {
         workspace_ = *picked;
     }
-    // One table drives every key (docs/app.md, "Keyboard shortcuts").
+    // One table drives every key (docs/app.md, "Keyboard shortcuts"), read
+    // and carried out by the functions the end-to-end tests drive as well.
     const std::vector<ShortcutAction> actions =
-        match_shortcuts(request_.config.shortcuts, read_key_frame(), workspace_);
-    handle_shortcuts(actions);
+        frame_shortcuts(request_.config.shortcuts, workspace_);
+    ShortcutTargets targets = shortcut_targets();
+    apply_shortcuts(actions, targets);
     const render::SceneInput scene_input = scene_input_from(render::read_scene_input(), actions);
     if (workspace_ == Workspace::aero) {
         aero_scene_ = aero_.draw_panels();
@@ -310,80 +307,23 @@ void WindowApp::build_ui(double dt, int width, int height) {
     } else {
         build_space_ui(scene_input, dt, height);
     }
-    if (std::find(actions.begin(), actions.end(), ShortcutAction::open) != actions.end()) {
-        open_experiments(); // after the panels exist this frame
-    }
+    apply_late_shortcuts(actions, targets); // open: after the panels exist this frame
     draw_shortcut_help(request_.config.shortcuts, workspace_, help_open_,
                        request_.config_path.string());
 }
 
-void WindowApp::handle_shortcuts(std::span<const ShortcutAction> actions) {
-    for (const ShortcutAction action : actions) {
-        switch (action) {
-            case ShortcutAction::workspace_space:
-                workspace_ = Workspace::space;
-                break;
-            case ShortcutAction::workspace_aero:
-                workspace_ = Workspace::aero;
-                break;
-            case ShortcutAction::workspace_entry:
-                workspace_ = Workspace::entry;
-                break;
-            case ShortcutAction::help:
-                help_open_ = !help_open_;
-                break;
-            case ShortcutAction::close:
-                if (help_open_) {
-                    help_open_ = false;
-                } else if (workspace_ == Workspace::space) {
-                    selected_.reset();
-                } else if (workspace_ == Workspace::entry) {
-                    entry_.set_cursor_time(std::nullopt);
-                }
-                break;
-            case ShortcutAction::save:
-                save_experiment();
-                break;
-            case ShortcutAction::warp_down:
-            case ShortcutAction::warp_up:
-                physics_.send(sim::SetTimeWarp{render::step_time_warp(
-                    status_.time_warp, action == ShortcutAction::warp_up ? +1 : -1)});
-                break;
-            case ShortcutAction::reset:
-                physics_.send(sim::Reset{});
-                break;
-            case ShortcutAction::open:
-            case ShortcutAction::toggle_pause:
-            case ShortcutAction::single_step:
-            case ShortcutAction::reset_view:
-                break; // after the panels, and through the scene input
-        }
-    }
-}
-
-void WindowApp::save_experiment() {
-    if (workspace_ == Workspace::aero) {
-        (void)aero_.save();
-    } else if (workspace_ == Workspace::entry) {
-        (void)entry_.save();
-    } else {
-        const std::filesystem::path scenario = status_.scenario_file.empty()
-                                                   ? request_.experiment.scenario_path
-                                                   : status_.scenario_file;
-        (void)space_panel_.save(scenario, status_, snapshot_ ? snapshot_->time().value() : 0.0);
-    }
-}
-
-void WindowApp::open_experiments() {
-    if (workspace_ == Workspace::aero) {
-        focus_window(kExperimentsWindow);
-    } else if (workspace_ == Workspace::entry) {
-        entry_.refresh_experiments();
-        focus_window(kEntryExperimentsWindow);
-    } else {
-        space_panel_.refresh();
-        focus_window(kSpaceExperimentWindow);
-    }
+ShortcutTargets WindowApp::shortcut_targets() {
+    return ShortcutTargets{workspace_,
+                           help_open_,
+                           selected_,
+                           aero_,
+                           entry_,
+                           space_panel_,
+                           physics_,
+                           status_,
+                           status_.scenario_file.empty() ? request_.experiment.scenario_path
+                                                         : status_.scenario_file,
+                           snapshot_ ? snapshot_->time().value() : 0.0};
 }
 
 void WindowApp::draw_space_experiment() {
@@ -399,7 +339,8 @@ void WindowApp::draw_space_experiment() {
     run.sim_time_days = snapshot_ ? snapshot_->time().value() : 0.0;
     const SpaceExperimentIntent intent = space_panel_.draw(run);
     if (intent.save) {
-        save_experiment();
+        ShortcutTargets targets = shortcut_targets();
+        save_workspace_experiment(targets);
     }
     if (intent.open) {
         physics_.send(sim::LoadExperiment{*intent.open});

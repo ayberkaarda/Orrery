@@ -480,13 +480,20 @@ gone when closed).
 ## 13. End to end
 
 `test_workspace_journeys.cpp` runs each workspace from a fresh start to a
-saved result that loads back, with headless UI frames and keys turned into
-actions by the default table, no window:
+saved result that loads back, with headless UI frames and no window. Keys
+are Dear ImGui key and character events queued as the GLFW backend queues
+them; they reach the actions through the window's own path
+(`shortcut_dispatch.h`: `frame_shortcuts`, which calls `read_key_frame`, then
+`apply_shortcuts`, `apply_space_scene_input` and `apply_late_shortcuts`,
+which `window_app.cpp` calls as well), with every workspace and the physics
+thread alive as in the window:
 
 - Space: a paused `sun_earth_moon` experiment on a physics thread; Space
-  runs it, `]` raises the warp, Ctrl+S saves it from the Experiment panel;
-  the saved file loads with the raised warp, and `LoadExperiment` opens it
-  on the running thread.
+  runs it, `]` raises the warp and again on a key repeat, a held `?` opens
+  the help once and Esc closes it, Ctrl+2, Ctrl+3 and Ctrl+1 switch
+  workspaces, nothing fires while a text field has the keyboard, Ctrl+S
+  saves it from the Experiment panel; the saved file loads with the raised
+  warp, and `LoadExperiment` opens it on the running thread.
 - Aero: the default NACA 0012 section; Space runs the panel method to the
   end, Ctrl+S saves; the record lists back with its result and opens in a
   new workspace as a recorded result.
