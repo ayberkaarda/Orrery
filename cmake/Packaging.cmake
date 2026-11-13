@@ -186,10 +186,21 @@ else()
 endif()
 set(CPACK_PACKAGE_FILE_NAME "orrery-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
 # cpack refuses a tree built with the source asset fallback (its executable
-# holds the source tree path; packaging/package_checks.cmake, checked per
-# generator by packaging/cpack_project_config.cmake).
+# holds the source tree path) and an MSI with a CMake older than 4.3
+# (packaging/package_checks.cmake, checked per generator by
+# packaging/cpack_project_config.cmake).
+include("${PROJECT_SOURCE_DIR}/packaging/package_checks.cmake")
 set(CPACK_ORRERY_SOURCE_ASSET_FALLBACK "${ORRERY_SOURCE_ASSET_FALLBACK}")
 set(CPACK_PROJECT_CONFIG_FILE "${PROJECT_SOURCE_DIR}/packaging/cpack_project_config.cmake")
+if(WIN32 AND NOT ORRERY_SOURCE_ASSET_FALLBACK)
+    # A package build: its MSI needs CMake 4.3, so stop now rather than at cpack.
+    orrery_package_problem(orrery_problem WIX "${CMAKE_VERSION}" OFF)
+    if(orrery_problem)
+        message(FATAL_ERROR "Package build: ${orrery_problem}. Install CMake "
+            "${ORRERY_WIX_MIN_CMAKE} or newer (docs/packaging.md); the project itself "
+            "builds with CMake 4.1 in the other presets.")
+    endif()
+endif()
 include(CPack)
 
 # Tests of the packaging conditions (packaging/tests/).

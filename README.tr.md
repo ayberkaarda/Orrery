@@ -140,7 +140,8 @@ Gereksinimler: CMake 4.1 ya da daha yenisi, Ninja, bir C++20 derleyicisi
 [vcpkg](https://github.com/microsoft/vcpkg) (`vcpkg.json` kütüphaneleri
 listeler: GLFW, glad, docking destekli Dear ImGui, ImPlot, glm, Eigen,
 assimp, OpenSSL ile libcurl, miniz, oneTBB, nlohmann/json, toml++ ve
-Catch2).
+Catch2). Windows kurulum paketini (MSI) oluşturmak CMake 4.3 ya da daha
+yenisini gerektirir ([docs/packaging.md](docs/packaging.md)).
 
 Linux:
 

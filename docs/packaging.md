@@ -55,9 +55,9 @@ build machine path is compiled into a shipped executable (the install test
 checks this). `cpack` refuses, before it installs or packs anything, to
 package a tree built with the fallback on (any development preset):
 `packaging/cpack_project_config.cmake`, read by cpack for every generator,
-applies the conditions of `packaging/package_checks.cmake`. The ctests
-`packaging.checks` and `packaging.refuses_fallback` (in builds with tests)
-cover this.
+applies the conditions of `packaging/package_checks.cmake`, which also
+reject the MSI under a CMake older than 4.3. The ctests `packaging.checks`
+and `packaging.refuses_fallback` (in builds with tests) cover both.
 
 ### Third-party notices
 
@@ -100,8 +100,12 @@ optimisation settings) and add:
 
 ### Windows
 
-Prerequisites: Visual Studio 2022 (MSVC x64), CMake 4.1 or newer, Ninja,
-vcpkg (`VCPKG_ROOT`), the .NET SDK, and the WiX tool with its UI extension:
+Prerequisites: Visual Studio 2022 (MSVC x64), CMake 4.3 or newer, Ninja,
+vcpkg (`VCPKG_ROOT`), Python 3, the .NET SDK, and the WiX tool with its UI
+extension. CMake 4.3 is the first version whose WIX generator supports the
+per-user scope (`CPACK_WIX_INSTALL_SCOPE perUser`); the project itself
+builds with CMake 4.1, but configuring the `package` preset with an older
+CMake stops with an error, and `cpack -G WIX` refuses to run under one.
 
 ```bat
 dotnet tool install --tool-path C:\tools\wix wix --version 5.0.2
@@ -141,7 +145,8 @@ uninstall only when empty).
 
 Prerequisites: the packages of the CI build (`LINUX_DEPS` in
 `.github/workflows/ci.yml`: X11 and GL headers, autotools for vcpkg), clang
-17 or GCC 13, CMake 4.1 or newer, Ninja, vcpkg, `curl` and `file`.
+17 or GCC 13, CMake 4.1 or newer, Ninja, vcpkg, Python 3, `curl`, `file`
+and `git` (the AppImage takes its timestamps from the commit).
 
 ```sh
 cmake --preset linux-package

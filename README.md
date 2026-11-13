@@ -130,7 +130,8 @@ Requirements: CMake 4.1 or newer, Ninja, a C++20 compiler (MSVC 2022, GCC 13
 or Clang 17) and [vcpkg](https://github.com/microsoft/vcpkg) in manifest mode
 (`vcpkg.json` lists the libraries: GLFW, glad, Dear ImGui with docking,
 ImPlot, glm, Eigen, assimp, libcurl with OpenSSL, miniz, oneTBB,
-nlohmann/json, toml++ and Catch2).
+nlohmann/json, toml++ and Catch2). Building the Windows installer (MSI)
+needs CMake 4.3 or newer ([docs/packaging.md](docs/packaging.md)).
 
 Linux:
 
