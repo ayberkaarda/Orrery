@@ -329,6 +329,35 @@ if(ORRERY_SANITIZE AND NOT MSVC)
 endif()
 catch_discover_tests(orrery_test_app DISCOVERY_MODE PRE_TEST ${app_discover_props})
 
+# Scripted sessions of the real window (docs/app.md, "Scripted window
+# sessions"): run_window with a hidden window that is never shown or
+# focused, input queued on its Dear ImGui context as the GLFW backend's
+# callbacks queue it. Builds with a window system only; [gl] tests skip
+# without an OpenGL 4.6 context (ORRERY_REQUIRE_GL=1 makes that a failure).
+# RUN_SERIAL: each session paces its frames in wall-clock time and runs the
+# physics and solver threads.
+if(NOT ORRERY_HEADLESS)
+    add_executable(orrery_test_window
+        app/app_test_support.h
+        app/key_events.h
+        app/window_session.h
+        app/test_window_session.cpp
+        app/test_window_workspaces.cpp
+        app/test_window_load.cpp)
+    target_link_libraries(orrery_test_window PRIVATE orrery_app_core imgui::imgui
+        Catch2::Catch2WithMain)
+    target_compile_definitions(orrery_test_window PRIVATE
+        ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
+    orrery_configure_target(orrery_test_window)
+    set(window_discover_props RUN_SERIAL TRUE)
+    if(ORRERY_SANITIZE AND NOT MSVC)
+        list(APPEND window_discover_props ENVIRONMENT
+            "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+    endif()
+    catch_discover_tests(orrery_test_window DISCOVERY_MODE PRE_TEST
+        PROPERTIES ${window_discover_props})
+endif()
+
 # The executable itself: version, help, module graph, and the documented exit
 # codes of the command line (2 for usage errors, 1 for missing files).
 add_test(NAME app.version COMMAND orrery_app --version)
