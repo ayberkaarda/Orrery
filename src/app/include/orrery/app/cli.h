@@ -36,6 +36,9 @@ struct CliOptions {
     // time and exit (0: run until the window is closed). Headless: after
     // writing the image, time this many offscreen frames of the same view.
     std::int64_t benchmark_frames = 0;
+    // Write the profiling zones of the run to this file as Chrome trace-event
+    // JSON (docs/observability.md); empty: no trace.
+    std::filesystem::path trace;
 };
 
 inline constexpr std::int64_t kMaxFrames = 1'000'000;
