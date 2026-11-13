@@ -88,6 +88,8 @@ struct ScalarRange {
 // The range of `scale` for `values` (non-finite values are ignored; no
 // finite value gives [-1, 1] for symmetric and [0, 1] otherwise). A fixed
 // range with min >= max or non-finite ends is replaced by the automatic one.
+// The result is always finite with min < max, also for data near the
+// largest or smallest doubles (rounding is skipped where it would overflow).
 [[nodiscard]] ScalarRange resolve_range(const ColorScale& scale, std::span<const double> values);
 
 struct LegendTick {
@@ -109,6 +111,9 @@ struct Legend {
 // ticks fall inside the range, both ends included when they are multiples.
 // Labels use the fewest decimals that tell the ticks apart, a minus sign for
 // negative values and scientific notation ("2e-4") outside [1e-3, 1e5).
+// A finite range no such step fits (subnormal, or wider than the largest
+// double) gets its two ends with three significant digits; never more than
+// 64 ticks, none for an empty or non-finite range.
 [[nodiscard]] std::vector<LegendTick> legend_ticks(const ScalarRange& range, int target = 5);
 [[nodiscard]] Legend make_legend(std::string title, Colormap map, const ScalarRange& range,
                                  int target_ticks = 5);

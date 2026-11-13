@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstdio>
 #include <limits>
+#include <optional>
 #include <utility>
 
 #include <glm/common.hpp>
@@ -222,23 +223,71 @@ struct TickPlan {
     double step = 1.0;
     double low = 0.0;
     double high = 1.0;
+    double count = 2.0; // ticks from low to high
 };
 
-// The first nice step whose snapped range holds at most target + 2 ticks.
-TickPlan plan_ticks(double low, double high, int target, bool widen) {
+// A step that divides [low, high] into a finite number of finite multiples
+// (a subnormal range can underflow its candidate steps to zero).
+bool usable_step(double step, double low, double high) noexcept {
+    return step > 0.0 && std::isfinite(step) && std::isfinite(low / step) &&
+           std::isfinite(high / step);
+}
+
+// The first nice step whose snapped range holds at most target + 2 ticks;
+// nullopt when no finite positive step fits (an empty, non-finite or
+// overflowing span, or one too small for its steps to be represented).
+std::optional<TickPlan> plan_ticks(double low, double high, int target, bool widen) {
     const double span = high - low;
+    if (!(span > 0.0) || !std::isfinite(span)) {
+        return std::nullopt;
+    }
     const auto limit = static_cast<double>(std::max(target, 2) + 2);
-    TickPlan plan;
+    std::optional<TickPlan> plan;
     for (const double step : candidate_steps(span / static_cast<double>(std::max(target, 2)))) {
+        if (!usable_step(step, low, high)) {
+            continue;
+        }
         const double a = widen ? snap_down(low, step) : snap_up(low, step);
         const double b = widen ? snap_up(high, step) : snap_down(high, step);
         const double count = std::round((b - a) / step) + 1.0;
-        plan = {step, a, b};
+        if (!std::isfinite(a) || !std::isfinite(b) || !(count >= 1.0)) {
+            continue;
+        }
+        plan = TickPlan{step, a, b, count};
         if (count <= limit) {
             break;
         }
     }
     return plan;
+}
+
+// A fifth of the legend step of [low, high] (0 when there is none).
+double minor_step(double low, double high) {
+    const std::optional<TickPlan> plan = plan_ticks(low, high, 5, false);
+    return plan ? 0.2 * plan->step : 0.0;
+}
+
+// `value` snapped to a multiple of `step` (up or down), or unchanged when
+// there is no step or the multiple would not be finite.
+double snapped(double value, double step, bool up) noexcept {
+    if (!(step > 0.0)) {
+        return value;
+    }
+    const double s = up ? snap_up(value, step) : snap_down(value, step);
+    return std::isfinite(s) ? s : value;
+}
+
+// The two ends of a range whose ticks cannot be planned.
+std::vector<LegendTick> end_ticks(const ScalarRange& range) {
+    std::vector<LegendTick> ticks;
+    for (const double value : {range.min, range.max}) {
+        std::array<char, 48> text{};
+        (void)std::snprintf(text.data(), text.size(), "%.3g", value);
+        ticks.push_back({value, range.normalize(value), text.data()});
+    }
+    ticks.front().position = 0.0; // also for a span that overflows normalize()
+    ticks.back().position = 1.0;
+    return ticks;
 }
 
 } // namespace
@@ -360,32 +409,44 @@ ScalarRange resolve_range(const ColorScale& scale, std::span<const double> value
             m = 1.0;
         }
         if (scale.round_to_ticks) {
-            m = snap_up(m, 0.2 * plan_ticks(-m, m, 5, false).step);
+            m = snapped(m, minor_step(-m, m), true);
         }
         return {-m, m};
     }
     if (!(high > low)) {
-        const double pad = low != 0.0 ? 0.5 * std::abs(low) : 0.5;
-        low -= pad;
-        high += pad;
+        // Widen a constant field by half its magnitude (0.5 when that is
+        // zero or underflows), within the finite doubles.
+        constexpr double kLargest = std::numeric_limits<double>::max();
+        double pad = 0.5 * std::abs(low);
+        if (!(pad > 0.0)) {
+            pad = 0.5;
+        }
+        low = std::max(low - pad, -kLargest);
+        high = std::min(high + pad, kLargest);
     }
     if (scale.round_to_ticks) {
-        const double minor = 0.2 * plan_ticks(low, high, 5, false).step;
-        return {snap_down(low, minor), snap_up(high, minor)};
+        const double minor = minor_step(low, high);
+        return {snapped(low, minor, false), snapped(high, minor, true)};
     }
     return {low, high};
 }
 
 std::vector<LegendTick> legend_ticks(const ScalarRange& range, int target) {
     std::vector<LegendTick> ticks;
-    if (!(range.max > range.min) || !std::isfinite(range.max - range.min)) {
+    if (!(range.max > range.min) || !std::isfinite(range.min) || !std::isfinite(range.max)) {
         return ticks;
     }
-    const TickPlan plan = plan_ticks(range.min, range.max, target, false);
+    // Never more ticks than this, whatever the range.
+    constexpr double kMaxTicks = 64.0;
+    const std::optional<TickPlan> planned = plan_ticks(range.min, range.max, target, false);
+    if (!planned || !(planned->count >= 2.0) || planned->count > kMaxTicks) {
+        return end_ticks(range);
+    }
+    const TickPlan plan = *planned;
     const double magnitude = std::max(std::abs(range.min), std::abs(range.max));
-    const auto count = static_cast<long long>(std::round((plan.high - plan.low) / plan.step));
-    ticks.reserve(static_cast<std::size_t>(std::max(count + 1, 0LL)));
-    for (long long i = 0; i <= count; ++i) {
+    const auto count = static_cast<std::size_t>(plan.count);
+    ticks.reserve(count);
+    for (std::size_t i = 0; i < count; ++i) {
         const double value = plan.low + static_cast<double>(i) * plan.step;
         ticks.push_back({value, range.normalize(value), format_value(value, plan.step, magnitude)});
     }

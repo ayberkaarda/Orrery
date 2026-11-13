@@ -282,3 +282,42 @@ TEST_CASE("Legend ticks are round numbers with consistent labels", "[render][aer
     CHECK(legend.title == "Cp");
     CHECK(legend.ticks.size() == 7);
 }
+
+TEST_CASE("Ranges and legends of extreme finite data stay finite and bounded",
+          "[render][aero][colormap]") {
+    const double huge = std::numeric_limits<double>::max();
+    const double tiny = std::numeric_limits<double>::denorm_min();
+    const auto finite_range = [](const ScalarRange& r) {
+        INFO("[" << r.min << ", " << r.max << "]");
+        CHECK(std::isfinite(r.min));
+        CHECK(std::isfinite(r.max));
+        CHECK(r.min < r.max);
+    };
+    // Constant fields near the largest double, at the smallest one, and data
+    // spanning the whole double range.
+    for (const RangeMode mode : {RangeMode::automatic, RangeMode::symmetric}) {
+        for (const std::vector<double>& data :
+             {std::vector<double>{huge, huge}, std::vector<double>{-huge, -huge},
+              std::vector<double>{tiny}, std::vector<double>{-huge, huge},
+              std::vector<double>{0.5 * huge, huge}}) {
+            finite_range(resolve_range({mode}, data));
+        }
+    }
+    // Subnormal, overflowing and extreme ranges: finite ticks inside the
+    // range, a bounded count, at least the two ends.
+    const std::vector<ScalarRange> ranges{
+        {0.0, 10.0 * tiny}, {tiny, 3.0 * tiny},   {0.0, 1.0e-310}, {-huge, huge},
+        {0.0, huge},        {-1.0e300, 1.0e308}, {1.0e15, 1.0e15 + 2.0}};
+    for (const ScalarRange& range : ranges) {
+        INFO("[" << range.min << ", " << range.max << "]");
+        const std::vector<LegendTick> ticks = legend_ticks(range, 5);
+        CHECK(ticks.size() >= 2);
+        CHECK(ticks.size() <= 64);
+        for (const LegendTick& t : ticks) {
+            CHECK(std::isfinite(t.value));
+            CHECK(t.position >= 0.0);
+            CHECK(t.position <= 1.0);
+            CHECK_FALSE(t.label.empty());
+        }
+    }
+}
