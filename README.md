@@ -23,6 +23,7 @@ macOS is out of scope (no OpenGL 4.6).
 ## Contents
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Building](#building)
 - [Running](#running)
 - [Configuration](#configuration)
@@ -102,6 +103,26 @@ the three-body figure eight, Sgr A* with the star S2, and a lone black hole.
   reason to standard error and to a crash log.
 - Colour maps that stay readable for colour-vision deficiencies; the Space
   layout is rendered in tests at 1920x1080, 1366x768 and 1024x640.
+
+## Screenshots
+
+Rendered by the application itself in headless mode (offscreen, no window);
+[docs/screenshots.md](docs/screenshots.md) gives the commands that
+regenerate them.
+
+| | |
+|---|---|
+| ![Inner solar system from J2000 with orbit trails around the Sun](docs/images/space-solar-system.png) | ![Black hole with a thin accretion disk bent by Schwarzschild lensing](docs/images/space-black-hole.png) |
+| J2000 solar system after 579 days, with orbit trails | Schwarzschild lensing of a thin disk: shadow, lensed far side, Doppler-bright approaching side |
+| ![Three equal stars on the figure-eight three-body orbit](docs/images/space-figure-eight.png) | ![Apollo-type capsule coloured by pressure coefficient at Mach 20](docs/images/aero-apollo-newtonian.png) |
+| Figure-eight three-body choreography (Yoshida 4th order) | Apollo-type capsule at Mach 20 and 20 degrees, modified Newtonian Cp |
+| ![NACA 0012 section with Cp on the surface and the speed field around it](docs/images/aero-naca0012-lbm.png) | ![Stalled NACA 0012 section shedding a vortex street](docs/images/aero-naca0012-stall-wake.png) |
+| NACA 0012 at 4 degrees, Re 400, lattice Boltzmann: Cp and speed field | NACA 0012 stalled at 20 degrees, Re 500: vortex street in the wake |
+
+![Entry workspace after an Apollo-like entry: setup panel, trajectory ribbon, ground track and profile plots](docs/images/entry-apollo.png)
+
+Entry workspace after an Apollo-like ballistic entry at 11 km/s: setup,
+trajectory coloured by g-load, ground track and the profile plots (peak 6.78 g).
 
 ## Building
 
@@ -279,7 +300,7 @@ simulation side never link OpenGL, GLFW or Dear ImGui (checked in CI).
 - [docs/atmosphere.md](docs/atmosphere.md), [docs/entry-workspace.md](docs/entry-workspace.md) - atmospheres, entry and the Entry workspace
 - [docs/geometry-import.md](docs/geometry-import.md), [docs/url-import-security.md](docs/url-import-security.md) - geometry import and download limits
 - [docs/roadmap.md](docs/roadmap.md) - the V1, V2 and V3 roadmap, deferred abstractions and the coupling pattern
-- [docs/screenshots.md](docs/screenshots.md) - how the README screenshots are regenerated
+- [docs/screenshots.md](docs/screenshots.md) - how the screenshots above are regenerated
 - [docs/adr](docs/adr/README.md) - architecture decision records
 
 A Turkish version of this file: [README.tr.md](README.tr.md).

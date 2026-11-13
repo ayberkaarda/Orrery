@@ -26,6 +26,7 @@ macOS kapsam dışıdır (OpenGL 4.6 yok).
 ## İçindekiler
 
 - [Özellikler](#özellikler)
+- [Ekran görüntüleri](#ekran-görüntüleri)
 - [Derleme](#derleme)
 - [Çalıştırma](#çalıştırma)
 - [Yapılandırma](#yapılandırma)
@@ -110,6 +111,27 @@ kara delik.
   bir hata nedenini standart hataya ve bir çökme günlüğüne yazar.
 - Renk görme farklılıklarında okunabilir kalan renk haritaları; Space düzeni
   testlerde 1920x1080, 1366x768 ve 1024x640 boyutlarında çizilir.
+
+## Ekran görüntüleri
+
+Uygulamanın kendisi tarafından headless kipte (ekran dışında, pencere
+açmadan) çizilmiştir; yeniden üretme komutları
+[docs/screenshots.md](docs/screenshots.md) içindedir.
+
+| | |
+|---|---|
+| ![Yörünge izleriyle J2000 iç Güneş sistemi](docs/images/space-solar-system.png) | ![Schwarzschild merceklenmesiyle bükülmüş ince birikim diskli kara delik](docs/images/space-black-hole.png) |
+| 579 gün sonra yörünge izleriyle J2000 Güneş sistemi | İnce diskin Schwarzschild merceklenmesi: gölge, merceklenmiş uzak taraf, Doppler ile parlayan yaklaşan taraf |
+| ![Sekiz figürü yörüngesindeki üç eşit yıldız](docs/images/space-figure-eight.png) | ![Mach 20'de basınç katsayısına göre renklendirilmiş Apollo tipi kapsül](docs/images/aero-apollo-newtonian.png) |
+| Üç cisimli sekiz figürü koreografisi (4. mertebe Yoshida) | Mach 20 ve 20 derecede Apollo tipi kapsül, değiştirilmiş Newton Cp |
+| ![Yüzeyinde Cp ve çevresinde hız alanı olan NACA 0012 kesiti](docs/images/aero-naca0012-lbm.png) | ![Girdap sokağı bırakan, perdövites durumundaki NACA 0012 kesiti](docs/images/aero-naca0012-stall-wake.png) |
+| 4 derecede NACA 0012, Re 400, lattice Boltzmann: Cp ve hız alanı | 20 derecede perdövites durumunda NACA 0012, Re 500: izde girdap sokağı |
+
+![Apollo benzeri girişten sonra Entry çalışma alanı: kurulum paneli, yörünge şeridi, yer izi ve profil grafikleri](docs/images/entry-apollo.png)
+
+11 km/s hızla Apollo benzeri balistik girişten sonra Entry çalışma alanı:
+kurulum, g yüküne göre renklendirilmiş yörünge, yer izi ve profil grafikleri
+(tepe 6.78 g).
 
 ## Derleme
 
@@ -291,7 +313,7 @@ denetlenir).
 - [docs/atmosphere.md](docs/atmosphere.md), [docs/entry-workspace.md](docs/entry-workspace.md) - atmosferler, giriş ve Entry çalışma alanı
 - [docs/geometry-import.md](docs/geometry-import.md), [docs/url-import-security.md](docs/url-import-security.md) - geometri içe aktarma ve indirme sınırları
 - [docs/roadmap.md](docs/roadmap.md) - V1, V2 ve V3 yol haritası, ertelenen soyutlamalar ve bağlaşım deseni
-- [docs/screenshots.md](docs/screenshots.md) - README ekran görüntülerinin yeniden üretilmesi
+- [docs/screenshots.md](docs/screenshots.md) - yukarıdaki ekran görüntülerinin yeniden üretilmesi
 - [docs/adr](docs/adr/README.md) - mimari karar kayıtları
 
 Belgeler İngilizcedir. Bu dosyanın İngilizce sürümü: [README.md](README.md).
