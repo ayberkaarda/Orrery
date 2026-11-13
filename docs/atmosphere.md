@@ -217,7 +217,8 @@ speed and flight-path angle, airspeed, Mach, Cd, density, dynamic pressure
 Sutton-Graves stagnation heat flux q = k sqrt(rho / R_n) v_rel^3 (via
 `aero::sutton_graves_heat_flux`), latitude, longitude, cumulative drag work and
 mechanical energy m (v^2 / 2 - GM / r). `EntrySummary` keeps the peaks (g-load,
-heat flux, dynamic pressure, with times), the trapezoidal heat load, the lowest
+heat flux, dynamic pressure, with times; the initial row counts, so a start in
+dense air reports its peak at time 0), the trapezoidal heat load, the lowest
 altitude, the duration and the final speed.
 
 ### Energy balance

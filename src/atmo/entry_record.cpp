@@ -149,9 +149,13 @@ bool EntryExperiment::Impl::crossed_unseen(const core::SimState& before) const {
 
 void EntryExperiment::Impl::start() {
     append(measure());
-    summary.min_altitude_m = series.altitude_m.back();
-    summary.final_speed_m_s = series.speed_m_s.back();
     const EntryRow row = last_row();
+    summary.min_altitude_m = row.altitude_m;
+    summary.final_speed_m_s = row.speed_m_s;
+    // A start inside dense air can have its largest load at time 0.
+    summary.peak_g_load = row.g_load;
+    summary.peak_heat_flux_w_m2 = row.heat_flux_w_m2;
+    summary.peak_dynamic_pressure_pa = row.dynamic_pressure_pa;
     if (row.altitude_m <= config.planet.entry_interface_altitude.value()) {
         events.emplace_back(
             AtmosphericEntryEvent{0.0, row.altitude_m, row.speed_m_s, row.flight_path_angle_deg});

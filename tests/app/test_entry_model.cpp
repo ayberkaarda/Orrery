@@ -463,6 +463,32 @@ TEST_CASE("Scene and workspace build the same physics from a Mars exponential re
     CHECK(run_a.value().series().speed_m_s == run_d.value().series().speed_m_s);
 }
 
+TEST_CASE("Peaks at the start of a run are reported by both summaries", "[app][entry]") {
+    // Climbing out of dense air: drag and heating fall from the first sample.
+    sim::EntrySetup setup;
+    setup.altitude_m = 30'000.0;
+    setup.speed_m_s = 2'000.0;
+    setup.flight_path_angle_deg = 30.0;
+    setup.max_time_s = 20.0;
+    auto run = sim::run_entry(setup);
+    REQUIRE(run.has_value());
+    const sim::EntrySeries& series = run.value().series;
+    REQUIRE(series.size() > 2);
+    REQUIRE(series.g_load[1] < series.g_load[0]);
+    REQUIRE(series.heat_flux_w_m2[1] < series.heat_flux_w_m2[0]);
+    const sim::EntrySummary& s = run.value().summary; // from the series
+    REQUIRE(run.value().record != nullptr);
+    const scene::EntryResultRecord& r = *run.value().record; // the library's own
+    CHECK(s.peak_g == series.g_load[0]);
+    CHECK(s.peak_g_time_s == 0.0);
+    CHECK(r.peak_g_load == s.peak_g);
+    CHECK(r.peak_g_time_s == 0.0);
+    CHECK(r.peak_heat_flux_w_m2 == s.peak_heat_flux_w_m2);
+    CHECK(r.peak_heat_flux_time_s == 0.0);
+    CHECK(r.peak_dynamic_pressure_pa == s.peak_dynamic_pressure_pa);
+    CHECK(r.peak_dynamic_pressure_time_s == 0.0);
+}
+
 TEST_CASE("Entry planet constants are the physics library's presets", "[app][entry]") {
     for (const sim::EntryPlanet planet : {sim::EntryPlanet::earth, sim::EntryPlanet::mars}) {
         const atmo::Planet preset =
