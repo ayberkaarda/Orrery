@@ -114,14 +114,15 @@ kara delik.
 
 ## Ekran görüntüleri
 
-Uygulamanın kendisi tarafından headless kipte (ekran dışında, pencere
-açmadan) çizilmiştir; yeniden üretme komutları
-[docs/screenshots.md](docs/screenshots.md) içindedir.
+Uygulamanın kendisi tarafından alınmıştır: yerleşik panelleriyle pencere,
+gizli açılarak ve hiç gösterilmeden (Entry görüntüsü headless yoldan
+gelir); yeniden üretme komutları [docs/screenshots.md](docs/screenshots.md)
+içindedir.
 
 | | |
 |---|---|
 | ![Yörünge izleriyle J2000 iç Güneş sistemi](docs/images/space-solar-system.png) | ![Schwarzschild merceklenmesiyle bükülmüş ince birikim diskli kara delik](docs/images/space-black-hole.png) |
-| 579 gün sonra yörünge izleriyle J2000 Güneş sistemi | İnce diskin Schwarzschild merceklenmesi: gölge, merceklenmiş uzak taraf, Doppler ile parlayan yaklaşan taraf |
+| Yaklaşık 590 gün sonra yörünge izleriyle J2000 Güneş sistemi | İnce diskin Schwarzschild merceklenmesi: gölge, merceklenmiş uzak taraf, Doppler ile parlayan yaklaşan taraf |
 | ![Sekiz figürü yörüngesindeki üç eşit yıldız](docs/images/space-figure-eight.png) | ![Mach 20'de basınç katsayısına göre renklendirilmiş Apollo tipi kapsül](docs/images/aero-apollo-newtonian.png) |
 | Üç cisimli sekiz figürü koreografisi (4. mertebe Yoshida) | Mach 20 ve 20 derecede Apollo tipi kapsül, değiştirilmiş Newton Cp |
 | ![Yüzeyinde Cp ve çevresinde hız alanı olan NACA 0012 kesiti](docs/images/aero-naca0012-lbm.png) | ![Girdap sokağı bırakan, perdövites durumundaki NACA 0012 kesiti](docs/images/aero-naca0012-stall-wake.png) |
