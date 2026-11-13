@@ -43,8 +43,11 @@ bool PanelSolver2D::step() {
 
 `ORRERY_FRAME_ZONE()` opens the zone `frame` and, with Tracy, marks the frame
 boundary (`FrameMark`). Rules: the name is a string literal (it is stored by
-address; anything else does not compile), one zone per scope, and zones go
-around whole steps and solves, never inside inner loops.
+address; anything else does not compile); one zone per function, since a
+zone in a nested scope of the same function would shadow the outer one
+(`-Wshadow`, C4456; Tracy's `ZoneScoped` has the same limit), so nest by
+calling a function; and zones go around whole steps and solves, never inside
+inner loops.
 
 | Zone | Where | Measures |
 |---|---|---|
@@ -75,8 +78,9 @@ requires the same `state_hash`; the core golden-hash tests pass with
 call, no clock read; `tests/profile/test_profile_off.cpp` checks the
 expansion text. On, an idle zone (no capture) costs one function call and one
 relaxed atomic load; a recording zone two steady-clock reads and a short
-locked append. Measured on the development machine (Release MSVC,
-`orrery_test_profile "[benchmark]"`): see section 6.
+locked append. Measured on the development machine (section 6): about 3 to
+4 ns per idle zone and 70 ns per recorded zone, against microseconds to
+milliseconds for the work a zone surrounds.
 
 ## 3. `--trace <file>`
 
@@ -163,4 +167,17 @@ event has a name and numeric `ts`/`dur`, the totals agree with the events,
 and with `ORRERY_PROFILING` the expected zones are present (`frame` and
 `bh_raymarch` only when the run rendered).
 
-MEASUREMENTS
+The whole suite passes with `ORRERY_PROFILING` and `ORRERY_TRACY` on
+(ci-headless flags, warnings as errors), including the golden-hash tests of
+core, Barnes-Hut and IAS15, and `tools/check_deps.py` accepts that tree.
+
+**Measured** (Release MSVC, AMD Radeon RX 9060 XT, Windows; the steady clock
+there ticks in 100 ns, so the last two decimals of `ts` and `dur` are zero):
+
+| Measurement | Result |
+|---|---|
+| `orrery_test_profile "[benchmark]"`, sink only | 2.8 ns per idle zone, 74 ns per recorded zone |
+| the same with Tracy (on-demand, no profiler connected) | 4.0 ns idle, 68 ns recorded |
+| `--headless --experiment solar_system --frame 600 --benchmark 100 --size 960x540 --trace` | 4628 `physics_step` (2314 per advance, image and benchmark), mean 2.6 us; 111 `frame`, mean 0.98 ms |
+| `--headless --experiment black_hole --benchmark 50 --size 960x540 --trace` | 61 `bh_raymarch`, mean 14 us (submission); 61 `frame`, mean 1.9 ms |
+| `--headless --experiment aero_naca0012_lbm --size 320x180 --trace` | 3200 `lbm_step` calls (32000 lattice steps), mean 26.8 ms; trace 0.3 MB |
