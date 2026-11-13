@@ -8,7 +8,11 @@
         "src/core/include/orrery/core/units.h": [
           "to_si",
           "to_space",
-          "space_to_si_factor"
+          "space_to_si_factor",
+          "gravitational_constant_space",
+          "gm_sun_space",
+          "GravitationalConstant",
+          "GravitationalParameter"
         ],
         "src/core/include/orrery/core/quantity.h": [
           "Quantity"
