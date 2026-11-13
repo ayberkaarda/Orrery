@@ -39,6 +39,15 @@ struct Reset {};
 // Pauses and advances exactly one physics step.
 struct SingleStep {};
 
-using SimCommand = std::variant<SetPaused, SetTimeWarp, LoadScenario, Reset, SingleStep>;
+// Replaces the simulated system and its settings (integrator, force model,
+// step, warp, paused) by a space experiment file (space_experiment.h). Read
+// on the physics thread; on failure everything stays as it was and the
+// status reports the error. The interactive budgets are kept.
+struct LoadExperiment {
+    std::filesystem::path path;
+};
+
+using SimCommand =
+    std::variant<SetPaused, SetTimeWarp, LoadScenario, Reset, SingleStep, LoadExperiment>;
 
 } // namespace orrery::sim

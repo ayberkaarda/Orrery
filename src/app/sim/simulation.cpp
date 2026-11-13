@@ -19,6 +19,7 @@
 #include "orrery/core/integrator.h"
 #include "orrery/core/paczynski_wiita_gravity.h"
 #include "orrery/scene/error.h"
+#include "orrery/sim/space_experiment.h"
 
 namespace orrery::sim {
 
@@ -187,6 +188,9 @@ std::optional<std::string> validate(const SimulationConfig& config) {
     if (!std::isfinite(config.step_time_budget_s) || config.step_time_budget_s < 0.0) {
         return std::string("the step time budget must be finite and non-negative");
     }
+    if (config.warp_budget) {
+        return validate(*config.warp_budget);
+    }
     return std::nullopt;
 }
 
@@ -205,6 +209,46 @@ struct Simulation::Impl {
     SimStatus status;
     // Step count at which status.energy_drift was last evaluated.
     std::optional<std::uint64_t> drift_steps;
+    std::optional<WarpGovernor> governor;
+
+    [[nodiscard]] std::int64_t now_ns() const {
+        if (config.clock) {
+            return config.clock();
+        }
+        return std::chrono::duration_cast<std::chrono::nanoseconds>(
+                   std::chrono::steady_clock::now().time_since_epoch())
+            .count();
+    }
+
+    // The warp credited to the accumulator.
+    [[nodiscard]] std::int64_t credited_warp() const noexcept {
+        return governor ? governor->effective() : config.time_warp;
+    }
+
+    void publish_governor() {
+        status.governed_warp = credited_warp();
+        status.warp_reduced = governor && governor->reduced();
+        status.physics_load = governor ? governor->load() : std::nullopt;
+        status.load_limit = governor ? governor->budget().load_limit : 0.0;
+    }
+
+    // Applies the step length and warp of `config` (after create or a loaded
+    // experiment).
+    void apply_timing() {
+        step_ns = std::max<std::int64_t>(
+            1, static_cast<std::int64_t>(std::llround(config.dt_days * kNsPerDay)));
+        status.dt_days = config.dt_days;
+        status.paused = config.paused;
+        status.time_warp = config.time_warp;
+        status.settings = RunSettings{config.integrator, config.force, config.softening_au,
+                                      config.max_steps_per_advance};
+        if (config.warp_budget) {
+            governor.emplace(*config.warp_budget, config.time_warp, step_ns);
+        }
+        publish_governor();
+    }
+
+    void load_experiment(const std::filesystem::path& path);
 
     // Makes `scene` the simulated system (and the target of Reset). Builds a
     // fresh integrator so that adaptive history never leaks across loads.
@@ -243,6 +287,11 @@ struct Simulation::Impl {
         status.warp_limited = false;
         status.message.clear();
         ++status.generation;
+        if (governor) {
+            // Another system steps at another cost.
+            governor->restart(step_ns);
+        }
+        publish_governor();
         return std::nullopt;
     }
 
@@ -265,6 +314,33 @@ struct Simulation::Impl {
     }
 };
 
+void Simulation::Impl::load_experiment(const std::filesystem::path& path) {
+    auto loaded = load_space_experiment(path);
+    if (!loaded) {
+        status.message =
+            "Cannot open experiment " + path.filename().string() + ": " + std::move(loaded).error();
+        return;
+    }
+    SpaceExperiment experiment = std::move(loaded).value();
+    // The experiment brings its own settings; the interactive budgets and
+    // the clock belong to the caller and stay.
+    SimulationConfig next = experiment.config;
+    next.step_time_budget_s = config.step_time_budget_s;
+    next.warp_budget = config.warp_budget;
+    next.clock = config.clock;
+    SimulationConfig previous = std::move(config);
+    config = std::move(next);
+    if (auto problem = start(std::move(experiment.scene))) {
+        config = std::move(previous);
+        status.message = "Cannot start experiment " + path.filename().string() + ": " + *problem;
+        return;
+    }
+    owed_ns = 0;
+    apply_timing();
+    status.scenario_file = experiment.scenario_path;
+    status.experiment_file = path;
+}
+
 Simulation::Simulation(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
 
 Simulation::Simulation(Simulation&&) noexcept = default;
@@ -280,11 +356,7 @@ core::Result<Simulation, std::string> Simulation::create(scene::Scene scene,
     }
     auto impl = std::make_unique<Impl>();
     impl->config = config;
-    impl->step_ns = std::max<std::int64_t>(
-        1, static_cast<std::int64_t>(std::llround(config.dt_days * kNsPerDay)));
-    impl->status.dt_days = config.dt_days;
-    impl->status.paused = config.paused;
-    impl->status.time_warp = config.time_warp;
+    impl->apply_timing();
     if (auto problem = impl->start(std::move(scene))) {
         return core::failure(std::move(*problem));
     }
@@ -302,6 +374,10 @@ void Simulation::apply(const SimCommand& command) {
     } else if (const auto* warp = std::get_if<SetTimeWarp>(&command)) {
         s.config.time_warp = std::clamp(warp->warp, kMinTimeWarp, kMaxTimeWarp);
         s.status.time_warp = s.config.time_warp;
+        if (s.governor) {
+            s.governor->request(s.config.time_warp);
+        }
+        s.publish_governor();
     } else if (const auto* load = std::get_if<LoadScenario>(&command)) {
         auto loaded = scene::load_scene_file(load->path);
         if (!loaded) {
@@ -312,7 +388,12 @@ void Simulation::apply(const SimCommand& command) {
         if (auto problem = s.start(std::move(loaded).value())) {
             s.status.message =
                 "Cannot start scenario " + load->path.filename().string() + ": " + *problem;
+            return;
         }
+        s.status.scenario_file = load->path;
+        s.status.experiment_file.clear();
+    } else if (const auto* experiment = std::get_if<LoadExperiment>(&command)) {
+        s.load_experiment(experiment->path);
     } else if (std::holds_alternative<Reset>(command)) {
         scene::Scene initial = s.initial;
         if (auto problem = s.start(std::move(initial))) {
@@ -321,11 +402,9 @@ void Simulation::apply(const SimCommand& command) {
     } else if (std::holds_alternative<SingleStep>(command)) {
         s.status.paused = true;
         s.owed_ns = 0;
-        const auto begin = std::chrono::steady_clock::now();
+        const std::int64_t begin = s.now_ns();
         if (s.step_once()) {
-            const std::chrono::duration<double, std::milli> spent =
-                std::chrono::steady_clock::now() - begin;
-            s.status.step_ms = spent.count();
+            s.status.step_ms = static_cast<double>(s.now_ns() - begin) * 1.0e-6;
         }
     }
 }
@@ -343,18 +422,27 @@ AdvanceResult Simulation::advance(std::int64_t wall_ns) {
     // At most kMaxAdvanceWallNs * kMaxTimeWarp = 2.5e15 ns per call, plus a
     // remainder below one step (at most kMaxStepDays = 8.64e17 ns): no
     // overflow of the 64-bit accumulator.
-    s.owed_ns += wall * s.config.time_warp;
+    // The warp budget's warp, never the requested one directly: the credit
+    // is what the governor allows (the same integral accumulator either way).
+    const std::int64_t warp = s.credited_warp();
+    s.owed_ns += wall * warp;
 
-    using Clock = std::chrono::steady_clock;
-    const Clock::time_point begin = Clock::now();
-    const std::chrono::duration<double> budget(s.config.step_time_budget_s);
+    // The clock is read once before the first step and once after each one,
+    // so a fake clock that advances per reading charges every step equally.
+    const std::int64_t begin = s.now_ns();
+    std::int64_t last = begin;
+    // Validated finite and non-negative; capped so the conversion is defined.
+    const auto budget_ns =
+        static_cast<std::int64_t>(std::min(s.config.step_time_budget_s, 1.0e6) * 1.0e9);
     while (s.owed_ns >= s.step_ns) {
         if (result.steps >= s.config.max_steps_per_advance ||
-            (budget.count() > 0.0 && result.steps > 0 && Clock::now() - begin > budget)) {
+            (budget_ns > 0 && result.steps > 0 && last - begin > budget_ns)) {
             result.warp_limited = true;
             break;
         }
-        if (!s.step_once()) {
+        const bool stepped = s.step_once();
+        last = s.now_ns();
+        if (!stepped) {
             result.failed = true;
             break;
         }
@@ -367,9 +455,13 @@ AdvanceResult Simulation::advance(std::int64_t wall_ns) {
         s.owed_ns %= s.step_ns;
     }
     if (result.steps > 0) {
-        const std::chrono::duration<double, std::milli> spent = Clock::now() - begin;
-        s.status.step_ms = spent.count() / static_cast<double>(result.steps);
+        s.status.step_ms =
+            static_cast<double>(last - begin) * 1.0e-6 / static_cast<double>(result.steps);
     }
+    if (s.governor && !result.failed) {
+        (void)s.governor->update(WarpSample{wall, last - begin, result.steps});
+    }
+    s.publish_governor();
     if (result.failed) {
         s.status.effective_warp = 0.0;
         s.status.warp_limited = false;
@@ -378,12 +470,12 @@ AdvanceResult Simulation::advance(std::int64_t wall_ns) {
     if (wall > 0) {
         // Limited: the rate the budget sustains (steps actually taken per
         // wall-clock time); otherwise every owed step is taken and the
-        // requested warp holds on average.
+        // credited warp holds on average.
         s.status.effective_warp = result.warp_limited ? static_cast<double>(result.steps) *
                                                             static_cast<double>(s.step_ns) /
                                                             static_cast<double>(wall)
-                                                      : static_cast<double>(s.config.time_warp);
-        s.status.warp_limited = result.warp_limited;
+                                                      : static_cast<double>(warp);
+        s.status.warp_limited = result.warp_limited || s.status.warp_reduced;
     }
     return result;
 }
