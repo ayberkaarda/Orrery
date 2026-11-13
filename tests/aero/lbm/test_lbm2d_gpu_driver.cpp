@@ -120,7 +120,7 @@ TEST_CASE("GPU solver converts the kernel outputs on readback", "[aero][lbm][gpu
     // Stand-ins for the kernels that write recognisable values.
     backend.register_kernel(
         std::string(kernel_moments),
-        [cells](const compute::DispatchCommand&, const compute::NullComputeBackend::Bindings& b) {
+        [](const compute::DispatchCommand&, const compute::NullComputeBackend::Bindings& b) {
             std::vector<double> planes(3 * cells);
             for (std::size_t c = 0; c < cells; ++c) {
                 planes[c] = 0.001;             // rho - 1
