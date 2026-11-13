@@ -376,3 +376,46 @@ target_link_libraries(orrery_test_lbm2d_validation PRIVATE orrery_render Catch2:
 orrery_configure_target(orrery_test_lbm2d_validation)
 catch_discover_tests(orrery_test_lbm2d_validation DISCOVERY_MODE PRE_TEST
     ${lbm_gl_discover_props})
+
+# Phase 7c: the D3Q19 lattice Boltzmann solver. orrery_test_aero_lbm3d links
+# only orrery_aero (graphics-free): lattice, masks, analytic flows, the GPU
+# driver on the Null backend and the IAeroSolver adapter on the CPU.
+# orrery_test_aero_lbm3d_gl runs the OpenGL kernels against the CPU solver
+# ([gl], skipped without an OpenGL 4.6 context; the 128^3 throughput
+# benchmark is hidden: orrery_test_aero_lbm3d_gl "[benchmark]").
+add_executable(orrery_test_aero_lbm3d
+    aero/lbm/lbm_test_support.h
+    aero/lbm3d/lbm3d_test_support.h
+    aero/lbm3d/test_d3q19.cpp
+    aero/lbm3d/test_solid_mask3d.cpp
+    aero/lbm3d/test_lbm3d_flows.cpp
+    aero/lbm3d/test_lbm3d_gpu_driver.cpp
+    aero/lbm3d/test_lbm_aero_solver3d.cpp)
+target_link_libraries(orrery_test_aero_lbm3d PRIVATE orrery_aero Catch2::Catch2WithMain)
+orrery_configure_target(orrery_test_aero_lbm3d)
+catch_discover_tests(orrery_test_aero_lbm3d DISCOVERY_MODE PRE_TEST)
+
+add_executable(orrery_test_aero_lbm3d_gl
+    aero/lbm/lbm_test_support.h
+    aero/lbm/lbm_gl_support.h
+    aero/lbm3d/lbm3d_test_support.h
+    aero/lbm3d/test_lbm3d_gpu.cpp)
+target_link_libraries(orrery_test_aero_lbm3d_gl PRIVATE orrery_render Catch2::Catch2WithMain)
+target_include_directories(orrery_test_aero_lbm3d_gl PRIVATE ${PROJECT_BINARY_DIR}/src/render/generated)
+orrery_configure_target(orrery_test_aero_lbm3d_gl)
+catch_discover_tests(orrery_test_aero_lbm3d_gl DISCOVERY_MODE PRE_TEST ${lbm_gl_discover_props})
+
+# Phase 7c validation (tests/aero_validation/lbm3d): sphere drag against the
+# Schiller-Naumann curve and a square plate normal to the flow, through the
+# IAeroSolver adapter. The CPU case needs an optimised build (unoptimised
+# Debug and sanitizer builds skip it); the GPU cases need an OpenGL 4.6
+# context; the larger runs are hidden ("[.study]").
+add_executable(orrery_test_lbm3d_validation
+    aero/lbm/lbm_gl_support.h
+    aero_validation/lbm3d/body_case.h
+    aero_validation/lbm3d/test_plate.cpp
+    aero_validation/lbm3d/test_sphere.cpp)
+target_link_libraries(orrery_test_lbm3d_validation PRIVATE orrery_render Catch2::Catch2WithMain)
+orrery_configure_target(orrery_test_lbm3d_validation)
+catch_discover_tests(orrery_test_lbm3d_validation DISCOVERY_MODE PRE_TEST
+    ${lbm_gl_discover_props})

@@ -63,4 +63,4 @@ settled when the interface was written:
   only shows during an instability transient).
 
 ## Status
-Accepted
+Accepted; amended by ADR-020 (snippets per kernel family, device memory query).

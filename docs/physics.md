@@ -173,6 +173,70 @@ section 5 apply.
 | L7 | Wall pressure Cp from the node next to the wall against the mean density of the column next to the inlet; one sample per node with area dx | `LbmAeroSolver2D::update_result` | Qualitative Cp distribution | First-order in the resolution, like A4 |
 | L8 | 2D solver ignores sideslip; velocity field reported only at zero angle of attack | `LbmAeroSolver2D` | Plane sections | `lbm.sideslip` warning; field absent when the lattice is wind-aligned |
 
+## Lattice Boltzmann 3D (orrery_aero, Phase 7c)
+
+Method, not model: the D3Q19 BGK scheme recovers the incompressible
+Navier-Stokes equations in the low Mach number limit. Full reference in
+`lbm.md` (sections 10 to 15); decisions ADR-008, ADR-019 and ADR-020;
+sources `src/aero/lbm3d` and `src/render/shaders/lbm/lbm_d3q19_*`; tests
+`tests/aero/lbm3d` and `tests/aero_validation/lbm3d`.
+
+### Formulas
+- D3Q19 (Qian, d'Humieres and Lallemand 1992): rest, 6 axis and 12 face
+  diagonal directions, weights 1/3, 1/18, 1/36, c_s^2 = 1/3; equilibrium,
+  BGK, Guo forcing, Smagorinsky relaxation time and lattice units as in
+  "Lattice Boltzmann 2D" (|Pi_neq| over six components).
+- Velocity inlet: rho = (sum_{c_x=0} f + 2 sum_{c_x=-1} f) / (1 - u_x) (Zou
+  and He 1997), unknowns f_i = f_opp(i) + 6 w_i rho c_i.u, then regularized
+  (Latt et al. 2008).
+- Interpolated bounce-back (Bouzidi, Firdaouss and Lallemand 2001), wall
+  fraction q = d(x) / (d(x) - d(x - c_j)) from the signed distance:
+  q < 1/2: f_j = 2q f*_o(x) + (1 - 2q) f*_o(x + c_j);
+  q >= 1/2: f_j = f*_o(x) / (2q) + (2q - 1)/(2q) f*_j(x).
+- Momentum exchange F = sum over links of c_o (f*_o(x) + f_j(x, t+1))
+  (Ladd 1994; Mei, Yu, Shyy and Luo 2002), moment at x - q c_j; a lattice
+  force unit is rho_ref dx^4 / dt^2.
+- Absorbing layer (Xu and Sagaut 2013): f* <- f* - sigma (f* - f_eq(1,
+  u_in)), sigma = s ((T - d) / T)^2.
+- Gradual start: u_in(t) = U (1 - cos(pi t / T)) / 2 for t < T.
+- Sphere reference: Cd = 24 / Re (1 + 0.15 Re^0.687) (Schiller and Naumann
+  1933).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise; GPU AMD Radeon RX 9060 XT)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| Sphere Re 10, GPU | D 12, channel 10 D wide (lbm.md section 14) | Cd 4.415 (correlation 4.151, ratio 1.064) | within 15 percent |
+| Sphere Re 100, CPU | D 12, 121 x 61 x 61, 6000 steps | Cd 1.186 (1.092, ratio 1.086), steady, 27 s | within 15 percent |
+| Sphere Re 100, GPU | D 16 | Cd 1.140 (ratio 1.044), steady | within 15 percent |
+| Sphere Re 300, GPU | D 16 | Cd 0.693 (0.684, ratio 1.013) | within 15 percent |
+| Sphere Re 1000, GPU | D 48 | Cd 0.482 (0.438, ratio 1.099) | within 15 percent |
+| Square plate normal to the flow, Re 1000, GPU | 24 cells per side | Cd 1.158 (ratio 0.905 to 1.28) | within 15 percent of 1.28 |
+| GPU vs CPU | Poiseuille, duct, Couette, sphere with BGK, Smagorinsky, interpolated wall, extrapolation outlet | velocity L2 at most 1.6e-5, drag at most 1.3e-5 | 1e-4 |
+| Poiseuille | tau = 1/2 + sqrt(3/16) / 0.8, H 24 | 7.3e-13 / 1.2e-3 relative L2 | 1e-9 / 2e-3 |
+| Square duct | 20 x 20, series solution | 5.5e-4 relative L2 | 1e-3 |
+| Couette | moving wall, H 16 | 1.0e-13 | 1e-9 |
+| Mass conservation | periodic, slip, moving no-slip, sphere, 1500 steps | 1.4e-13 relative | 1e-12 |
+| Momentum exchange | solid layer, body force | equals the total body force to 1e-6 | 1e-6 |
+| GPU throughput | 128^3 sphere channel, BGK / with Smagorinsky | 652 / 648 steps/s | 60 steps/s (GTX 1660 class, not measured) |
+| CPU throughput | 121 x 61 x 61, 12 threads | about 100 million updates/s | none |
+
+### Approximations (LBM 3D)
+A2 (Smagorinsky), A3 (weak compressibility) and A4 (staircase walls, for
+`SolidWall::halfway` and for the node classification) in section 5 apply,
+and L2, L4 and L5 of "Lattice Boltzmann 2D" hold unchanged in 3D.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| D1 | Inlet node regularized; no tangential Zou-He corrections (Hecht and Harting 2010) | `velocity_inlet_west`, `lbm3_inlet_west` | Smooth inflow; density and velocity are exact after regularization | Strong gradients at the inlet are smoothed; keep the body 2 or more lengths downstream |
+| D2 | Interpolated wall from the linear interpolation of the signed distance along each link; q < 1/2 without a second fluid node falls back to halfway; not exactly mass conserving | `link_fraction`, `reflected`, `lbm3_reflected` | Walls resolved by a few cells (the distance is exact within three cells) | Thin gaps and sharp corners revert to the staircase; mass drifts slowly at walls |
+| D3 | Absorbing layer relaxing to the free-stream equilibrium before the outlet (2 lengths, strength 0.1) | `Sponge`, `sponge_sigma`, `lbm3_sponge` | Wake and pressure waves leaving through the outlet; fixes the pressure level | Bodies close to the layer feel it; keep 3 or more lengths between them |
+| D4 | Gradual start from rest over 3 convective times | `LbmSolver3DOptions::start_ramp` | Steady or statistically stationary results | The start-up transient differs from an impulsive start |
+| D5 | Momentum exchange for stationary bodies | `add_link_force` | Bodies at rest | Moving bodies need the wall-velocity terms |
+| D6 | Channel with free-slip or periodic sides of finite width | `LbmAeroSolver3D` | Blockage below 5 percent (`lbm.blockage`) | Confinement raises the drag (sphere Re 10 in a 6 D channel: 9.6 percent above the correlation) |
+| D7 | Wall samples: one per fluid node next to the body, an equal share of the mesh area, Cp against the plane next to the inlet | `LbmAeroSolver3D::update_result` | Qualitative Cp distribution | First order in the resolution |
+| D8 | Velocity field reported only at zero angle of attack and sideslip | `LbmAeroSolver3D` | Wind-aligned lattice equal to body axes | Field absent when the lattice is rotated |
+
 ## Scenario format
 
 Scenarios are JSON documents loaded by `orrery_scene` (`orrery/scene/scenario.h`); bundled examples live in `assets/scenarios/`. Schema version 1:
