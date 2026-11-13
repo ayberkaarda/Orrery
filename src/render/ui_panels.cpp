@@ -6,6 +6,7 @@
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <span>
 #include <string>
 #include <system_error>
 #include <utility>
@@ -161,7 +162,20 @@ TimeAxis time_axis_for(double span_days) {
     if (span_days >= 20.0) {
         return {1.0, 0, " d"};
     }
-    return {1.0, span_days >= 2.0 ? 1 : 2, " d"};
+    if (span_days >= 0.5) {
+        return {1.0, span_days >= 2.0 ? 1 : 2, " d"};
+    }
+    // Short runs (a black hole at 1x, the first frames): hours, minutes or
+    // seconds instead of a row of "0.00 d".
+    constexpr double kHour = 1.0 / 24.0;
+    constexpr double kMinute = kHour / 60.0;
+    if (span_days >= 2.0 * kHour) {
+        return {kHour, 1, " h"};
+    }
+    if (span_days >= 2.0 * kMinute) {
+        return {kMinute, 1, " min"};
+    }
+    return {kMinute / 60.0, 1, " s"};
 }
 
 // ImPlotFormatter: `user_data` is the TimeAxis of the plot.
@@ -175,6 +189,27 @@ int format_time_tick(double value, char* buffer, int size, void* user_data) {
     std::copy_n(text.data(), count, buffer);
     buffer[count] = '\0';
     return static_cast<int>(count);
+}
+
+// Axes of a non-empty series. ImPlot pads an axis without extent to +-0.5
+// around its value: a single point would read as a run from -0.50 d, and a
+// constant drift as +-4e-1. Such an axis gets limits of its own instead of
+// the fit: time from the first value onwards, values a hair around the
+// constant.
+void setup_series_axes(std::span<const double> times, std::span<const double> values) {
+    const auto [t_min, t_max] = std::minmax_element(times.begin(), times.end());
+    const auto [v_min, v_max] = std::minmax_element(values.begin(), values.end());
+    const bool flat_time = !(*t_max > *t_min);
+    const bool flat_value = !(*v_max > *v_min);
+    ImPlot::SetupAxes(nullptr, nullptr, flat_time ? ImPlotAxisFlags_None : ImPlotAxisFlags_AutoFit,
+                      flat_value ? ImPlotAxisFlags_None : ImPlotAxisFlags_AutoFit);
+    if (flat_time) {
+        ImPlot::SetupAxisLimits(ImAxis_X1, *t_min, *t_min + 1.0, ImPlotCond_Always);
+    }
+    if (flat_value) {
+        const double pad = std::max(std::abs(*v_min) * 0.1, 1.0e-15);
+        ImPlot::SetupAxisLimits(ImAxis_Y1, *v_min - pad, *v_max + pad, ImPlotCond_Always);
+    }
 }
 
 core::BodyKindTag tag_at(const core::SimSnapshot& snapshot, std::size_t i) {
@@ -532,7 +567,10 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
     for (double& t : times) {
         t /= time_axis.days_per_unit;
     }
-    if (ImPlot::BeginPlot("##series", ImVec2(-1.0F, plot_height), plot_flags)) {
+    // Room right of the plot for half of the last time label, which ImPlot
+    // centres on the axis end.
+    const float label_room = 0.5F * ImGui::CalcTextSize("00.0 min").x;
+    if (ImPlot::BeginPlot("##series", ImVec2(-label_room, plot_height), plot_flags)) {
         if (n == 0) {
             // Nothing recorded yet: a quiet empty frame instead of the
             // placeholder axis range [0, 1] and its tick labels.
@@ -541,7 +579,7 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
             ImPlot::SetupAxesLimits(0.0, 1.0, 0.0, 1.0, ImPlotCond_Always);
             ImPlot::PlotText("No data recorded yet", 0.5, 0.5);
         } else {
-            ImPlot::SetupAxes(nullptr, nullptr, ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
+            setup_series_axes(times, data.series_values.first(n));
             ImPlot::SetupAxisFormat(ImAxis_X1, format_time_tick, &time_axis);
             ImPlot::SetupAxisFormat(ImAxis_Y1, "%.1e");
             const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_PlotLines);
