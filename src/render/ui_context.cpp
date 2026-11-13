@@ -376,6 +376,7 @@ UiRect UiContext::dockspace() {
         ImGui::DockBuilderDockWindow(std::string(kBodyInspectorWindow).c_str(), left);
         ImGui::DockBuilderDockWindow(std::string(kRenderSettingsWindow).c_str(), right);
         ImGui::DockBuilderDockWindow(std::string(kSystemMonitorWindow).c_str(), bottom);
+        ImGui::DockBuilderDockWindow(std::string(kSpaceExperimentWindow).c_str(), bottom);
         // The layout is code-defined: the per-node window menu (the arrow in
         // front of each panel tab) would only offer to undo it.
         for (const ImGuiID id : {left, right, bottom}) {

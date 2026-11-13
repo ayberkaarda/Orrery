@@ -188,5 +188,6 @@ scene and text in the profile panel.
   points, keeping the ends and the peak.
 - A run's record is written only when the run has ended; a paused or running
   entry is saved as inputs only.
-- The window's configuration accepts `workspace = "space"` or `"aero"` only;
-  the Entry workspace is opened by the strip, Ctrl+3 or an entry experiment.
+- The window opens on this workspace with `workspace = "entry"` in the
+  configuration (app.md, "Configuration"), with the strip, Ctrl+3, or an
+  entry experiment.

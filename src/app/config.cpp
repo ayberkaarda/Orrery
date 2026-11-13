@@ -1,17 +1,22 @@
 #include "orrery/app/config.h"
 
+#include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include <toml++/toml.hpp>
 
 #include "orrery/scene/scenario.h"
 #include "orrery/sim/aero_import.h"
+#include "orrery/sim/warp_governor.h"
 
 namespace orrery::app {
 
@@ -70,6 +75,89 @@ std::string where(std::string_view source, const toml::source_region& region) {
     std::ostringstream out;
     out << source << ':' << region.begin.line << ':' << region.begin.column;
     return out.str();
+}
+
+void read_space(const toml::table& space, std::string_view source, ConfigLoad& out) {
+    const toml::node* node = space.get("physics_budget");
+    if (node == nullptr) {
+        return;
+    }
+    // Integers are accepted as numbers too (physics_budget = 1 is out of
+    // range either way, but reported as such).
+    std::optional<double> value = node->value<double>();
+    if (value && std::isfinite(*value) && *value >= sim::kMinLoadLimit &&
+        *value <= sim::kMaxLoadLimit) {
+        out.config.physics_budget = *value;
+        return;
+    }
+    out.warnings.push_back(where(source, node->source()) +
+                           ": space.physics_budget: expected a number in [0.05, 0.95], ignored");
+}
+
+// One [shortcuts] entry: a chord string or an array of them (empty:
+// unbound). Any invalid chord rejects the whole entry.
+std::optional<std::vector<KeyChord>> read_chords(const toml::node& node, std::string& problem) {
+    std::vector<KeyChord> chords;
+    const auto add = [&](const toml::node& item) {
+        const auto text = item.value<std::string>();
+        if (!text) {
+            problem = "expected a key chord string or an array of them";
+            return false;
+        }
+        auto chord = parse_key_chord(*text);
+        if (!chord) {
+            problem = chord.error();
+            return false;
+        }
+        if (std::find(chords.begin(), chords.end(), chord.value()) == chords.end()) {
+            chords.push_back(chord.value());
+        }
+        return true;
+    };
+    if (const toml::array* list = node.as_array()) {
+        for (const toml::node& item : *list) {
+            if (!add(item)) {
+                return std::nullopt;
+            }
+        }
+        return chords;
+    }
+    if (!add(node)) {
+        return std::nullopt;
+    }
+    return chords;
+}
+
+void read_shortcuts(const toml::table& shortcuts, std::string_view source, ConfigLoad& out) {
+    std::vector<ShortcutOverride> overrides;
+    for (const auto& [key, node] : shortcuts) {
+        const std::string name(key.str());
+        const auto action = shortcut_action_from_name(name);
+        if (!action) {
+            std::string warning = where(source, node.source());
+            warning += ": shortcuts.";
+            warning += name;
+            warning += ": unknown action, ignored";
+            out.warnings.push_back(std::move(warning));
+            continue;
+        }
+        std::string problem;
+        auto chords = read_chords(node, problem);
+        if (!chords) {
+            std::string warning = where(source, node.source());
+            warning += ": shortcuts.";
+            warning += name;
+            warning += ": ";
+            warning += problem;
+            warning += "; keeping the default";
+            out.warnings.push_back(std::move(warning));
+            continue;
+        }
+        overrides.push_back({*action, std::move(*chords), where(source, node.source())});
+    }
+    for (std::string& warning : apply_shortcut_overrides(out.config.shortcuts, overrides)) {
+        out.warnings.push_back(std::move(warning));
+    }
 }
 
 std::string_view workspace_name(Workspace workspace) noexcept {
@@ -150,7 +238,12 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
             }
         }
     };
-    table_keys(root, "", {"paths", "window", "aero"});
+    table_keys(root, "", {"paths", "window", "aero", "space", "shortcuts"});
+    for (const char* section : {"paths", "window", "aero", "space", "shortcuts"}) {
+        if (const toml::node* node = root.get(section); node != nullptr && !node->is_table()) {
+            warn(*node, section, "expected a table, ignored");
+        }
+    }
 
     if (const toml::table* paths = root["paths"].as_table()) {
         table_keys(*paths, "paths.", {"experiments", "model_cache"});
@@ -190,8 +283,10 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
                 out.config.start_workspace = Workspace::space;
             } else if (value && *value == "aero") {
                 out.config.start_workspace = Workspace::aero;
+            } else if (value && *value == "entry") {
+                out.config.start_workspace = Workspace::entry;
             } else {
-                warn(*node, "window.workspace", R"(expected "space" or "aero", ignored)");
+                warn(*node, "window.workspace", R"(expected "space", "aero" or "entry", ignored)");
             }
         }
     }
@@ -207,6 +302,13 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
                          "], ignored");
             }
         }
+    }
+    if (const toml::table* space = root["space"].as_table()) {
+        table_keys(*space, "space.", {"physics_budget"});
+        read_space(*space, source_name, out);
+    }
+    if (const toml::table* shortcuts = root["shortcuts"].as_table()) {
+        read_shortcuts(*shortcuts, source_name, out);
     }
     return out;
 }
@@ -233,10 +335,22 @@ std::string config_to_toml(const AppConfig& config) {
     window.insert("workspace", std::string(workspace_name(config.start_workspace)));
     toml::table aero;
     aero.insert("steps_per_frame", config.steps_per_frame);
+    toml::table space;
+    space.insert("physics_budget", config.physics_budget);
+    toml::table shortcuts;
+    for (const ShortcutInfo& info : shortcut_actions()) {
+        toml::array chords;
+        for (const KeyChord& chord : config.shortcuts.of(info.action)) {
+            chords.push_back(format_key_chord(chord));
+        }
+        shortcuts.insert(info.name, std::move(chords));
+    }
     toml::table root;
     root.insert("paths", std::move(paths));
     root.insert("window", std::move(window));
     root.insert("aero", std::move(aero));
+    root.insert("space", std::move(space));
+    root.insert("shortcuts", std::move(shortcuts));
     std::ostringstream out;
     out << "# Orrery configuration (docs/app.md, \"Configuration\").\n" << root << '\n';
     return out.str();

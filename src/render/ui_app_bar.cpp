@@ -215,6 +215,26 @@ std::string rate_label(double warp) {
     return fixed(warp, 0) + " s/s";
 }
 
+// Tooltip of the LIMITED chip: achieved against requested, the cost, the
+// load, and what happens next.
+std::string limited_tooltip(const AppBarData& data) {
+    std::string text = data.warp_reduced ? "The time warp is lowered to fit the physics budget:\n"
+                                         : "The physics step budget cannot keep up:\n";
+    text += "running at " + format_time_warp(data.effective_warp) + " of the requested " +
+            format_time_warp(static_cast<double>(data.time_warp)) + ".";
+    if (data.step_ms) {
+        text += "\nOne physics step takes " + fixed(*data.step_ms, 3) + " ms";
+        if (data.physics_load && data.load_limit > 0.0) {
+            text += "; stepping uses " + fixed(*data.physics_load * 100.0, 0) +
+                    " % of the time (budget " + fixed(data.load_limit * 100.0, 0) + " %)";
+        }
+        text += ".";
+    }
+    text += data.warp_reduced ? "\nThe requested warp returns by itself when the load drops."
+                              : "\nLower the warp or use a larger time step.";
+    return text;
+}
+
 } // namespace
 
 std::span<const std::int64_t> time_warp_presets() noexcept {
@@ -328,9 +348,7 @@ AppBarIntent draw_app_bar(const AppBarData& data) {
     }
     if (limited) {
         warning_chip("LIMITED " + format_time_warp(data.effective_warp),
-                     "The physics step budget cannot sustain the requested warp:\n"
-                     "simulated time advances at the achieved rate shown here.\n"
-                     "Lower the warp or use a larger time step.");
+                     limited_tooltip(data).c_str());
     }
     ImGui::Separator();
 

@@ -13,7 +13,7 @@ graphics-free side in `src/app/aero/*.cpp` compiled into `orrery_sim`
 | Area | Content |
 |---|---|
 | Main bar | word mark, `Aero` tab, Run/Pause, Step, Stop, pacing (steps per frame or run to convergence), the solver that runs, an `UNVALIDATED` chip for user models, the run status (lattice steps, throughput) and the frame rate |
-| Workspace strip | Space, Aero, Entry (disabled until Phase 9); Ctrl+1 / Ctrl+2 |
+| Workspace strip | Space, Aero, Entry; Ctrl+1 / Ctrl+2 / Ctrl+3 (keys: app.md, "Keyboard shortcuts") |
 | Left, top | **Geometry**: Primitive / File / URL tabs, the body report, reference quantities |
 | Left, bottom | **Flow Conditions**: free stream, derived numbers, solver choice and warnings, lattice settings |
 | Right | **Aero Results**: state, reference area selector, coefficients, breakdown, lattice progress, convergence plots, warnings |

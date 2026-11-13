@@ -65,13 +65,21 @@ void PhysicsThread::run(const std::stop_token& stop) {
             tick(wall.count(), stop);
         } catch (const std::exception& error) {
             // Nothing may escape the thread; pause and report instead.
-            simulation_.apply(SetPaused{true});
-            published_status_ = simulation_.status();
-            published_status_.message = std::string("Physics thread error: ") + error.what();
-            frames_.publish(PublishedFrame{published_snapshot_, published_status_});
+            report(std::string("Physics thread error: ") + error.what());
+        } catch (...) {
+            // Also nothing else: std::terminate handlers are per thread with
+            // the MSVC runtime, so a report from here would be lost.
+            report("Physics thread error: non-standard exception");
         }
         ticks_.fetch_add(1, std::memory_order_acq_rel);
     }
+}
+
+void PhysicsThread::report(std::string message) {
+    simulation_.apply(SetPaused{true});
+    published_status_ = simulation_.status();
+    published_status_.message = std::move(message);
+    frames_.publish(PublishedFrame{published_snapshot_, published_status_});
 }
 
 void PhysicsThread::tick(std::int64_t wall_ns, const std::stop_token& stop) {

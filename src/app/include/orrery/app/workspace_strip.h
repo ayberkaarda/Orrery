@@ -13,8 +13,7 @@ namespace orrery::app {
 // Returns the workspace the user picked this frame (never a disabled one).
 [[nodiscard]] std::optional<Workspace> draw_workspace_strip(Workspace current);
 
-// Ctrl+1 / Ctrl+2 / Ctrl+3 switch to the Space, Aero and Entry workspaces
-// while the UI does not want the keyboard.
-[[nodiscard]] std::optional<Workspace> read_workspace_shortcut();
+// Keys (Ctrl+1 / Ctrl+2 / Ctrl+3 by default) are in the shortcut table,
+// shortcuts.h.
 
 } // namespace orrery::app

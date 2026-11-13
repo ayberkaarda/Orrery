@@ -8,6 +8,7 @@
 #include <optional>
 #include <semaphore>
 #include <stop_token>
+#include <string>
 #include <thread>
 
 #include "orrery/core/sim_snapshot.h"
@@ -74,6 +75,8 @@ public:
 private:
     void run(const std::stop_token& stop);
     void tick(std::int64_t wall_ns, const std::stop_token& stop);
+    // Pauses and publishes `message` as the status message.
+    void report(std::string message);
 
     Simulation simulation_;
     PhysicsThreadOptions options_;
