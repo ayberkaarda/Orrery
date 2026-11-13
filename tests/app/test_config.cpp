@@ -6,6 +6,7 @@
 #include <sstream>
 #include <stdexcept>
 #include <string>
+#include <system_error>
 #include <vector>
 
 #include "orrery/app/config.h"
@@ -101,6 +102,47 @@ TEST_CASE("Configuration round-trips through its TOML text and file", "[app][con
     const auto loaded = app::load_config(dir / "sub" / "config.toml");
     REQUIRE(loaded.has_value());
     CHECK(loaded.value().config == c);
+}
+
+namespace {
+
+// Runs in `dir` for its lifetime (the test process's working directory).
+class WorkingDirectory {
+public:
+    explicit WorkingDirectory(const std::filesystem::path& dir)
+        : previous_(std::filesystem::current_path()) {
+        std::filesystem::current_path(dir);
+    }
+    ~WorkingDirectory() {
+        std::error_code ignored;
+        std::filesystem::current_path(previous_, ignored);
+    }
+    WorkingDirectory(const WorkingDirectory&) = delete;
+    WorkingDirectory& operator=(const WorkingDirectory&) = delete;
+    WorkingDirectory(WorkingDirectory&&) = delete;
+    WorkingDirectory& operator=(WorkingDirectory&&) = delete;
+
+private:
+    std::filesystem::path previous_;
+};
+
+} // namespace
+
+TEST_CASE("Configuration saves to a bare file name and to a nested path", "[app][config]") {
+    app::AppConfig c = app::default_config();
+    c.window_width = 1024;
+    c.steps_per_frame = 200;
+    const WorkingDirectory here(scratch("relative"));
+    for (const std::filesystem::path path :
+         {std::filesystem::path("config.toml"), std::filesystem::path("nested/dir/config.toml")}) {
+        INFO(path.string());
+        const auto saved = app::save_config(path, c);
+        INFO((saved ? std::string() : saved.error()));
+        REQUIRE(saved.has_value());
+        const auto loaded = app::load_config(path);
+        REQUIRE(loaded.has_value());
+        CHECK(loaded.value().config == c);
+    }
 }
 
 TEST_CASE("The terminate report names the active exception", "[app][error]") {

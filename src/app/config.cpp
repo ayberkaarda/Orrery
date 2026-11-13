@@ -244,11 +244,13 @@ std::string config_to_toml(const AppConfig& config) {
 
 core::Result<std::filesystem::path, std::string> save_config(const std::filesystem::path& path,
                                                              const AppConfig& config) {
-    std::error_code error;
-    std::filesystem::create_directories(path.parent_path(), error);
-    if (error) {
-        return core::failure("cannot create " + path.parent_path().string() + ": " +
-                             error.message());
+    // A bare file name has no directory to create (the working directory).
+    if (const std::filesystem::path dir = path.parent_path(); !dir.empty()) {
+        std::error_code error;
+        std::filesystem::create_directories(dir, error);
+        if (error) {
+            return core::failure("cannot create " + dir.string() + ": " + error.message());
+        }
     }
     std::ofstream out(path, std::ios::binary | std::ios::trunc);
     const std::string text = config_to_toml(config);
