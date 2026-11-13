@@ -9,6 +9,9 @@ if(Python3_Interpreter_FOUND)
     # The checker's own cases: links that must pass and links that must fail.
     add_test(NAME docs.check_selftest
         COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/tests/docs/test_check_docs.py)
+    # tools/make_screenshots.py spawns the --app it was given, by absolute path.
+    add_test(NAME docs.make_screenshots_selftest
+        COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/tests/docs/test_make_screenshots.py)
 else()
     message(WARNING "Python 3 not found: docs.check test not registered")
 endif()

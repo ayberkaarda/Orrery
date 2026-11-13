@@ -101,17 +101,32 @@ def render(app: Path, shot: tuple[str, str, int, str], work: Path) -> Path | Non
     return raw
 
 
+def resolve_app(app: Path) -> Path | None:
+    """The absolute path of the application, so that a relative --app such as
+    ./orrery_app runs that file and is never looked up on PATH."""
+    candidates = [app]
+    if sys.platform == "win32" and not app.suffix:
+        candidates.append(app.with_suffix(".exe"))
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate.resolve()
+    return None
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--app", type=Path, required=True, help="path to orrery_app")
     parser.add_argument("--only", nargs="*", default=[], help="file names to regenerate")
     args = parser.parse_args()
+    app = resolve_app(args.app)
+    if app is None:
+        parser.error(f"--app: {args.app} is not a file")
     shots = [s for s in SHOTS if not args.only or s[0] in args.only]
     OUT_DIR.mkdir(parents=True, exist_ok=True)
     failures = 0
     with tempfile.TemporaryDirectory() as tmp:
         for shot in shots:
-            raw = render(args.app, shot, Path(tmp))
+            raw = render(app, shot, Path(tmp))
             if raw is None:
                 failures += 1
                 continue
