@@ -238,7 +238,7 @@ TEST_CASE("Marching cubes counts zero-area triangles at level-valued corners",
         const glm::dvec3& p0 = b.positions[b.indices[i]];
         const glm::dvec3 n =
             glm::cross(b.positions[b.indices[i + 1]] - p0, b.positions[b.indices[i + 2]] - p0);
-        flat += glm::length(n) == 0.0 ? 1 : 0;
+        flat += glm::length(n) == 0.0 ? std::size_t{1} : std::size_t{0};
     }
     CHECK(flat > 0);
     CHECK(t.degenerate_triangles == flat);

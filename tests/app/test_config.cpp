@@ -133,7 +133,7 @@ TEST_CASE("Configuration saves to a bare file name and to a nested path", "[app]
     c.window_width = 1024;
     c.steps_per_frame = 200;
     const WorkingDirectory here(scratch("relative"));
-    for (const std::filesystem::path path :
+    for (const std::filesystem::path& path :
          {std::filesystem::path("config.toml"), std::filesystem::path("nested/dir/config.toml")}) {
         INFO(path.string());
         const auto saved = app::save_config(path, c);
