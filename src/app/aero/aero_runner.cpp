@@ -116,6 +116,10 @@ void AeroRunner::loop(const std::stop_token& stop) {
             }
         } catch (const std::exception& error) {
             fail(std::string("solver thread error: ") + error.what());
+        } catch (...) {
+            // Nothing may leave the thread (std::terminate handlers are per
+            // thread with the MSVC runtime: the report would be lost).
+            fail("solver thread error: non-standard exception");
         }
     }
 }
