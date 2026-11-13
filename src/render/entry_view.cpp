@@ -31,7 +31,7 @@ constexpr double kOutlinePx = 1.5;
 constexpr double kGroundHalfWidthPx = 1.1;
 constexpr double kCurtainOpacity = 0.22;
 // Optical depth of one scale height of the haze (entry_atmosphere.frag.glsl).
-constexpr double kHazeStrength = 0.07;
+constexpr double kHazeStrength = 0.035;
 
 // Display-referred colours of the overlay-like layers (linear).
 constexpr glm::dvec3 kOutline{0.012, 0.014, 0.020};
@@ -46,10 +46,13 @@ struct PlanetLook {
 };
 
 PlanetLook look(EntryPlanetStyle style) {
+    // Muted, dark albedos: the coloured ribbon must stay the brightest and
+    // most saturated thing in the scene.
     if (style == EntryPlanetStyle::mars) {
-        return {{0.30, 0.13, 0.065}, {0.010, 0.007, 0.006}, {0.62, 0.42, 0.30}, {0.95, 0.62, 0.42}};
+        return {
+            {0.115, 0.056, 0.034}, {0.006, 0.004, 0.004}, {0.34, 0.24, 0.18}, {0.80, 0.55, 0.38}};
     }
-    return {{0.050, 0.105, 0.20}, {0.006, 0.009, 0.016}, {0.36, 0.46, 0.60}, {0.42, 0.66, 1.25}};
+    return {{0.030, 0.045, 0.068}, {0.004, 0.005, 0.008}, {0.26, 0.32, 0.40}, {0.36, 0.56, 1.0}};
 }
 
 ShaderSource source(const entry_shaders::EmbeddedShader& s) {
