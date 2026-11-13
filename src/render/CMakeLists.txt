@@ -93,6 +93,18 @@ target_sources(orrery_render PRIVATE
     include/orrery/render/black_hole.h
     include/orrery/render/blackbody_spectrum.h)
 
+# Phase 8a: aero visualisation (docs/aero-visualisation.md): Cp surface,
+# section planes, streamlines and particles, Q-criterion iso-surface and force
+# vectors, drawn from plain data (orrery_aero results, orrery_geom meshes).
+target_sources(orrery_render PRIVATE
+    include/orrery/render/aero_colormap.h
+    include/orrery/render/aero_compute.h
+    include/orrery/render/aero_field.h
+    include/orrery/render/aero_isosurface.h
+    include/orrery/render/aero_streamlines.h
+    include/orrery/render/aero_surface.h
+    include/orrery/render/aero_view.h)
+
 # Shaders: src/render/shaders/*.glsl are embedded at build time into one
 # generated header (no runtime file reads). The header is private to the
 # library sources and to the render tests, which check the embedding.
