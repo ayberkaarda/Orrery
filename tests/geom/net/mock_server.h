@@ -47,6 +47,9 @@ struct MockResponse {
     // the server stops) before closing: a slow or hanging server.
     std::optional<std::size_t> stall_after_bytes;
     std::chrono::milliseconds stall_for{10'000};
+    // Send the body one byte per interval (a trickling server); ends early
+    // when the client goes away or the server stops.
+    std::optional<std::chrono::milliseconds> trickle_interval;
 };
 
 class MockServer {
