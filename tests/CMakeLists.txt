@@ -177,6 +177,10 @@ endif()
 # Phase 6b: URL model loader (orrery_test_geom_net, tests named "net.*").
 add_subdirectory(geom/net)
 
+# Phase 10a: profiling zones and trace sink (orrery_test_profile) and the
+# --trace command-line tests ("profile.*").
+add_subdirectory(profile)
+
 # Core: unit and property tests (including the former smoke test).
 # allocation_failure_injection.cpp replaces the global operator new/delete
 # family of each executable that lists it (allocation-failure tests).
