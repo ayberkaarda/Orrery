@@ -23,6 +23,7 @@ macOS is out of scope (no OpenGL 4.6).
 ## Contents
 
 - [Features](#features)
+- [Screenshots](#screenshots)
 - [Building](#building)
 - [Running](#running)
 - [Configuration](#configuration)
@@ -56,7 +57,7 @@ the three-body figure eight, Sgr A* with the star S2, and a lone black hole.
   Monitor (energy drift, step time, time warp), Experiment (save and open space
   experiments), Render Settings.
 - Rendering: floating origin, logarithmic depth, trails, starfield, HDR with
-  bloom and tone mapping; black holes with a ray-marched Schwarzschild
+  ACES tone mapping and an analytic star glare (no bloom pass); black holes with a ray-marched Schwarzschild
   lensing pass and a thin accretion disk with Doppler beaming and
   gravitational redshift.
 
@@ -82,8 +83,8 @@ the three-body figure eight, Sgr A* with the star S2, and a lone black hole.
 
 **Entry workspace.**
 
-- US Standard Atmosphere 1976, a Mars reference table and exponential
-  atmospheres; Earth and Mars.
+- US Standard Atmosphere 1976, a mean Mars profile (NASA Glenn fit) and
+  exponential atmospheres; Earth and Mars.
 - A probe of constant mass, no lift, with a Cd(Mach) table that is edited or
   sampled from the Newtonian solver; IAS15, Yoshida 4 or leapfrog for the
   gravity part of the step.
@@ -102,6 +103,26 @@ the three-body figure eight, Sgr A* with the star S2, and a lone black hole.
   reason to standard error and to a crash log.
 - Colour maps that stay readable for colour-vision deficiencies; the Space
   layout is rendered in tests at 1920x1080, 1366x768 and 1024x640.
+
+## Screenshots
+
+Rendered by the application itself in headless mode (offscreen, no window);
+[docs/screenshots.md](docs/screenshots.md) gives the commands that
+regenerate them.
+
+| | |
+|---|---|
+| ![Inner solar system from J2000 with orbit trails around the Sun](docs/images/space-solar-system.png) | ![Black hole with a thin accretion disk bent by Schwarzschild lensing](docs/images/space-black-hole.png) |
+| J2000 solar system after 579 days, with orbit trails | Schwarzschild lensing of a thin disk: shadow, lensed far side, Doppler-bright approaching side |
+| ![Three equal stars on the figure-eight three-body orbit](docs/images/space-figure-eight.png) | ![Apollo-type capsule coloured by pressure coefficient at Mach 20](docs/images/aero-apollo-newtonian.png) |
+| Figure-eight three-body choreography (Yoshida 4th order) | Apollo-type capsule at Mach 20 and 20 degrees, modified Newtonian Cp |
+| ![NACA 0012 section with Cp on the surface and the speed field around it](docs/images/aero-naca0012-lbm.png) | ![Stalled NACA 0012 section shedding a vortex street](docs/images/aero-naca0012-stall-wake.png) |
+| NACA 0012 at 4 degrees, Re 400, lattice Boltzmann: Cp and speed field | NACA 0012 stalled at 20 degrees, Re 500: vortex street in the wake |
+
+![Entry workspace after an Apollo-like entry: setup panel, trajectory ribbon, ground track and profile plots](docs/images/entry-apollo.png)
+
+Entry workspace after an Apollo-like ballistic entry at 11 km/s: setup,
+trajectory coloured by g-load, ground track and the profile plots (peak 6.78 g).
 
 ## Building
 
@@ -241,8 +262,9 @@ links):
   pseudo-Newtonian potential, not general relativity.
 - Entry: constant mass, no lift, no rotation, no ablation; the heat flux is a
   stagnation-point correlation for display.
-- The solar system starts from approximate J2000 mean elements; it is not an
-  ephemeris.
+- The J2000 solar system is ten point masses from JPL Horizons state vectors
+  (no asteroids, oblateness or relativity); it drifts from the ephemeris by
+  about 1e-6 AU per year.
 - The Aero workspace runs the lattice Boltzmann solver on the CPU; large 3D
   lattices are slow there.
 - Imported models are not validated; licences of downloaded models are not
@@ -262,20 +284,23 @@ links):
 | `tests` | unit, property, validation (`tests/aero_validation`) and golden image tests |
 | `assets` | bundled scenarios and experiments |
 | `docs` | reference documents and architecture decision records (`docs/adr`) |
-| `tools` | `check_deps.py`, the dependency boundary check |
+| `tools` | `check_deps.py` (dependency boundaries), `check_docs.py` (documentation links and the physics index), `make_screenshots.py` (README images) |
 
 The libraries depend in one direction only: core, geom, atmo and the
 simulation side never link OpenGL, GLFW or Dear ImGui (checked in CI).
 
 ## Documentation
 
-- [docs/physics.md](docs/physics.md) - formulas, sources, approximations and measured results
+- [docs/README.md](docs/README.md) - index of every document and decision record
+- [docs/physics.md](docs/physics.md) - formula index, sources, approximations and measured results
 - [docs/app.md](docs/app.md) - application loop, time-warp budget, workspaces, shortcuts, configuration, error surface
 - [docs/rendering.md](docs/rendering.md) - renderer, user interface, golden images
 - [docs/aero.md](docs/aero.md), [docs/lbm.md](docs/lbm.md) - aerodynamic solvers
 - [docs/aero-workspace.md](docs/aero-workspace.md), [docs/aero-visualisation.md](docs/aero-visualisation.md) - Aero workspace and view
 - [docs/atmosphere.md](docs/atmosphere.md), [docs/entry-workspace.md](docs/entry-workspace.md) - atmospheres, entry and the Entry workspace
 - [docs/geometry-import.md](docs/geometry-import.md), [docs/url-import-security.md](docs/url-import-security.md) - geometry import and download limits
-- [docs/adr](docs/adr) - architecture decision records
+- [docs/roadmap.md](docs/roadmap.md) - the V1, V2 and V3 roadmap, deferred abstractions and the coupling pattern
+- [docs/screenshots.md](docs/screenshots.md) - how the screenshots above are regenerated
+- [docs/adr](docs/adr/README.md) - architecture decision records
 
 A Turkish version of this file: [README.tr.md](README.tr.md).

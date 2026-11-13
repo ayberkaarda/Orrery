@@ -181,6 +181,10 @@ add_subdirectory(geom/net)
 # --trace command-line tests ("profile.*").
 add_subdirectory(profile)
 
+# Phase 11: documentation links, physics formula index and APPROXIMATION
+# coverage (docs.check, tools/check_docs.py).
+add_subdirectory(docs)
+
 # Core: unit and property tests (including the former smoke test).
 # allocation_failure_injection.cpp replaces the global operator new/delete
 # family of each executable that lists it (allocation-failure tests).
