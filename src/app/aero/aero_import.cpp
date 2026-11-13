@@ -86,6 +86,10 @@ ImportResult import_path(const std::filesystem::path& path, scene::GeometryRef r
 
 } // namespace
 
+std::filesystem::path default_model_cache() {
+    return geom::net::default_model_cache_dir();
+}
+
 ImportResult load_model_file(const std::filesystem::path& path, std::string license_note,
                              TaskProgress* progress) {
     scene::GeometryRef ref;

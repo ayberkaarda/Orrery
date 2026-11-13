@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "orrery/app/cli.h"
+#include "orrery/app/headless_error.h"
 #include "orrery/core/result.h"
 #include "orrery/core/sim_snapshot.h"
 #include "orrery/render/image.h"
@@ -39,16 +40,6 @@ struct HeadlessFrame {
     render::ImageRgba8 image;
     std::shared_ptr<const core::SimSnapshot> snapshot;
     sim::SimStatus status;
-};
-
-enum class HeadlessErrorKind : std::uint8_t {
-    no_context, // no OpenGL 4.6 core context on this machine
-    failure,    // anything else (simulation, renderer setup, drawing)
-};
-
-struct HeadlessError {
-    HeadlessErrorKind kind = HeadlessErrorKind::failure;
-    std::string message;
 };
 
 // Advances the experiment without rendering (the simulation part of

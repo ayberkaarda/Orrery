@@ -87,6 +87,8 @@ struct SolveOutcome {
     aero::ReferenceValues reference;
     // The solver reported completion (step() returned true).
     bool finished = false;
+    // The solver itself, for its flow field (capture_flow).
+    std::shared_ptr<aero::IAeroSolver> solver_instance;
 };
 
 // Runs a spec on the calling thread: setup, then step() until the solver

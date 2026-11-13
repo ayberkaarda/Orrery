@@ -233,6 +233,7 @@ core::Result<SolveOutcome, std::string> solve(const AeroRunSpec& spec,
         }
         out.result = solver->result();
         out.diagnostics = diagnostics(*solver, spec.experiment.solver);
+        out.solver_instance = std::move(solver);
     } catch (const std::exception& error) {
         return core::failure(std::string(aero::solver_name(plan.kind)) + ": " + error.what());
     }

@@ -24,6 +24,9 @@ using PrepareResult = core::Result<PreparedGeometry, GeometryError>;
                                            std::string license_note,
                                            TaskProgress* progress = nullptr);
 
+// The platform cache of downloaded models (geom::net::default_model_cache_dir).
+[[nodiscard]] std::filesystem::path default_model_cache();
+
 struct UrlImportOptions {
     // Cache root; empty uses the platform cache (geom::net::default_model_cache_dir).
     std::filesystem::path cache_dir;
