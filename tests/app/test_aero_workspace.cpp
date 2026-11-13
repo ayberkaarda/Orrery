@@ -22,6 +22,7 @@
 #include "orrery/sim/aero_import.h"
 #include "orrery/sim/aero_runner.h"
 #include "orrery/sim/aero_solve.h"
+#include "orrery/sim/aero_view_data.h"
 #include "orrery/sim/background_task.h"
 
 // Phase 8b: the graphics-free side of the Aero workspace (geometry, flow
@@ -447,6 +448,69 @@ TEST_CASE("User models: import errors are reported, units are confirmed",
         REQUIRE_FALSE(refused.has_value());
         CHECK(refused.error().title == "URL refused");
         CHECK(refused.error().detail.starts_with("scheme_not_allowed"));
+    }
+}
+
+TEST_CASE("View data places the lattice where the solver put it", "[aero][workspace][view]") {
+    SECTION("2D: the section plane is the view's x-y plane") {
+        sim::AeroRunSpec spec;
+        spec.experiment = tiny_lbm_experiment();
+        spec.geometry = prepared(spec.experiment.geometry);
+        const sim::FlowSummary flow = spec.flow();
+        const aero::ReferenceValues reference =
+            sim::reference_values(*spec.geometry, spec.experiment.solver);
+        auto solver = sim::make_solver(spec.plan(), spec.experiment.solver);
+        solver->setup(sim::to_aero_geometry(*spec.geometry, spec.experiment.solver), flow.flow);
+        (void)solver->step();
+        const auto snapshot = sim::capture_flow(*solver, *spec.geometry, flow.flow, reference);
+        REQUIRE(snapshot.has_value());
+        REQUIRE(solver->result().velocity.has_value()); // zero angle of attack
+        const aero::VelocityField& field = *solver->result().velocity;
+        CHECK(snapshot.value().origin.x == Approx(field.origin.x).margin(1e-12));
+        CHECK(snapshot.value().origin.y == Approx(field.origin.z).margin(1e-12));
+        CHECK(snapshot.value().spacing == Approx(field.spacing));
+        CHECK(snapshot.value().step == 50);
+        const auto cp = sim::panel_cp(spec.geometry->section, solver->result().surface);
+        CHECK(cp.size() == spec.geometry->section.size());
+    }
+    SECTION("3D: the wind frame of the lattice") {
+        sim::AeroRunSpec spec;
+        spec.experiment.geometry = primitive(scene::AeroShape::sphere);
+        spec.experiment.geometry.dimensions.diameter_m = 0.1;
+        spec.experiment.conditions.speed_m_s = 0.5;
+        spec.experiment.conditions.viscosity_pa_s = 1.0e-3;
+        spec.experiment.solver.solver = aero::SolverKind::lattice_boltzmann;
+        spec.experiment.solver.lbm_cells_per_length = 6.0;
+        spec.geometry = prepared(spec.experiment.geometry);
+        const sim::FlowSummary flow = spec.flow();
+        const aero::ReferenceValues reference =
+            sim::reference_values(*spec.geometry, spec.experiment.solver);
+        auto solver = sim::make_solver(spec.plan(), spec.experiment.solver);
+        solver->setup(sim::to_aero_geometry(*spec.geometry, spec.experiment.solver), flow.flow);
+        (void)solver->step();
+        const auto snapshot = sim::capture_flow(*solver, *spec.geometry, flow.flow, reference);
+        REQUIRE(snapshot.has_value());
+        REQUIRE(solver->result().velocity.has_value());
+        const aero::VelocityField& field = *solver->result().velocity;
+        CHECK(snapshot.value().origin.x == Approx(field.origin.x).margin(1e-12));
+        CHECK(snapshot.value().origin.y == Approx(field.origin.y).margin(1e-12));
+        CHECK(snapshot.value().origin.z == Approx(field.origin.z).margin(1e-12));
+        const auto cp = sim::triangle_cp(spec.geometry->mesh, solver->result().surface);
+        CHECK(cp.size() == spec.geometry->mesh.triangles.size());
+    }
+    SECTION("frames are proper rotations") {
+        scene::AeroConditions c;
+        c.angle_of_attack_deg = 12.0;
+        c.sideslip_deg = 3.0;
+        for (const bool two_d : {false, true}) {
+            const sim::ViewFrame frame = sim::view_frame(c.flow(), two_d);
+            const geom::Vector3 x = sim::to_view({1, 0, 0}, frame);
+            const geom::Vector3 y = sim::to_view({0, 1, 0}, frame);
+            const geom::Vector3 z = sim::to_view({0, 0, 1}, frame);
+            CHECK(geom::dot(geom::cross(x, y), z) == Approx(1.0));
+            // The free stream runs along +x of the view.
+            CHECK(sim::to_view(frame.drag, frame).x == Approx(1.0));
+        }
     }
 }
 
