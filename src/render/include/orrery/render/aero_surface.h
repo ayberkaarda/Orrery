@@ -44,9 +44,10 @@ surface_from_result(const geom::TriangleMesh& mesh, const aero::AeroResult& resu
 extrude_section(std::span<const geom::SectionPoint> section, std::span<const double> cp,
                 double span, int divisions);
 
-// Per-vertex values for smooth shading: the area-weighted mean of the
-// finite values of the triangles around each vertex (NaN where none is
-// finite). triangle_values has one value per triangle.
+// Per-vertex values for smooth shading: the mean of the finite values of
+// the triangles around each vertex, weighted by the triangle's angle at the
+// vertex (so that how a quad is split does not matter); NaN where none is
+// finite. triangle_values has one value per triangle.
 [[nodiscard]] std::vector<double> vertex_values(const geom::TriangleMesh& mesh,
                                                 std::span<const double> triangle_values);
 

@@ -98,6 +98,20 @@ target_link_libraries(orrery_test_render PRIVATE orrery_scene)
 target_compile_definitions(orrery_test_render PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
 
+# Phase 8a: aero visualisation. CPU tests (colour maps, fields and section
+# sampling, surfaces, marching cubes, streamlines, the turntable camera)
+# always run; the GPU kernels against their CPU references and the golden
+# snapshots (NACA 0012 Cp, cylinder vortex street) are tagged [gl]. Goldens
+# live in render/golden/aero and are written only with ORRERY_UPDATE_GOLDEN=1.
+target_sources(orrery_test_render PRIVATE
+    render/aero/aero_test_support.h
+    render/aero/test_aero_colormap.cpp
+    render/aero/test_aero_field.cpp
+    render/aero/test_marching_cubes.cpp
+    render/aero/test_streamlines.cpp
+    render/aero/test_aero_view.cpp
+    render/aero/test_turntable.cpp)
+
 # Shader embedding of overlong lines: fixture shaders are generated at build
 # time and embedded by the production script into a header that the test
 # compiles (MSVC limits each string literal to 16380 bytes). The fixture

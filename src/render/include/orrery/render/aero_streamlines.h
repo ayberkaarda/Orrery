@@ -24,7 +24,7 @@
 // Particles move in time, dx/dt = u, with the second-order midpoint rule.
 //
 // The CPU functions here (double) are the reference of the GPU kernels
-// aero_vis_streamlines and aero_vis_particles (binary32).
+// aero_vis_flow_streamlines and aero_vis_flow_particles (binary32).
 namespace orrery::render {
 
 enum class TraceDirection : std::uint8_t { forward, backward, both };
@@ -73,5 +73,12 @@ trace_streamlines_gpu(aero::compute::IComputeBackend& backend, const VectorGrid&
 [[nodiscard]] std::optional<glm::dvec3> advect_particle(const VectorGrid& velocity,
                                                         std::span<const std::uint8_t> solid,
                                                         const glm::dvec3& position, double dt);
+
+// The same step for many particles in the GPU kernel (binary32), without
+// release or traces; `backend` must provide kernel_particles.
+[[nodiscard]] core::Result<std::vector<std::optional<glm::dvec3>>, std::string>
+advect_particles_gpu(aero::compute::IComputeBackend& backend, const VectorGrid& velocity,
+                     std::span<const std::uint8_t> solid, std::span<const glm::dvec3> positions,
+                     double dt);
 
 } // namespace orrery::render
