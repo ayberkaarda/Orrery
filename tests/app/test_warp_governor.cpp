@@ -249,6 +249,40 @@ TEST_CASE("A governed run reaches the same state as a plain run of the same step
     CHECK(core::state_hash(plain.state()) == core::state_hash(governed.state()));
 }
 
+TEST_CASE("Frame pacing changes the governed step count, never the state of a step count",
+          "[app][sim][warp][determinism]") {
+    // Equal wall time at different step costs: the governor lowers the warp
+    // of the costly run, so it takes fewer steps (README: the claim is per
+    // number of steps, not per wall-clock interval).
+    const auto governed_run = [](std::int64_t cost) {
+        FakeClock clock;
+        *clock.cost = cost;
+        SimulationConfig config;
+        config.dt_days = 0.05;
+        config.time_warp = 10'000'000;
+        config.warp_budget = WarpBudget{};
+        config.clock = clock.function();
+        Simulation simulation = app_test::make_simulation("sun_earth_moon.json", config);
+        for (int i = 0; i < 240; ++i) {
+            REQUIRE_FALSE(simulation.advance(kFrameNs).failed);
+        }
+        return simulation;
+    };
+    Simulation cheap = governed_run(1'000);
+    Simulation costly = governed_run(40'000'000);
+    const std::uint64_t cheap_steps = cheap.status().steps;
+    const std::uint64_t costly_steps = costly.status().steps;
+    REQUIRE(costly_steps < cheap_steps);
+    CHECK(core::state_hash(costly.state()) != core::state_hash(cheap.state()));
+
+    // Brought to the same number of steps, the states are bit-identical.
+    for (std::uint64_t i = costly_steps; i < cheap_steps; ++i) {
+        costly.apply(SingleStep{});
+    }
+    REQUIRE(costly.status().steps == cheap_steps);
+    CHECK(core::state_hash(costly.state()) == core::state_hash(cheap.state()));
+}
+
 TEST_CASE("An invalid warp budget is refused", "[app][sim][warp]") {
     SimulationConfig config;
     WarpBudget budget;

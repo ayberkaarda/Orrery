@@ -209,7 +209,7 @@ links):
 | Two-body orbits | analytic Kepler solution | Yoshida4 2.7e-8 AU after 10 orbits; Kepler period to 2.4e-10 |
 | Solar system, 1000 years, Yoshida4 | energy conservation | max abs(dE/E0) 1.4e-10 (target 1e-9) |
 | Circular orbit, 100 orbits, leapfrog | analytic orbit | 3.8e-7 AU (target 1e-6 AU) |
-| Determinism | state hash | bit-identical for any frame pacing and with the time-warp budget |
+| Determinism | state hash | bit-identical after the same number of steps, for any frame pacing and with the time-warp budget (which can change how many steps a stretch of wall-clock time takes) |
 | Paczynski-Wiita orbits and the ISCO | analytic period; stability at 3 r_s | period error 9e-12; stable above, plunging below |
 | Black hole lensing | weak-field deflection series, strong deflection (Bozza 2002), CPU geodesics | within the third-order term; Einstein ring radius matches to 0.01 px |
 | Geometry | closed-form volumes and areas | worst relative error 6.1e-14 over 65 checks |

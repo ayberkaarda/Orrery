@@ -220,7 +220,7 @@ belgelerdedir):
 | İki cisim yörüngeleri | analitik Kepler çözümü | Yoshida4 10 yörünge sonra 2.7e-8 AU; Kepler periyodu 2.4e-10'a kadar |
 | Güneş sistemi, 1000 yıl, Yoshida4 | enerji korunumu | en büyük abs(dE/E0) 1.4e-10 (hedef 1e-9) |
 | Dairesel yörünge, 100 yörünge, leapfrog | analitik yörünge | 3.8e-7 AU (hedef 1e-6 AU) |
-| Determinizm | durum özeti (hash) | her kare temposunda ve zaman hızlandırma bütçesiyle bit düzeyinde aynı |
+| Determinizm | durum özeti (hash) | aynı adım sayısından sonra, her kare temposunda ve zaman hızlandırma bütçesiyle (belli bir duvar saati süresinde atılan adım sayısını değiştirebilir) bit düzeyinde aynı |
 | Paczynski-Wiita yörüngeleri ve ISCO | analitik periyot; 3 r_s civarında kararlılık | periyot hatası 9e-12; üstünde kararlı, altında dalış |
 | Kara delik merceklenmesi | zayıf alan sapma serisi, güçlü sapma (Bozza 2002), CPU jeodezikleri | üçüncü mertebe terim içinde; Einstein halkası yarıçapı 0.01 px içinde eşleşir |
 | Geometri | kapalı biçimli hacimler ve alanlar | 65 denetimde en kötü göreli hata 6.1e-14 |

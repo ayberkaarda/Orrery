@@ -42,6 +42,12 @@ wall time credited, not on how it was split into frames, and the state is
 bit-identical for any frame pacing (tested with 60 Hz, 144 Hz, irregular
 1 to 50 ms frames and 250 ms chunks: same step count and `state_hash`), and
 bit-identical to calling the integrator directly the same number of times.
+This holds while only the count budget limits a call: the wall-clock step
+budget and the time-warp budget below make the number of steps in a given
+wall time depend on measured costs, and runs then agree after the same
+number of steps (tested: two governed runs at different step costs take
+different step counts over the same wall time and reach the same
+`state_hash` once their counts match).
 
 **Step budget.** One `advance` takes at most `max_steps_per_advance` steps
 (experiment setting `max_steps_per_frame`, default 4096) and, interactively,
