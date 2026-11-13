@@ -45,6 +45,14 @@ target_sources(orrery_test_aero PRIVATE
     aero/test_newtonian.cpp)
 add_subdirectory(aero_validation)
 
+# Phase 9a: atmosphere models, the Cd(Mach) table (literal data and sampled
+# from the aero solvers), atmospheric drag and the entry experiment.
+target_sources(orrery_test_atmo PRIVATE
+    atmo/test_atmosphere.cpp
+    atmo/test_aero_table.cpp
+    atmo/test_drag.cpp
+    atmo/test_entry.cpp)
+
 # Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
 # shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
 # context and are reported as skipped when none can be created (set
@@ -232,6 +240,7 @@ add_executable(orrery_test_scene
     scene/test_scenario_roundtrip.cpp
     scene/test_experiment.cpp
     scene/test_aero_experiment.cpp
+    scene/test_entry_experiment.cpp
     scene/test_scene_limits.cpp)
 target_link_libraries(orrery_test_scene PRIVATE orrery_scene Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_scene PRIVATE
