@@ -1,0 +1,2 @@
+# Upstream notices are kept byte for byte: their SHA-256 is pinned in notices.cmake.
+*.txt -text

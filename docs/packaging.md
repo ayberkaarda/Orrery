@@ -54,9 +54,31 @@ portable copy. Package builds set `ORRERY_SOURCE_ASSET_FALLBACK=OFF`, so no
 build machine path is compiled into a shipped executable (the install test
 checks this).
 
+### Third-party notices
+
 `share/doc/orrery/third_party` holds the licence notice of every vcpkg
 library of the build (vcpkg's `copyright` file per port; build helpers and
-the test framework are left out).
+the test framework are left out). Where a library's licence asks for more
+than that file, the extra notice is kept in `packaging/third_party/<port>/`,
+copied verbatim from the upstream release the port builds, and listed in
+`packaging/third_party/notices.cmake` with that release's version, its
+SHA-256 and its source URL. Configuring fails when vcpkg moves the port to
+another version (the notice must be taken again from the new release) or
+when the file's checksum differs.
+
+| Port | Bundled as | Extra notice | Why |
+|---|---|---|---|
+| `tbb` (oneTBB 2023.2.0) | `tbb12.dll`; statically linked on Linux | `third-party-programs.txt` from the upstream `v2023.2.0` tag | the library contains the ITT Notify API, whose BSD licence requires its notice in binary distributions; vcpkg's `copyright` holds only Apache-2.0 |
+
+The other ports' `copyright` files already carry everything their licences
+ask for (for example, assimp's includes the licences of the code it bundles:
+earcut, openddlparser and Open3DGC). The MSVC runtime DLLs are distributed
+under the distributable-code terms of the Visual Studio licence.
+`install.relocated` checks the installed tree against this
+(`packaging/check_notices.cmake`): every DLL beside the Windows executable
+must map to a port whose notice is installed (an unknown DLL fails the test
+until its licence has been looked at), and every port with an extra notice
+must have it, with the pinned checksum.
 
 ## 3. Building the packages locally
 

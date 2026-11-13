@@ -88,6 +88,35 @@ if(DEFINED VCPKG_INSTALLED_DIR AND DEFINED VCPKG_TARGET_TRIPLET)
             install(FILES "${copyright}" DESTINATION "${ORRERY_INSTALL_DOC_DIR}/third_party/${port}")
         endif()
     endforeach()
+    # Notices some libraries require beyond their copyright file
+    # (packaging/third_party/notices.cmake), checked against the port version
+    # they were taken from and their pinned SHA-256.
+    include("${PROJECT_SOURCE_DIR}/packaging/third_party/notices.cmake")
+    foreach(entry IN LISTS ORRERY_EXTRA_NOTICES)
+        string(REPLACE "|" ";" fields "${entry}")
+        list(GET fields 0 port)
+        list(GET fields 1 notice_file)
+        list(GET fields 2 notice_version)
+        list(GET fields 3 notice_sha256)
+        set(port_share "${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/${port}")
+        if(NOT EXISTS "${port_share}/copyright")
+            continue()
+        endif()
+        file(READ "${port_share}/vcpkg.spdx.json" port_spdx)
+        string(JSON port_version ERROR_VARIABLE port_version_error
+            GET "${port_spdx}" packages 0 versionInfo)
+        if(NOT port_version STREQUAL notice_version)
+            message(FATAL_ERROR "vcpkg port ${port} is version '${port_version}', but "
+                "packaging/third_party/${port}/${notice_file} is the notice of ${notice_version}: "
+                "take the notice of the new version from upstream and update notices.cmake")
+        endif()
+        set(notice "${PROJECT_SOURCE_DIR}/packaging/third_party/${port}/${notice_file}")
+        file(SHA256 "${notice}" actual_sha256)
+        if(NOT actual_sha256 STREQUAL notice_sha256)
+            message(FATAL_ERROR "${notice}: SHA-256 ${actual_sha256}, pinned ${notice_sha256}")
+        endif()
+        install(FILES "${notice}" DESTINATION "${ORRERY_INSTALL_DOC_DIR}/third_party/${port}")
+    endforeach()
 endif()
 
 if(UNIX AND NOT APPLE)

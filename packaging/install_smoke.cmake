@@ -2,6 +2,8 @@
 # temporary prefix, moves the installed tree elsewhere and runs the moved
 # application with a clean library search path. Checks:
 #   - the layout: bin/orrery_app, the bundled assets, no debug information;
+#   - the third-party notices match what the tree bundles
+#     (packaging/check_notices.cmake);
 #   - every relative link and image of the installed documentation
 #     (share/doc/orrery: the READMEs and docs/) resolves inside that folder
 #     (tools/check_docs.py --tree, run with PYTHON);
@@ -47,6 +49,14 @@ foreach(required IN ITEMS "${exe}" "${prefix}/${ASSET_DIR}/experiments/solar_sys
         message(FATAL_ERROR "missing from the installed tree: ${required}")
     endif()
 endforeach()
+
+include("${CMAKE_CURRENT_LIST_DIR}/check_notices.cmake")
+orrery_notice_problems(notice_problems "${prefix}")
+if(notice_problems)
+    string(REPLACE ";" "\n  " notice_problems "${notice_problems}")
+    message(FATAL_ERROR "third-party notices:\n  ${notice_problems}")
+endif()
+message(STATUS "third-party notices: complete")
 
 execute_process(COMMAND "${PYTHON}" "${SOURCE_DIR}/tools/check_docs.py"
         --tree "${prefix}/share/doc/orrery"
