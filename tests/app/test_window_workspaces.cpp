@@ -155,9 +155,9 @@ TEST_CASE("Aero workspace through the hidden window", "[app][window][gl]") {
         return aero_state(f) == sim::AeroRunState::setting_up ||
                aero_state(f) == sim::AeroRunState::running;
     }));
-    session.then(Step{"it steps", {}, [](const WindowFrame& f) {
-                          return aero_state(f) == sim::AeroRunState::running;
-                      }});
+    session.then(make_step("it steps", {}, [](const WindowFrame& f) {
+        return aero_state(f) == sim::AeroRunState::running;
+    }));
     session.then(timed_press("Space pauses it", timing, kSpace, [](const WindowFrame& f) {
         return aero_state(f) == sim::AeroRunState::paused;
     }));
@@ -213,9 +213,9 @@ TEST_CASE("Aero workspace through the hidden window", "[app][window][gl]") {
         return true;
     };
     session.then(reopen);
-    session.then(Step{"the view shows it", {}, [](const WindowFrame& f) {
-                          return f.drawn && f.aero->geometry_ready() && !f.aero->busy();
-                      }});
+    session.then(make_step("the view shows it", {}, [](const WindowFrame& f) {
+        return f.drawn && f.aero->geometry_ready() && !f.aero->busy();
+    }));
 
     auto request = space_request(experiment_dir() / "sun_earth_moon.json", dir);
     request.aero_experiment = aero_experiment("aero_naca0012_lbm.json");
@@ -270,14 +270,13 @@ TEST_CASE("Entry workspace through the hidden window", "[app][window][gl]") {
         return entry_state(f) == sim::EntryRunState::finished && f.entry->shown_trace();
     };
     session.then(to_ground);
-    session.then(Step{"Ctrl+S saves it",
-                      press(kCtrlS),
-                      [](const WindowFrame& f) {
-                          f.entry->refresh_experiments();
-                          return f.entry->experiments().entries.size() == 1;
-                      },
-                      120,
-                      {}});
+    session.then(make_step(
+        "Ctrl+S saves it", press(kCtrlS),
+        [](const WindowFrame& f) {
+            f.entry->refresh_experiments();
+            return f.entry->experiments().entries.size() == 1;
+        },
+        120));
     Step compare;
     compare.name = "the saved run is compared and the table exported";
     compare.done = [](const WindowFrame& f) {
@@ -291,7 +290,8 @@ TEST_CASE("Entry workspace through the hidden window", "[app][window][gl]") {
         return true;
     };
     session.then(compare);
-    session.then(Step{"the comparison is drawn", {}, [](const WindowFrame& f) { return f.drawn; }});
+    session.then(
+        make_step("the comparison is drawn", {}, [](const WindowFrame& f) { return f.drawn; }));
 
     auto request = space_request(experiment_dir() / "sun_earth_moon.json", dir);
     auto entry = sim::load_entry_experiment_file(experiment_dir() / "entry_apollo_like.json");

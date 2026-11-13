@@ -382,8 +382,10 @@ TEST_CASE("The window's framebuffer holds the frame with its panels", "[app][win
             }
         }
         REQUIRE(count > 20.0); // the Sun's disk and glare, not a few stars
-        const double cx = central->Pos.x + 0.5 * central->Size.x;
-        const double cy = central->Pos.y + 0.5 * central->Size.y;
+        const double cx =
+            static_cast<double>(central->Pos.x) + 0.5 * static_cast<double>(central->Size.x);
+        const double cy =
+            static_cast<double>(central->Pos.y) + 0.5 * static_cast<double>(central->Size.y);
         INFO("Sun at " << sx / count << ", " << sy / count << "; scene area centre " << cx << ", "
                        << cy);
         CHECK(std::abs(sx / count - cx) < 12.0);

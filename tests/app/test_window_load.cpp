@@ -145,9 +145,9 @@ TEST_CASE("The warp budget holds a heavy load down and lets go of it", "[app][wi
         }
         return true;
     });
-    session.then(Step{"the heavy system runs", {}, [](const WindowFrame& f) {
-                          return f.drawn && f.status->steps > 1000 && !f.status->paused;
-                      }});
+    session.then(make_step("the heavy system runs", {}, [](const WindowFrame& f) {
+        return f.drawn && f.status->steps > 1000 && !f.status->paused;
+    }));
     Step raise;
     raise.name = "a held ] requests 1e7x";
     raise.inputs = hold(kCloseBracket, 5);
@@ -248,16 +248,16 @@ TEST_CASE("Sessions end with every thread joined and exit code 0", "[app][window
     const std::filesystem::path dir = session_dir("threads");
     const auto visit_all = [] {
         auto session = std::make_shared<Session>();
-        session->then(Step{"Space", {}, [](const WindowFrame& f) { return f.index >= 5; }});
-        session->then(Step{"Aero", press(kCtrl2), [](const WindowFrame& f) {
-                               return f.workspace == app::Workspace::aero;
-                           }});
-        session->then(Step{"Entry", press(kCtrl3), [](const WindowFrame& f) {
-                               return f.workspace == app::Workspace::entry;
-                           }});
-        session->then(Step{"Space again", press(kCtrl1), [](const WindowFrame& f) {
-                               return f.workspace == app::Workspace::space;
-                           }});
+        session->then(make_step("Space", {}, [](const WindowFrame& f) { return f.index >= 5; }));
+        session->then(make_step("Aero", press(kCtrl2), [](const WindowFrame& f) {
+            return f.workspace == app::Workspace::aero;
+        }));
+        session->then(make_step("Entry", press(kCtrl3), [](const WindowFrame& f) {
+            return f.workspace == app::Workspace::entry;
+        }));
+        session->then(make_step("Space again", press(kCtrl1), [](const WindowFrame& f) {
+            return f.workspace == app::Workspace::space;
+        }));
         return session;
     };
     // The first session starts the driver's own threads, which stay.

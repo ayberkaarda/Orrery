@@ -59,6 +59,16 @@ struct Step {
     Input every_frame;
 };
 
+inline Step make_step(std::string name, std::vector<Input> inputs, Condition done,
+                      std::int64_t max_frames = 600) {
+    Step step;
+    step.name = std::move(name);
+    step.inputs = std::move(inputs);
+    step.done = std::move(done);
+    step.max_frames = max_frames;
+    return step;
+}
+
 // With ORRERY_WINDOW_SESSION_SHOTS=<dir> set, writes the frame (the window's
 // back buffer) to <dir>/<name>.png, for looking at the states a session
 // passes through; otherwise does nothing.
