@@ -256,7 +256,8 @@ belgelerdedir):
 | Akışa dik plaka, LBM 3B | Cd yaklaşık 1.28, yüzde 15 | Cd 1.158 |
 | CPU'ya karşı GPU lattice Boltzmann | göreli L2 1e-4 altında | akış oturduktan sonra sağlanır (sınırlamalara bakın) |
 | US Standard Atmosphere 1976 | yayımlanmış tablo | katman değerleri basılı hassasiyete kadar |
-| Apollo benzeri giriş | tepe 6 ile 8 g; enerji dengesi yüzde 1 içinde | 6.78 g; enerji hatası 2.1e-5 |
+| Apollo benzeri giriş, enerji dengesi | iş-enerji teoremi: yörünge enerjisindeki değişim sürüklenme işine yüzde 1 içinde eşittir | göreli hata 2.1e-5 (0.1 s adımla 8.5e-7) |
+| Apollo benzeri giriş, tepe yavaşlama (doğrulama değil, ayarlanmış bir durum) | Apollo'nun 6 ile 8 g bandı; -5.7 derecelik giriş açısı, yalnız sürüklenmeli modelin (kaldırma yok, [ADR-012](docs/adr/012-entry-dynamics.md)) bu banda düşmesi için seçilmiştir | 6.78 g; gerçek Apollo açısı -6.5 derecede model kaldırmasız yaklaşık 15.3 g verir |
 | Allen-Eggers balistik giriş | analitik tepe yavaşlama | yüzde 0.5 içinde |
 
 ## Sınırlamalar

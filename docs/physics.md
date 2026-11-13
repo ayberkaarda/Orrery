@@ -869,7 +869,7 @@ ADR-021). SI throughout.
 |---|---|---|---|
 | US76 at the layer boundaries (and 5 km') | `sample_geopotential` against Table I | TM, P, rho, a equal to the printed values (half a unit of the last digit) | published precision |
 | US76 base pressures | computed from the constants | 101325, 22632.06, 5474.889, 868.0187, 110.9063, 66.93887, 3.956420, 0.3733836 Pa | Table 4, seven figures |
-| Apollo-like ballistic entry | 11.0 km/s, -5.7 degrees, Cd 1.3, 5560 kg, 12.02 m^2 | peak 6.78 g at 224.5 s, impact at 438.1 s, 1.47 MW/m^2 peak heat flux | 6 to 8 g |
+| Apollo-like ballistic entry | 11.0 km/s, -5.7 degrees, Cd 1.3, 5560 kg, 12.02 m^2 | peak 6.78 g at 224.5 s, impact at 438.1 s, 1.47 MW/m^2 peak heat flux | 6 to 8 g; a calibration, not a validation: the angle was chosen so that the drag-only model lands in the band ([atmosphere.md](atmosphere.md#scenarios-and-measured-values)); at -6.5 degrees, the real Apollo angle, it gives 15.3 g |
 | Energy balance | same | relative error 2.1e-5 (dt 0.5 s), 8.5e-7 (dt 0.1 s) | below 1 percent |
 | Skip-out | -5.0 degrees | 1.07 g pass to 71.6 km, exits at 225 s, bound | leaves the atmosphere, event reported |
 | Allen-Eggers | exponential, no gravity, 10 km/s, -60 degrees | 224.6 g against 225.6 g (-0.46 percent) | within 1.5 percent |

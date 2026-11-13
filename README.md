@@ -244,7 +244,8 @@ links):
 | Plate normal to the flow, LBM 3D | Cd about 1.28, 15 percent | Cd 1.158 |
 | GPU against CPU lattice Boltzmann | relative L2 below 1e-4 | met after the flow settles (see limitations) |
 | US Standard Atmosphere 1976 | published table | layer values to the printed precision |
-| Apollo-like entry | peak 6 to 8 g; energy balance within 1 percent | 6.78 g; energy error 2.1e-5 |
+| Apollo-like entry, energy balance | work-energy theorem: the change of orbital energy equals the drag work, within 1 percent | relative error 2.1e-5 (8.5e-7 at a 0.1 s step) |
+| Apollo-like entry, peak deceleration (a calibrated case, not a validation) | the 6 to 8 g band of Apollo; the entry angle -5.7 degrees was chosen so that the drag-only model (no lift, [ADR-012](docs/adr/012-entry-dynamics.md)) lands in it | 6.78 g; at the real Apollo angle, -6.5 degrees, the model gives about 15.3 g without lift |
 | Allen-Eggers ballistic entry | analytic peak deceleration | within 0.5 percent |
 
 ## Limitations
