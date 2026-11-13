@@ -58,6 +58,13 @@ struct AeroViewState {
     bool running = false; // particles advance only while the solver runs
 };
 
+// The coefficients the Results panel shows.
+struct AeroShownResult {
+    double cd = 0.0;
+    double cl = 0.0;
+    bool recorded = false; // from the loaded record, not from a run
+};
+
 class AeroWorkspace {
 public:
     explicit AeroWorkspace(AeroWorkspaceOptions options);
@@ -96,6 +103,9 @@ public:
     [[nodiscard]] const scene::AeroExperiment& experiment() const noexcept;
     [[nodiscard]] bool geometry_ready() const noexcept;
     [[nodiscard]] bool busy() const noexcept; // a background task is running
+    // Of the workspace's own run, else of the loaded record; nullopt when
+    // there is neither.
+    [[nodiscard]] std::optional<AeroShownResult> shown_result() const;
     // Starts a run of the current inputs; false (with the reason in the
     // status line) when the geometry is not ready or an input is invalid.
     bool start_run();

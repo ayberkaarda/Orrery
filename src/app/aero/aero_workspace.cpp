@@ -513,6 +513,13 @@ struct AeroWorkspace::Impl {
         run_record = std::move(record);
     }
 
+    // Whether the panels show the solver's published run: only a run of the
+    // current experiment (run_inputs is cleared when another one is opened,
+    // before the solver thread has even seen the stop).
+    [[nodiscard]] bool shows_run(const sim::AeroProgress& p) const {
+        return p.result != nullptr && p.spec != nullptr && run_inputs.has_value();
+    }
+
     void set_notice(std::string message, bool is_error) {
         notice = std::move(message);
         notice_is_error = is_error;
@@ -522,7 +529,7 @@ struct AeroWorkspace::Impl {
 
     [[nodiscard]] aero::FlowConditions view_conditions() const {
         const sim::AeroProgress& p = runner.latest();
-        if (p.spec && p.spec->geometry == geometry) {
+        if (p.spec && p.spec->geometry == geometry && run_inputs) {
             return p.flow.flow;
         }
         return experiment.conditions.flow();
@@ -532,7 +539,7 @@ struct AeroWorkspace::Impl {
     // which have a flow field to show.
     [[nodiscard]] bool wake_view() const {
         const sim::AeroProgress& p = runner.latest();
-        if (p.spec && p.spec->geometry == geometry) {
+        if (p.spec && p.spec->geometry == geometry && run_inputs) {
             return p.status.solver == aero::SolverKind::lattice_boltzmann;
         }
         return input_flow().solver == aero::SolverKind::lattice_boltzmann;
@@ -720,7 +727,8 @@ struct AeroWorkspace::Impl {
     };
 
     void draw_results_panel();
-    void draw_run_status(const sim::AeroProgress& p, const scene::AeroResultRecord* record);
+    void draw_run_status(const sim::AeroProgress& p, bool live,
+                         const scene::AeroResultRecord* record);
     aero::ReferenceValues draw_reference(bool two_d);
     void draw_coefficients(const ShownCoefficients& c, bool two_d);
     void draw_breakdown(const aero::AeroResult& r, double area_factor, bool two_d);
@@ -1127,10 +1135,9 @@ void AeroWorkspace::Impl::draw_flow_panel() {
 
 // --- Results panel -------------------------------------------------------------------
 
-void AeroWorkspace::Impl::draw_run_status(const sim::AeroProgress& p,
+void AeroWorkspace::Impl::draw_run_status(const sim::AeroProgress& p, bool live,
                                           const scene::AeroResultRecord* record) {
     const sim::AeroRunState state = p.status.state;
-    const bool live = p.result != nullptr && p.spec != nullptr;
     if (live || state == sim::AeroRunState::setting_up || state == sim::AeroRunState::failed) {
         w::text(std::string(sim::solver_display_name(p.status.solver)) +
                 (p.status.two_dimensional ? " (2D)" : " (3D)"));
@@ -1316,10 +1323,10 @@ void AeroWorkspace::Impl::draw_results_panel() {
         return;
     }
     const sim::AeroProgress& p = runner.latest();
-    const bool live = p.result != nullptr && p.spec != nullptr;
+    const bool live = shows_run(p);
     const scene::AeroResultRecord* record =
         !live && loaded_result.has_value() ? &loaded_result.value() : nullptr;
-    draw_run_status(p, record);
+    draw_run_status(p, live, record);
 
     const bool two_d = geometry != nullptr && geometry->two_dimensional;
     const aero::ReferenceValues shown = draw_reference(two_d);
@@ -1917,7 +1924,7 @@ AeroViewState AeroWorkspace::view_state() const {
     const sim::AeroProgress& p = s.runner.latest();
     // A run's view data belongs to its own geometry: show it only while that
     // geometry is the current one.
-    if (p.spec && p.spec->geometry == s.geometry) {
+    if (p.spec && p.spec->geometry == s.geometry && s.run_inputs) {
         state.result = p.result;
         state.surface_cp = p.surface_cp;
         state.flow = p.flow_field;
@@ -1937,6 +1944,18 @@ const scene::AeroExperiment& AeroWorkspace::experiment() const noexcept {
 
 bool AeroWorkspace::geometry_ready() const noexcept {
     return impl_->geometry != nullptr && !impl_->geometry_task.started();
+}
+
+std::optional<AeroShownResult> AeroWorkspace::shown_result() const {
+    const Impl& s = *impl_;
+    const sim::AeroProgress& p = s.runner.latest();
+    if (s.shows_run(p)) {
+        return AeroShownResult{p.result->cd, p.result->cl, false};
+    }
+    if (s.loaded_result) {
+        return AeroShownResult{s.loaded_result->cd, s.loaded_result->cl, true};
+    }
+    return std::nullopt;
 }
 
 bool AeroWorkspace::busy() const noexcept {

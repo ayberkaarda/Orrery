@@ -219,7 +219,9 @@ or the loaded record used exactly these inputs, its result: a loaded result
 is dropped once a condition, a solver setting or the geometry changes, and
 comes back when they are restored; written to a temporary file and renamed
 into place), the saved list of the experiments folder (unreadable
-aero files are listed as problems, other domains skipped), Load, and the
+aero files are listed as problems, other domains skipped), Load (which
+stops the current run; from then on the panels and the view show the loaded
+record, never the previous experiment's run, until a new run starts), and the
 **comparison table**: runs grouped by identical geometry, sorted by angle of
 attack, with Cd, Cl, Cm, their differences to the lowest angle, L/D, and the
 least-squares lift slope per degree and per radian (2 pi for thin-airfoil

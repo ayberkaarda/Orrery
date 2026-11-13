@@ -216,6 +216,42 @@ TEST_CASE("An edited loaded experiment is saved without its recorded result", "[
     CHECK(saved_with_result(h.workspace));
 }
 
+TEST_CASE("Opening another experiment shows its results, not the last run's",
+          "[app][ui][aero]") {
+    const std::filesystem::path dir = scratch("open_other");
+    Harness h(dir);
+    REQUIRE(h.frames_until([&] { return h.workspace.geometry_ready(); }));
+    REQUIRE(h.workspace.start_run());
+    REQUIRE(h.frames_until(
+        [&] { return h.workspace.progress().status.state == sim::AeroRunState::finished; }));
+    const std::optional<app::AeroShownResult> solved = h.workspace.shown_result();
+    REQUIRE(solved.has_value());
+    CHECK_FALSE(solved.value_or(app::AeroShownResult{}).recorded);
+
+    scene::AeroExperiment other;
+    other.name = "other section";
+    other.geometry.shape = scene::AeroShape::naca_section;
+    other.conditions.angle_of_attack_deg = -6.0;
+    scene::AeroResultRecord record;
+    record.cd = 0.5;
+    record.cl = -0.75;
+    other.result = record;
+    h.workspace.open(other, dir);
+    const auto shows_other = [&] {
+        const std::optional<app::AeroShownResult> shown = h.workspace.shown_result();
+        REQUIRE(shown.has_value());
+        const app::AeroShownResult value = shown.value_or(app::AeroShownResult{});
+        CHECK(value.recorded);
+        CHECK(value.cd == 0.5);
+        CHECK(value.cl == -0.75);
+    };
+    shows_other(); // at once, before the solver thread saw the switch
+    REQUIRE(h.frames_until([&] { return h.workspace.geometry_ready(); }));
+    (void)h.frame();
+    shows_other();
+    CHECK(h.workspace.view_state().result == nullptr);
+}
+
 TEST_CASE("Aero experiments opened in the workspace keep their record", "[app][ui][aero]") {
     const std::filesystem::path dir = scratch("open");
     Harness h(dir);
