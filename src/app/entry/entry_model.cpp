@@ -301,4 +301,47 @@ double ballistic_coefficient(const EntrySetup& setup) noexcept {
     return setup.mass_kg / denominator;
 }
 
+std::vector<EntryPreset> entry_presets() {
+    // Apollo command module: 3.91 m heat shield (12.02 m^2), 4.69 m spherical
+    // radius, about 5.5 t at entry; flown here without lift (ADR-012), so the
+    // angle sits near the shallow edge of the lunar-return corridor, where the
+    // peak load stays in the 6-8 g band.
+    EntrySetup apollo;
+    apollo.name = "Apollo-like entry";
+    apollo.speed_m_s = 11'000.0;
+    apollo.flight_path_angle_deg = -5.75;
+    apollo.latitude_deg = -12.0;
+    apollo.longitude_deg = 150.0;
+    apollo.heading_deg = 60.0;
+
+    EntrySetup leo = apollo;
+    leo.name = "Low Earth orbit return";
+    leo.speed_m_s = 7'800.0;
+    leo.flight_path_angle_deg = -1.5;
+
+    EntrySetup skip = apollo;
+    skip.name = "Grazing lunar return (skip-out)";
+    skip.flight_path_angle_deg = -5.0;
+
+    // Mars Science Laboratory: 4.5 m 70-degree sphere-cone, 1.125 m nose
+    // radius, about 3.3 t, 5.8 km/s at the entry interface.
+    EntrySetup mars;
+    mars.name = "Mars entry (MSL-like)";
+    mars.planet = EntryPlanet::mars;
+    mars.mass_kg = 3'300.0;
+    mars.reference_area_m2 = 15.9;
+    mars.nose_radius_m = 1.125;
+    mars.cd_table = {{0.5, 1.00}, {1.5, 1.40}, {3.0, 1.60}, {10.0, 1.68}, {30.0, 1.68}};
+    mars.altitude_m = 125'000.0;
+    mars.speed_m_s = 5'800.0;
+    mars.flight_path_angle_deg = -15.5;
+    mars.latitude_deg = -4.6;
+    mars.longitude_deg = 137.4;
+    mars.heading_deg = 100.0;
+    return {{"Apollo-like lunar return", apollo},
+            {"Low Earth orbit return", leo},
+            {"Grazing lunar return (skip-out)", skip},
+            {"Mars entry (MSL-like)", mars}};
+}
+
 } // namespace orrery::sim

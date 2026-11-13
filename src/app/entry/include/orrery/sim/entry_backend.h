@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
 #include <functional>
 #include <memory>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "orrery/core/result.h"
 #include "orrery/sim/entry_model.h"
@@ -52,5 +55,25 @@ struct EntryRunResult {
     EntrySummary summary;
 };
 [[nodiscard]] core::Result<EntryRunResult, std::string> run_entry(const EntrySetup& setup);
+
+// Cd(Mach) from the aero solver (spec 6: "sampled from the aero solver at
+// about five Mach numbers"): modified Newtonian theory on a primitive body
+// whose frontal area is the entry's reference area, so the coefficients
+// need no renormalisation. Below Mach 5 Newtonian theory is outside its
+// envelope; the points are still produced and flagged in `warnings`.
+enum class CdBody : std::uint8_t { apollo_capsule, orion_capsule, sphere };
+struct CdSampling {
+    CdBody body = CdBody::apollo_capsule;
+    double reference_area_m2 = 12.02;
+    std::vector<double> mach{2.0, 5.0, 10.0, 15.0, 25.0};
+};
+struct CdSamples {
+    std::vector<MachCd> table;
+    std::string label; // the body ("Apollo-type capsule, d 3.91 m")
+    std::vector<std::string> warnings;
+};
+[[nodiscard]] std::string_view cd_body_name(CdBody body) noexcept;
+// Runs on the calling thread (a background task in the workspace).
+[[nodiscard]] core::Result<CdSamples, std::string> sample_cd_table(const CdSampling& sampling);
 
 } // namespace orrery::sim

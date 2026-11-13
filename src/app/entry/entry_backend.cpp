@@ -7,6 +7,11 @@
 #include <stdexcept>
 #include <utility>
 
+#include "orrery/scene/aero_experiment.h"
+#include "orrery/sim/aero_flow.h"
+#include "orrery/sim/aero_geometry.h"
+#include "orrery/sim/aero_solve.h"
+
 namespace orrery::sim {
 
 namespace {
@@ -261,6 +266,72 @@ core::Result<EntryRunResult, std::string> run_entry(const EntrySetup& setup) {
     }
     result.summary = summarize(result.series, stepper.outcome());
     return result;
+}
+
+std::string_view cd_body_name(CdBody body) noexcept {
+    switch (body) {
+        case CdBody::apollo_capsule:
+            return "Apollo-type capsule";
+        case CdBody::orion_capsule:
+            return "Orion-type capsule";
+        case CdBody::sphere:
+            return "Sphere";
+    }
+    return "Sphere";
+}
+
+core::Result<CdSamples, std::string> sample_cd_table(const CdSampling& sampling) {
+    if (!(sampling.reference_area_m2 > 0.0) || !std::isfinite(sampling.reference_area_m2)) {
+        return core::failure(std::string("the reference area must be positive"));
+    }
+    if (sampling.mach.empty()) {
+        return core::failure(std::string("no Mach numbers to sample"));
+    }
+    scene::AeroExperiment experiment;
+    experiment.geometry.source = scene::GeometrySource::primitive;
+    experiment.geometry.shape =
+        sampling.body == CdBody::sphere ? scene::AeroShape::sphere : scene::AeroShape::capsule;
+    experiment.geometry.capsule = sampling.body == CdBody::orion_capsule ? "orion" : "apollo";
+    experiment.geometry.dimensions.diameter_m =
+        std::sqrt(4.0 * sampling.reference_area_m2 / std::numbers::pi);
+    experiment.solver.solver = aero::SolverKind::newtonian;
+    experiment.solver.reference_area = geom::ReferenceAreaKind::frontal;
+    auto built = build_primitive(experiment.geometry);
+    if (!built) {
+        return core::failure(built.error().title + ": " + built.error().detail);
+    }
+    AeroRunSpec spec;
+    spec.geometry = std::make_shared<const PreparedGeometry>(std::move(built).value());
+    CdSamples samples;
+    samples.label = spec.geometry->label;
+    // Cold upper-atmosphere air; Newtonian Cd depends on Mach only.
+    constexpr double kTemperature = 250.0;
+    constexpr double kGamma = 1.4;
+    constexpr double kGas = 287.05;
+    const double sound = std::sqrt(kGamma * kGas * kTemperature);
+    std::vector<double> mach = sampling.mach;
+    std::sort(mach.begin(), mach.end());
+    mach.erase(std::unique(mach.begin(), mach.end()), mach.end());
+    for (const double m : mach) {
+        if (!(m > 0.0) || !std::isfinite(m)) {
+            return core::failure(std::string("Mach numbers must be positive"));
+        }
+        spec.experiment = experiment;
+        spec.experiment.conditions.speed_m_s = m * sound;
+        spec.experiment.conditions.temperature_k = kTemperature;
+        spec.experiment.conditions.density_kg_m3 = 1.0e-3;
+        spec.experiment.conditions.angle_of_attack_deg = 0.0;
+        auto solved = solve(spec);
+        if (!solved) {
+            return core::failure("Mach " + format_significant(m, 3) + ": " + solved.error());
+        }
+        samples.table.push_back({m, solved.value().result.cd});
+        if (m < 5.0) {
+            samples.warnings.push_back("Mach " + format_significant(m, 3) +
+                                       ": below Mach 5, outside Newtonian theory's envelope");
+        }
+    }
+    return samples;
 }
 
 } // namespace orrery::sim

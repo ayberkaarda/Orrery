@@ -170,4 +170,11 @@ flight_path_angle_for_periapsis(EntryPlanet planet, double altitude_m, double sp
 // 0 when it cannot be formed.
 [[nodiscard]] double ballistic_coefficient(const EntrySetup& setup) noexcept;
 
+// Starting points of the setup panel; the first is the workspace default.
+struct EntryPreset {
+    const char* label;
+    EntrySetup setup;
+};
+[[nodiscard]] std::vector<EntryPreset> entry_presets();
+
 } // namespace orrery::sim
