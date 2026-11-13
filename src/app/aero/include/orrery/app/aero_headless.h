@@ -13,8 +13,9 @@
 // Headless rendering of an aero experiment (spec 7.7 for the Aero workspace;
 // docs/aero-workspace.md, "Headless"): the geometry is prepared as in the
 // workspace (relative paths against `base_dir`), the solver runs on the
-// calling thread - a time-marching solver for `frames` frames of the
-// experiment's steps_per_frame lattice steps (capped at its duration), or to
+// calling thread - a time-marching solver for exactly `frames` frames of the
+// experiment's steps_per_frame lattice steps (capped at its duration; the
+// solver calls then advance a divisor of that count), or to
 // completion when frames is 0; a direct solver always to completion - and
 // the Aero view draws the result with the workspace's default layers and
 // framing. The lattice Boltzmann solvers run on the CPU, so the image is

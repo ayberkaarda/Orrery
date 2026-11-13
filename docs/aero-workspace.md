@@ -242,8 +242,11 @@ written quoted with an apostrophe in front, so they open as text.
 [--frame N] [--size WxH]` reads the domain first and renders aero
 experiments through `app::render_aero_headless`: the geometry is prepared as
 in the workspace, the solver runs on the calling thread (a time-marching
-solver for N frames of the experiment's steps_per_frame lattice steps, or
-to completion when N is 0; a direct solver always to completion), and the
+solver for exactly N frames of the experiment's steps_per_frame lattice
+steps - its calls advance the largest divisor of that count up to the usual
+50 (2D) or 20 (3D) steps, so `--frame 1` with 1 step per frame renders
+lattice step 1 - or to completion when N is 0; a direct solver always to
+completion), and the
 aero view draws it with the workspace's default layers and framing. The
 summary line names the body, solver, angle of attack, Reynolds and Mach
 numbers, coefficients, lattice steps, convergence and each warning.

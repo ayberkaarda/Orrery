@@ -34,12 +34,19 @@ struct SolverPlan {
 };
 
 [[nodiscard]] std::size_t lbm_steps_per_call(bool two_dimensional) noexcept;
+// Lattice steps per call for a run limited to `limit` lattice steps: the
+// largest divisor of the limit up to lbm_steps_per_call, so that whole calls
+// end exactly at the limit (lbm_steps_per_call without a limit or for 0).
+[[nodiscard]] std::size_t lbm_steps_per_call_for(bool two_dimensional,
+                                                 std::optional<std::uint64_t> limit) noexcept;
 
 // The solver for a plan, configured from the experiment's settings (lattice
-// resolution and duration when given). Throws std::invalid_argument for a
-// plan no solver covers (Newtonian in 2D).
+// resolution and duration when given); a lattice Boltzmann solver advances
+// `steps_per_call` lattice steps per step() call (0: lbm_steps_per_call).
+// Throws std::invalid_argument for a plan no solver covers (Newtonian in 2D).
 [[nodiscard]] std::unique_ptr<aero::IAeroSolver>
-make_solver(const SolverPlan& plan, const scene::AeroSolverSettings& settings);
+make_solver(const SolverPlan& plan, const scene::AeroSolverSettings& settings,
+            std::size_t steps_per_call = 0);
 
 // What a solver reports beyond AeroResult: the force history and lattice of
 // the lattice Boltzmann solvers.
@@ -92,8 +99,9 @@ struct SolveOutcome {
 };
 
 // Runs a spec on the calling thread: setup, then step() until the solver
-// finishes or, for a time-marching solver, `max_lattice_steps` have been
-// advanced (nullopt: until it finishes). Fails with the solver's message for
+// finishes or, for a time-marching solver, exactly `max_lattice_steps` have
+// been advanced (nullopt: until it finishes; the calls are then of
+// lbm_steps_per_call_for steps, so the force history is sampled after each). Fails with the solver's message for
 // an unusable geometry or conditions (validity warnings never fail).
 [[nodiscard]] core::Result<SolveOutcome, std::string>
 solve(const AeroRunSpec& spec, std::optional<std::uint64_t> max_lattice_steps = std::nullopt);

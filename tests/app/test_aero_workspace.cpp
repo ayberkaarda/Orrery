@@ -355,6 +355,33 @@ TEST_CASE("Pause and Stop take effect between the solver calls of one frame",
     interrupt(sim::StopAeroRun{}, sim::AeroRunState::idle);
 }
 
+TEST_CASE("A lattice step limit stops the solve exactly at the limit",
+          "[aero][workspace][solve]") {
+    // Limits below, at, between and above the 2D batch of 50 lattice steps.
+    sim::AeroRunSpec spec;
+    spec.experiment = tiny_lbm_experiment();
+    spec.geometry = prepared(spec.experiment.geometry);
+    for (const std::uint64_t limit : {1U, 7U, 49U, 50U, 53U, 75U, 120U}) {
+        INFO("limit " << limit);
+        auto solved = sim::solve(spec, limit);
+        REQUIRE(solved.has_value());
+        const sim::SolveOutcome& outcome = solved.value();
+        CHECK_FALSE(outcome.finished);
+        CHECK(outcome.diagnostics.lattice_steps == limit);
+        REQUIRE(outcome.solver_instance != nullptr);
+        CHECK(sim::lattice_steps(*outcome.solver_instance) == limit);
+    }
+    // The batch: the largest divisor of the limit up to the default one.
+    CHECK(sim::lbm_steps_per_call_for(true, std::nullopt) == 50);
+    CHECK(sim::lbm_steps_per_call_for(true, 1) == 1);
+    CHECK(sim::lbm_steps_per_call_for(true, 120) == 40);
+    CHECK(sim::lbm_steps_per_call_for(true, 1000) == 50);
+    CHECK(sim::lbm_steps_per_call_for(true, 53) == 1);
+    CHECK(sim::lbm_steps_per_call_for(false, 100) == 20);
+    CHECK(sim::lbm_steps_per_call_for(false, 30) == 15);
+    CHECK(sim::lbm_steps_per_call_for(false, 0) == 20);
+}
+
 TEST_CASE("Comparison table: same geometry, different angles of attack",
           "[aero][workspace][experiment]") {
     std::vector<scene::AeroExperiment> runs;

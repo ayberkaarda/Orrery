@@ -54,8 +54,26 @@ std::size_t lbm_steps_per_call(bool two_dimensional) noexcept {
     return two_dimensional ? kLbmStepsPerCall2D : kLbmStepsPerCall3D;
 }
 
+std::size_t lbm_steps_per_call_for(bool two_dimensional,
+                                   std::optional<std::uint64_t> limit) noexcept {
+    const std::size_t batch = lbm_steps_per_call(two_dimensional);
+    const std::uint64_t steps = limit.value_or(0);
+    if (steps == 0) {
+        return batch;
+    }
+    for (std::size_t n = batch; n > 1; --n) {
+        if (steps % n == 0) {
+            return n;
+        }
+    }
+    return 1;
+}
+
 std::unique_ptr<aero::IAeroSolver> make_solver(const SolverPlan& plan,
-                                               const scene::AeroSolverSettings& settings) {
+                                               const scene::AeroSolverSettings& settings,
+                                               std::size_t steps_per_call) {
+    const std::size_t per_call =
+        steps_per_call > 0 ? steps_per_call : lbm_steps_per_call(plan.two_dimensional);
     switch (plan.kind) {
         case aero::SolverKind::panel:
             if (plan.two_dimensional) {
@@ -76,7 +94,7 @@ std::unique_ptr<aero::IAeroSolver> make_solver(const SolverPlan& plan,
                     options.resolution.cells_per_length = settings.lbm_cells_per_length;
                 }
                 options.duration = duration_of(settings, true);
-                options.steps_per_call = kLbmStepsPerCall2D;
+                options.steps_per_call = per_call;
                 return std::make_unique<aero::lbm::LbmAeroSolver2D>(options);
             } else {
                 aero::lbm::LbmSolver3DOptions options;
@@ -84,7 +102,7 @@ std::unique_ptr<aero::IAeroSolver> make_solver(const SolverPlan& plan,
                     options.resolution.cells_per_length = settings.lbm_cells_per_length;
                 }
                 options.duration = duration_of(settings, false);
-                options.steps_per_call = kLbmStepsPerCall3D;
+                options.steps_per_call = per_call;
                 options.max_cells = kMaxCpuCells3D;
                 return std::make_unique<aero::lbm::LbmAeroSolver3D>(options);
             }
@@ -223,7 +241,9 @@ core::Result<SolveOutcome, std::string> solve(const AeroRunSpec& spec,
     out.solver = plan.kind;
     out.reference = reference_values(*spec.geometry, spec.experiment.solver);
     try {
-        std::unique_ptr<aero::IAeroSolver> solver = make_solver(plan, spec.experiment.solver);
+        std::unique_ptr<aero::IAeroSolver> solver = make_solver(
+            plan, spec.experiment.solver,
+            lbm_steps_per_call_for(plan.two_dimensional, max_lattice_steps));
         solver->setup(to_aero_geometry(*spec.geometry, spec.experiment.solver), out.flow.flow);
         while (!out.finished) {
             out.finished = solver->step();
