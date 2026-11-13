@@ -248,6 +248,10 @@ links):
 
 ## Limitations
 
+- Specification items that V1 does not implement (bloom, Hill spheres and
+  ghost trajectories, the Rayleigh + Mie atmosphere, and two that are done
+  differently) are listed with their status in
+  [docs/limitations.md](docs/limitations.md).
 - No solver is presented as validated CFD. The panel method is inviscid
   (skin friction is a separate flat-plate estimate), Newtonian theory is
   meant for Mach 5 and above, and the lattice Boltzmann solver is a

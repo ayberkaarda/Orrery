@@ -34,6 +34,7 @@ decisions and each part of the application.
 | Document | Contents |
 |---|---|
 | [roadmap.md](roadmap.md) | The three-layer roadmap (V1, V2, V3), abstractions deliberately absent from V1, the coupling pattern, non-goals |
+| [limitations.md](limitations.md) | Specification items not implemented in V1 (or done differently), what the code does instead, and their status |
 
 ## Architecture decision records
 
@@ -66,6 +67,6 @@ Index with status: [adr/README.md](adr/README.md).
 ## Checks
 
 `py tools/check_docs.py` (`python3` on Linux; also the ctest `docs.check`)
-verifies every relative link and heading anchor in these pages and the
-READMEs, and keeps [physics.md](physics.md) and
+verifies every relative link (inline and reference-style), image and
+heading anchor in these pages and the READMEs, and keeps [physics.md](physics.md) and
 [physics_index.json](physics_index.json) in step with the sources.

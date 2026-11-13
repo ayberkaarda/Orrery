@@ -260,6 +260,10 @@ belgelerdedir):
 
 ## Sınırlamalar
 
+- Belirtimin V1'de gerçeklenmeyen maddeleri (bloom, Hill küreleri ve hayalet
+  yörüngeler, Rayleigh + Mie atmosferi ve farklı biçimde yapılan iki madde)
+  durumlarıyla birlikte [docs/limitations.md](docs/limitations.md) içinde
+  listelenir.
 - Hiçbir çözücü doğrulanmış CFD olarak sunulmaz. Panel yöntemi viskozsuzdur
   (yüzey sürtünmesi ayrı bir düz plaka tahminidir), Newton teorisi Mach 5 ve
   üstü içindir, lattice Boltzmann çözücüsü düşük Mach yöntemidir; her biri
