@@ -249,25 +249,48 @@ resolve_experiment(std::string_view name_or_path,
                          "' not found; tried:" + tried);
 }
 
-std::vector<ScenarioEntry> list_scenarios(const std::filesystem::path& directory) {
+namespace {
+
+// The *.json regular files of `directory`, sorted by name, and why the
+// listing is empty or incomplete: a directory that is missing is no problem
+// (the folder is optional), one that is not a directory or cannot be listed
+// is.
+std::vector<ScenarioEntry> json_files(const std::filesystem::path& directory,
+                                      std::vector<std::string>& problems) {
     std::vector<ScenarioEntry> entries;
     std::error_code error;
-    std::filesystem::directory_iterator it(directory, error);
-    if (error) {
+    const std::filesystem::file_status status = std::filesystem::status(directory, error);
+    if (status.type() == std::filesystem::file_type::not_found) {
         return entries;
     }
-    for (const std::filesystem::directory_iterator end; it != end; it.increment(error)) {
-        if (error) {
-            break;
-        }
+    if (!error && !std::filesystem::is_directory(status)) {
+        problems.push_back(directory.string() + ": not a directory");
+        return entries;
+    }
+    std::filesystem::directory_iterator it;
+    if (!error) {
+        it = std::filesystem::directory_iterator(directory, error);
+    }
+    for (const std::filesystem::directory_iterator end; !error && it != end;
+         it.increment(error)) {
         const std::filesystem::path& path = it->path();
         if (path.extension() == ".json" && is_file(path)) {
             entries.push_back({path.stem().string(), path});
         }
     }
+    if (error) {
+        problems.push_back(directory.string() + ": cannot be listed: " + error.message());
+    }
     std::sort(entries.begin(), entries.end(),
               [](const ScenarioEntry& a, const ScenarioEntry& b) { return a.name < b.name; });
     return entries;
+}
+
+} // namespace
+
+std::vector<ScenarioEntry> list_scenarios(const std::filesystem::path& directory) {
+    std::vector<std::string> ignored;
+    return json_files(directory, ignored);
 }
 
 namespace {
@@ -360,7 +383,7 @@ save_space_experiment_file(const std::filesystem::path& path, const scene::Exper
 
 SpaceListing list_space_experiments(const std::filesystem::path& directory) {
     SpaceListing listing;
-    for (const ScenarioEntry& file : list_scenarios(directory)) {
+    for (const ScenarioEntry& file : json_files(directory, listing.problems)) {
         const auto text = scene::read_text_file(file.path);
         if (!text) {
             listing.problems.push_back(file.path.filename().string() + ": " +

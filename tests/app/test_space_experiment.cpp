@@ -9,6 +9,7 @@
 #include <future>
 #include <new>
 #include <string>
+#include <system_error>
 #include <thread>
 #include <variant>
 #include <vector>
@@ -225,6 +226,55 @@ TEST_CASE("LoadExperiment replaces the system and its settings, or nothing",
     CHECK(contains(simulation.status().message, "Cannot open experiment unknown_integrator.json"));
     CHECK(simulation.status().generation == generation + 1);
     CHECK(simulation.status().settings.integrator == SpaceIntegrator::yoshida4);
+}
+
+namespace {
+
+// A directory that exists but cannot be listed, or empty when this system
+// offers none (POSIX: mode 000, unless the tests run as root; Windows: the
+// System Volume Information of the drive holding the temporary directory).
+std::filesystem::path unlistable_directory() {
+#if defined(_WIN32)
+    const std::filesystem::path dir =
+        std::filesystem::temp_directory_path().root_path() / "System Volume Information";
+#else
+    const std::filesystem::path dir = scratch("unlistable") / "locked";
+    std::filesystem::create_directories(dir);
+    std::filesystem::permissions(dir, std::filesystem::perms::none);
+#endif
+    std::error_code error;
+    const std::filesystem::directory_iterator probe(dir, error);
+    return error ? dir : std::filesystem::path();
+}
+
+} // namespace
+
+TEST_CASE("Experiment folder errors are problems, a missing folder is not",
+          "[app][sim][experiment][listing]") {
+    const std::filesystem::path dir = scratch("listing_errors");
+    const SpaceListing missing = list_space_experiments(dir / "missing");
+    CHECK(missing.entries.empty());
+    CHECK(missing.problems.empty());
+
+    { std::ofstream(dir / "not_a_folder") << "a file"; }
+    const SpaceListing file = list_space_experiments(dir / "not_a_folder");
+    CHECK(file.entries.empty());
+    REQUIRE(file.problems.size() == 1);
+    CHECK(contains(file.problems.front(), "not_a_folder"));
+    CHECK(contains(file.problems.front(), "not a directory"));
+
+    const std::filesystem::path locked = unlistable_directory();
+    if (locked.empty()) {
+        SKIP("no unlistable directory on this system");
+    }
+    const SpaceListing denied = list_space_experiments(locked);
+#if !defined(_WIN32)
+    std::filesystem::permissions(locked, std::filesystem::perms::owner_all);
+#endif
+    CHECK(denied.entries.empty());
+    REQUIRE(denied.problems.size() == 1);
+    CHECK(contains(denied.problems.front(), locked.filename().string().c_str()));
+    CHECK(contains(denied.problems.front(), "cannot be listed"));
 }
 
 namespace {

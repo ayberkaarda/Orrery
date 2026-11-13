@@ -107,7 +107,10 @@ struct SpaceListing {
     std::vector<std::string> problems;
 };
 
-// The space experiments of a directory (empty when it does not exist).
+// The space experiments of a directory: empty when it does not exist (the
+// folder is optional); a path that is not a directory, or a directory that
+// cannot be listed, is reported in `problems` ("<dir>: not a directory",
+// "<dir>: cannot be listed: <reason>") rather than shown as an empty folder.
 [[nodiscard]] SpaceListing list_space_experiments(const std::filesystem::path& directory);
 
 } // namespace orrery::sim

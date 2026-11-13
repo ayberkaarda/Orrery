@@ -314,7 +314,9 @@ step budget, and as result the simulated time, step and event counts and
 the energy drift - to a new file (`<name>.json`, `<name>_2.json`, ...),
 through a temporary file that is renamed into place. Open sends
 `LoadExperiment`. Unreadable space experiments are listed as problems,
-files of other domains are skipped.
+files of other domains are skipped. A missing folder is simply empty, but a
+folder path that is not a directory or a folder that cannot be listed is
+shown as a problem, not as an empty library.
 
 **Measured:** `orrery_app --size 1920x1080 --benchmark 600` (vsync off, 30
 warm-up frames) on an AMD Radeon RX 9060 XT, Release MSVC: 600 frames at
