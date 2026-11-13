@@ -39,7 +39,7 @@ The same relative layout on every platform:
 ```
 bin/orrery_app[.exe]             the application (Windows: and the DLLs it loads)
 share/orrery/assets/             bundled experiments/ and scenarios/
-share/doc/orrery/                README.md, notice.txt, third_party/<library>/copyright
+share/doc/orrery/                README.md, README.tr.md, docs/, notice.txt, third_party/<library>/
 share/applications/orrery.desktop                Linux only
 share/icons/hicolor/{256x256,scalable}/apps/     Linux only
 ```
@@ -176,7 +176,11 @@ through XWayland). The vcpkg libraries are linked statically.
    prefix or the build tree;
 2. checks the layout, that no `.pdb`/`.ilk`/`.debug` file is installed, that
    the Linux executable is stripped, and the total size against 80,000,000
-   bytes;
+   bytes; checks every relative link and image of the installed
+   documentation with `tools/check_docs.py --tree share/doc/orrery`, which
+   also rejects a link that leaves that folder (the READMEs link to `docs/`,
+   to each other and to the screenshots, so `docs/` is installed beside
+   them; Python 3 is therefore needed to configure a package build);
 3. runs the moved `orrery_app` with only the system directories on `PATH`
    (Windows) or without `LD_LIBRARY_PATH` (Linux), so every DLL has to come
    from the installed tree: `--version`, then `--headless` on an experiment

@@ -5,7 +5,7 @@
 # Installed layout (relative to the prefix, the same on every platform):
 #   bin/orrery_app[.exe]           the application (and its DLLs on Windows)
 #   share/orrery/assets/           bundled experiments and scenarios
-#   share/doc/orrery/              README, notice, third_party/<library>/
+#   share/doc/orrery/              READMEs, docs/, notice, third_party/<library>/
 #   share/applications/            desktop entry (Linux)
 #   share/icons/hicolor/           application icon (Linux)
 # The application finds share/orrery/assets from its own directory
@@ -68,8 +68,13 @@ else()
 endif()
 
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/assets/" DESTINATION "${ORRERY_INSTALL_ASSET_DIR}")
-install(FILES "${PROJECT_SOURCE_DIR}/README.md" "${PROJECT_SOURCE_DIR}/packaging/notice.txt"
+# The READMEs keep their relative links (docs/..., README.tr.md, the
+# screenshots), so the documentation they link to is installed beside them;
+# install.relocated checks every link of the installed tree.
+install(FILES "${PROJECT_SOURCE_DIR}/README.md" "${PROJECT_SOURCE_DIR}/README.tr.md"
+    "${PROJECT_SOURCE_DIR}/packaging/notice.txt"
     DESTINATION "${ORRERY_INSTALL_DOC_DIR}")
+install(DIRECTORY "${PROJECT_SOURCE_DIR}/docs/" DESTINATION "${ORRERY_INSTALL_DOC_DIR}/docs")
 
 # Licence notices of the vcpkg libraries (vcpkg installs one copyright file
 # per port). Build helpers and the test framework are not shipped.
@@ -99,6 +104,8 @@ endif()
 # Off by default; the package presets turn it on.
 option(ORRERY_INSTALL_TEST "Register the relocated install test (install.relocated)" OFF)
 if(ORRERY_INSTALL_TEST)
+    # Runs tools/check_docs.py on the installed documentation.
+    find_package(Python3 COMPONENTS Interpreter REQUIRED)
     enable_testing()
     add_test(NAME install.relocated
         COMMAND ${CMAKE_COMMAND}
@@ -109,6 +116,7 @@ if(ORRERY_INSTALL_TEST)
             -DSOURCE_FALLBACK=${ORRERY_SOURCE_ASSET_FALLBACK}
             -DASSET_DIR=${ORRERY_INSTALL_ASSET_DIR}
             -DMAX_BYTES=80000000
+            -DPYTHON=${Python3_EXECUTABLE}
             -P ${PROJECT_SOURCE_DIR}/packaging/install_smoke.cmake)
     set_tests_properties(install.relocated PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
 endif()

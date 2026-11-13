@@ -2,6 +2,9 @@
 # temporary prefix, moves the installed tree elsewhere and runs the moved
 # application with a clean library search path. Checks:
 #   - the layout: bin/orrery_app, the bundled assets, no debug information;
+#   - every relative link and image of the installed documentation
+#     (share/doc/orrery: the READMEs and docs/) resolves inside that folder
+#     (tools/check_docs.py --tree, run with PYTHON);
 #   - the size of the installed tree (MAX_BYTES, spec section 8: binary and
 #     assets under 80 MB);
 #   - --version reports VERSION;
@@ -14,7 +17,7 @@
 # unless ORRERY_REQUIRE_GL=1 makes it a failure.
 #
 # Arguments: BUILD_DIR, WORK, VERSION, SOURCE_DIR, SOURCE_FALLBACK, ASSET_DIR,
-# MAX_BYTES.
+# MAX_BYTES, PYTHON.
 cmake_minimum_required(VERSION 3.25)
 
 set(staged "${WORK}/staged")
@@ -38,11 +41,20 @@ else()
     set(exe "${prefix}/bin/orrery_app")
 endif()
 foreach(required IN ITEMS "${exe}" "${prefix}/${ASSET_DIR}/experiments/solar_system.json"
-        "${prefix}/${ASSET_DIR}/scenarios/sun_earth.json" "${prefix}/share/doc/orrery/notice.txt")
+        "${prefix}/${ASSET_DIR}/scenarios/sun_earth.json" "${prefix}/share/doc/orrery/notice.txt"
+        "${prefix}/share/doc/orrery/README.md")
     if(NOT EXISTS "${required}")
         message(FATAL_ERROR "missing from the installed tree: ${required}")
     endif()
 endforeach()
+
+execute_process(COMMAND "${PYTHON}" "${SOURCE_DIR}/tools/check_docs.py"
+        --tree "${prefix}/share/doc/orrery"
+    RESULT_VARIABLE code OUTPUT_VARIABLE out ERROR_VARIABLE err)
+if(NOT code EQUAL 0)
+    message(FATAL_ERROR "links of the installed documentation (${code}):\n${out}\n${err}")
+endif()
+message(STATUS "installed documentation: ${out}")
 
 file(GLOB_RECURSE installed LIST_DIRECTORIES false "${prefix}/*")
 set(total 0)
