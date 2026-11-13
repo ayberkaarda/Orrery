@@ -185,4 +185,23 @@ else()
     set(CPACK_GENERATOR "TGZ")
 endif()
 set(CPACK_PACKAGE_FILE_NAME "orrery-${PROJECT_VERSION}-${CPACK_SYSTEM_NAME}")
+# cpack refuses a tree built with the source asset fallback (its executable
+# holds the source tree path; packaging/package_checks.cmake, checked per
+# generator by packaging/cpack_project_config.cmake).
+set(CPACK_ORRERY_SOURCE_ASSET_FALLBACK "${ORRERY_SOURCE_ASSET_FALLBACK}")
+set(CPACK_PROJECT_CONFIG_FILE "${PROJECT_SOURCE_DIR}/packaging/cpack_project_config.cmake")
 include(CPack)
+
+# Tests of the packaging conditions (packaging/tests/).
+if(ORRERY_BUILD_TESTS)
+    add_test(NAME packaging.checks
+        COMMAND ${CMAKE_COMMAND} -P ${PROJECT_SOURCE_DIR}/packaging/tests/package_checks_test.cmake)
+    if(ORRERY_SOURCE_ASSET_FALLBACK)
+        add_test(NAME packaging.refuses_fallback
+            COMMAND ${CMAKE_COMMAND}
+                -DBUILD_DIR=${PROJECT_BINARY_DIR}
+                -DWORK=${PROJECT_BINARY_DIR}/cpack_refusal_test
+                -DCPACK=${CMAKE_CPACK_COMMAND}
+                -P ${PROJECT_SOURCE_DIR}/packaging/tests/cpack_refuses_fallback.cmake)
+    endif()
+endif()

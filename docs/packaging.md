@@ -52,7 +52,12 @@ only, the source tree. An installed tree can therefore be moved anywhere,
 and a tree with an `assets/` folder beside the executable keeps working as a
 portable copy. Package builds set `ORRERY_SOURCE_ASSET_FALLBACK=OFF`, so no
 build machine path is compiled into a shipped executable (the install test
-checks this).
+checks this). `cpack` refuses, before it installs or packs anything, to
+package a tree built with the fallback on (any development preset):
+`packaging/cpack_project_config.cmake`, read by cpack for every generator,
+applies the conditions of `packaging/package_checks.cmake`. The ctests
+`packaging.checks` and `packaging.refuses_fallback` (in builds with tests)
+cover this.
 
 ### Third-party notices
 
