@@ -19,6 +19,8 @@
 #include "orrery/core/kepler.h"
 #include "orrery/core/units.h"
 #include "orrery/render/body_visuals.h"
+#include "orrery/render/ui_app_bar.h"
+#include "orrery/render/ui_theme.h"
 
 namespace orrery::render {
 
@@ -425,8 +427,9 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
     struct Tile {
         const char* caption = nullptr;
         std::string value;
+        bool warning = false;
     };
-    const std::array<Tile, 5> tiles{{
+    std::vector<Tile> tiles{
         {"SIM TIME", std::abs(data.sim_time_days) < 1000.0
                          ? fixed(data.sim_time_days, 2) + " d"
                          : fixed(data.sim_time_days / 365.25, 2) + " yr"},
@@ -434,7 +437,18 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
         {"FRAME", fixed(data.frame_time_ms, 2) + " ms"},
         {"PHYSICS STEP", data.physics_step_ms ? fixed(*data.physics_step_ms, 3) + " ms" : "-"},
         {"INTEGRATOR", data.integrator.empty() ? std::string("-") : data.integrator},
-    }};
+    };
+    if (data.warp) {
+        const WarpReadout& warp = *data.warp;
+        tiles.insert(tiles.begin() + 1,
+                     Tile{"TIME WARP",
+                          warp.limited ? format_time_warp(warp.achieved) + " / " +
+                                             format_time_warp(static_cast<double>(warp.requested))
+                                       : format_time_warp(static_cast<double>(warp.requested)),
+                          warp.limited});
+    }
+    const ImVec4 warning_colour(default_theme().warning.r, default_theme().warning.g,
+                                default_theme().warning.b, 1.0F);
     if (ImGui::BeginTable("##tiles", static_cast<int>(tiles.size()),
                           ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_BordersInnerV)) {
         ImGui::TableNextRow();
@@ -444,10 +458,32 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
             muted(tiles[i].caption);
             ImGui::PopFont();
             ImGui::PushFont(nullptr, style.FontSizeBase * 1.2F);
+            if (tiles[i].warning) {
+                ImGui::PushStyleColor(ImGuiCol_Text, warning_colour);
+            }
             text(tiles[i].value);
+            if (tiles[i].warning) {
+                ImGui::PopStyleColor();
+            }
             ImGui::PopFont();
         }
         ImGui::EndTable();
+    }
+    if (data.warp && data.warp->limited) {
+        // Why the warp is lower than asked, in one line.
+        const WarpReadout& warp = *data.warp;
+        std::string reason = "Warp lowered to fit the physics budget";
+        if (warp.load && warp.load_limit > 0.0) {
+            reason += ": load " + fixed(*warp.load * 100.0, 0) + " % of " +
+                      fixed(warp.load_limit * 100.0, 0) + " %";
+        }
+        reason += "; " + format_time_warp(static_cast<double>(warp.requested)) +
+                  " returns when the load allows";
+        ImGui::PushStyleColor(ImGuiCol_Text, warning_colour);
+        ImGui::PushTextWrapPos(0.0F);
+        ImGui::TextUnformatted(reason.c_str());
+        ImGui::PopTextWrapPos();
+        ImGui::PopStyleColor();
     }
 
     ImGui::Dummy(ImVec2(0.0F, 2.0F));

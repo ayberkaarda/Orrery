@@ -25,6 +25,14 @@ struct AppBarData {
     // The physics step budget is limiting the warp (shown as a warning chip
     // with the achieved rate).
     bool warp_limited = false;
+    // Why (for the chip's tooltip): the time-warp budget lowered the warp,
+    // the mean wall time of one physics step, and the share of wall time
+    // spent stepping against the budget's share (docs/app.md, "Time-warp
+    // budget").
+    bool warp_reduced = false;
+    std::optional<double> step_ms;
+    std::optional<double> physics_load;
+    double load_limit = 0.0;
     double sim_time_days = 0.0;
     // Scenario names for the scenario selector, and the loaded one (an index
     // into `scenarios`; nullopt shows `scenario_label` instead).
