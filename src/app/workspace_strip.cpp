@@ -21,8 +21,7 @@ constexpr std::array<Tab, 3> kTabs{{
     {Workspace::space, "Space", "Space workspace: orbital dynamics and black holes (Ctrl+1)", true},
     {Workspace::aero, "Aero", "Aero workspace: geometry, flow conditions and solvers (Ctrl+2)",
      true},
-    {Workspace::entry, "Entry", "Entry workspace: atmospheric entry (arrives in a later phase)",
-     false},
+    {Workspace::entry, "Entry", "Entry workspace: atmospheric entry of a probe (Ctrl+3)", true},
 }};
 
 const char* caption(Workspace workspace) {
@@ -121,6 +120,9 @@ std::optional<Workspace> read_workspace_shortcut() {
     }
     if (ImGui::IsKeyPressed(ImGuiKey_2, false)) {
         return Workspace::aero;
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_3, false)) {
+        return Workspace::entry;
     }
     return std::nullopt;
 }

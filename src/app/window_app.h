@@ -8,6 +8,7 @@
 
 #include "orrery/app/config.h"
 #include "orrery/scene/aero_experiment.h"
+#include "orrery/sim/entry_experiments.h"
 #include "orrery/sim/space_experiment.h"
 
 // Interactive window of orrery_app (docs/app.md, "Window"). Not part of
@@ -30,6 +31,8 @@ struct WindowRequest {
     Workspace workspace = Workspace::space;
     std::optional<scene::AeroExperiment> aero_experiment;
     std::filesystem::path aero_base_dir;
+    // Phase 9b: an entry experiment to open in the Entry workspace.
+    std::optional<sim::StoredEntry> entry_experiment;
 };
 
 // Runs the window until it is closed. Returns an exit code of cli.h; errors

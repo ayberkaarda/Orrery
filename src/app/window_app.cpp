@@ -18,6 +18,8 @@
 #include "orrery/app/aero_viewport.h"
 #include "orrery/app/aero_workspace.h"
 #include "orrery/app/cli.h"
+#include "orrery/app/entry_viewport.h"
+#include "orrery/app/entry_workspace.h"
 #include "orrery/app/frame_stats.h"
 #include "orrery/app/space_view.h"
 #include "orrery/app/workspace_strip.h"
@@ -107,13 +109,16 @@ public:
               render::SpaceRenderer& space, sim::PhysicsThread& physics, std::ostream& out)
         : request_(std::move(request)), gl_(gl), ui_(ui), space_(space), physics_(physics),
           out_(out), trails_(trail_settings(settings_)), workspace_(request_.workspace),
-          aero_(aero_options(request_.config)) {
+          aero_(aero_options(request_.config)), entry_(entry_options(request_.config)) {
         for (const sim::ScenarioEntry& entry : request_.scenarios) {
             scenario_names_.push_back(entry.name);
         }
         current_scenario_ = scenario_index(request_.scenarios, request_.experiment.scenario_path);
         if (request_.aero_experiment) {
             aero_.open(*request_.aero_experiment, request_.aero_base_dir);
+        }
+        if (request_.entry_experiment) {
+            entry_.open(*request_.entry_experiment);
         }
         take(physics_.latest());
     }
@@ -131,6 +136,12 @@ private:
         return options;
     }
 
+    static EntryWorkspaceOptions entry_options(const AppConfig& config) {
+        EntryWorkspaceOptions options;
+        options.experiment_dir = config.experiment_dir;
+        return options;
+    }
+
     void take(const sim::PublishedFrame& frame);
     void reframe(const render::UiRect& scene, int window_height);
     void build_ui(double dt, int width, int height);
@@ -138,6 +149,7 @@ private:
     void build_space_ui(double dt, int height);
     void handle_scene_input(const render::SceneInput& input, double dt);
     void draw_aero_scene(const render::FrameInfo& frame, double dt, std::ostream& err);
+    void draw_entry_scene(const render::FrameInfo& frame, std::ostream& err);
 
     WindowRequest request_;
     render::GlContext& gl_;
@@ -173,6 +185,13 @@ private:
     // The aero view's last reported problem (printed once per change).
     std::string aero_view_problem_;
     render::UiRect aero_scene_;
+
+    // Phase 9b: the Entry workspace, its view created like the aero view's.
+    EntryWorkspace entry_;
+    std::optional<EntryViewport> entry_view_;
+    bool entry_view_failed_ = false;
+    std::string entry_view_problem_;
+    render::UiRect entry_scene_;
 };
 
 void WindowApp::take(const sim::PublishedFrame& frame) {
@@ -251,6 +270,8 @@ void WindowApp::build_ui(double dt, int width, int height) {
     const double fps = frame_seconds_ > 0.0 ? 1.0 / frame_seconds_ : 0.0;
     if (workspace_ == Workspace::aero) {
         aero_.draw_bar(fps);
+    } else if (workspace_ == Workspace::entry) {
+        entry_.draw_bar(fps);
     } else {
         draw_space_bar(fps);
     }
@@ -263,6 +284,11 @@ void WindowApp::build_ui(double dt, int width, int height) {
     if (workspace_ == Workspace::aero) {
         aero_scene_ = aero_.draw_panels();
         aero_.handle_scene_input(render::read_scene_input(), dt);
+        return;
+    }
+    if (workspace_ == Workspace::entry) {
+        entry_scene_ = entry_.draw_panels();
+        entry_.handle_scene_input(render::read_scene_input(), dt);
         return;
     }
     build_space_ui(dt, height);
@@ -383,6 +409,36 @@ void WindowApp::draw_aero_scene(const render::FrameInfo& frame, double dt, std::
     aero_.set_view_problem(std::move(problem));
 }
 
+void WindowApp::draw_entry_scene(const render::FrameInfo& frame, std::ostream& err) {
+    if (!entry_view_ && !entry_view_failed_) {
+        gl_.make_current();
+        auto created = EntryViewport::create();
+        if (created) {
+            entry_view_.emplace(std::move(created).value());
+        } else {
+            // Reported once; the panels keep working without the 3D view.
+            entry_view_failed_ = true;
+            err << "orrery_app: entry view: " << created.error() << '\n';
+        }
+    }
+    if (!entry_view_) {
+        return;
+    }
+    const render::Camera& camera = entry_.camera(entry_scene_, frame.width, frame.height);
+    if (auto drawn = entry_view_->draw(entry_.view_state(), camera, frame); !drawn) {
+        if (!entry_view_failed_) {
+            err << "orrery_app: entry view: " << drawn.error() << '\n';
+        }
+        entry_view_failed_ = true;
+    }
+    std::string problem = entry_view_->problem();
+    if (problem != entry_view_problem_ && !problem.empty()) {
+        err << "orrery_app: entry view: " << problem << '\n';
+    }
+    entry_view_problem_ = problem;
+    entry_.set_view_problem(std::move(problem));
+}
+
 int WindowApp::run(std::ostream& err) {
     std::optional<render::HdrPipeline> pipeline;
     int pipeline_width = 0;
@@ -435,6 +491,8 @@ int WindowApp::run(std::ostream& err) {
 
         if (workspace_ == Workspace::aero) {
             aero_.update(dt);
+        } else if (workspace_ == Workspace::entry) {
+            entry_.update(dt);
         }
         build_ui(dt, width, height);
         const render::FrameInfo frame{width, height};
@@ -447,6 +505,12 @@ int WindowApp::run(std::ostream& err) {
             if (aero_view_) {
                 aero_view_->draw_overlay(frame);
             }
+        } else if (workspace_ == Workspace::entry) {
+            pipeline->set_exposure(1.0); // the entry view's colours assume exposure 1
+            pipeline->begin_scene();
+            draw_entry_scene(frame, err);
+            pipeline->resolve();
+            pipeline->begin_overlay();
         } else {
             camera_.update(dt, camera_input_, body_frames(snapshot_));
             if (snapshot_) {
