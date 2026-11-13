@@ -210,6 +210,12 @@ struct GroundPoint {
 // on the velocity (docs/atmosphere.md, "Integration"). Events are detected on
 // every step from the altitude before and after it (linear interpolation of
 // the crossing time). Movable, not copyable, not thread-safe.
+// APPROXIMATION (E8): Strang splitting of drag and gravity - keeps core's
+// position-only integrators (ADR-021) - second order in dt, peak g within
+// 1e-4 relative at the default 0.5 s step.
+// APPROXIMATION (E9): event instants by linear interpolation within a step -
+// the altitude is smooth over 0.5 s - coarser on long coast steps above the
+// atmosphere.
 class EntryExperiment {
 public:
     // Validates the configuration (finite positive mass, steps, durations,

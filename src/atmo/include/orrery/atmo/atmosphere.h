@@ -91,8 +91,10 @@ struct LinearLayer {
 // the standard's tabulated density and pressure (log-linear between nodes)
 // and linear interpolation of its kinetic temperature, starting from the
 // layered model's own values at 86 km so the profile is continuous.
-// APPROXIMATION (docs/physics.md, atmosphere): not the standard's
-// diffusive-equilibrium formulation above 86 km.
+// APPROXIMATION (E1): interpolated tabulated values above 86 km - the
+// standard's diffusive-equilibrium formulation is not needed for drag and
+// heating estimates - exact at the Table I nodes, smooth between them; no
+// solar-activity dependence.
 // Below 0 km the lowest layer continues down to -5 km (the standard's lower
 // limit) and is clamped below that.
 class UsStandardAtmosphere1976 final : public IAtmosphere {
@@ -152,8 +154,10 @@ private:
 // layers from the fit's surface pressure 699 Pa (not the fit's own isothermal
 // pressure curve), so pressure, density and temperature satisfy the ideal gas
 // law with R = 192.1 J/(kg K) (the fit's CO2-rich value) and gamma = 1.29.
-// Top: 250 km. APPROXIMATION: a single mean profile, no season, latitude,
-// local time or dust dependence (Mars-GRAM covers those).
+// Top: 250 km.
+// APPROXIMATION (E2): a single mean profile - enough for entry studies of
+// mean conditions - valid within about 10 percent of the fit below 10 km; no
+// season, latitude, local time or dust dependence (Mars-GRAM covers those).
 class MarsAtmosphere final : public IAtmosphere {
 public:
     static constexpr double g0 = 3.711;
@@ -193,6 +197,8 @@ struct ExponentialAtmosphereParameters {
 // Generic isothermal exponential atmosphere rho = rho0 exp(-h / H), the model
 // behind the Allen-Eggers ballistic entry solution. Altitudes below 0 are
 // clamped to 0.
+// APPROXIMATION (E3): constant scale height and an independent temperature -
+// the analytic test atmosphere - hydrostatic only when H = R T / g.
 class ExponentialAtmosphere final : public IAtmosphere {
 public:
     // Earth-like defaults (rho0 = 1.225 kg/m^3, H = 7.2 km).
