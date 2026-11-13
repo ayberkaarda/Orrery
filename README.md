@@ -31,6 +31,7 @@ macOS is out of scope (no OpenGL 4.6).
 - [Limitations](#limitations)
 - [Repository layout](#repository-layout)
 - [Documentation](#documentation)
+- [License](#license)
 
 ## Features
 
@@ -310,3 +311,10 @@ simulation side never link OpenGL, GLFW or Dear ImGui (checked in CI).
 - [docs/adr](docs/adr/README.md) - architecture decision records
 
 A Turkish version of this file: [README.tr.md](README.tr.md).
+
+## License
+
+Orrery is released under the MIT License: see [LICENSE](LICENSE). The
+third-party libraries it builds on and ships in its packages keep their own
+licences; the packages install each library's notice under
+`share/doc/orrery/third_party` ([docs/packaging.md](docs/packaging.md#licence-and-third-party-notices)).

@@ -34,6 +34,7 @@ macOS kapsam dışıdır (OpenGL 4.6 yok).
 - [Sınırlamalar](#sınırlamalar)
 - [Depo düzeni](#depo-düzeni)
 - [Belgeler](#belgeler)
+- [Lisans](#lisans)
 
 ## Özellikler
 
@@ -323,3 +324,10 @@ denetlenir).
 - [docs/adr](docs/adr/README.md) - mimari karar kayıtları
 
 Belgeler İngilizcedir. Bu dosyanın İngilizce sürümü: [README.md](README.md).
+
+## Lisans
+
+Orrery MIT Lisansı ile yayımlanır: bkz. [LICENSE](LICENSE). Üzerine kurulduğu
+ve paketlerinde dağıtılan üçüncü taraf kütüphaneler kendi lisanslarını
+korur; paketler her kütüphanenin bildirimini `share/doc/orrery/third_party`
+altına kurar ([docs/packaging.md](docs/packaging.md#licence-and-third-party-notices)).
