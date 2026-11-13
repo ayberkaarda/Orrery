@@ -21,7 +21,7 @@
 namespace orrery::app {
 
 // Span of the extruded body that shows a 2D section, in chords.
-inline constexpr double kSectionViewSpan = 0.6;
+inline constexpr double kSectionViewSpan = 1.0;
 
 // The body to draw: the mesh in the view frame and Cp per triangle (empty:
 // neutral colour). A 2D section is extruded along the view's z axis.
@@ -40,15 +40,23 @@ view_surface(const sim::PreparedGeometry& geometry, const std::vector<double>& c
 
 // View options for the layers: 2D runs cut the field along z (the section
 // plane), 3D runs along y through the body; streamlines seed upstream of
-// the body; force arrows scale with the body size.
+// the body; force arrows scale with the body size. The Cp colour range is
+// symmetric about zero and reaches the 98th percentile of |Cp| (panel
+// singularities at tips and trailing edges would otherwise wash the map
+// out), at least [-1, 1].
 [[nodiscard]] render::AeroViewOptions view_options(const AeroLayers& layers, bool two_dimensional,
                                                    const geom::Bounds& body_bounds,
-                                                   const std::optional<render::GridGeometry>& grid);
+                                                   const std::optional<render::GridGeometry>& grid,
+                                                   const std::vector<double>& cp);
+
+// The symmetric Cp range described above.
+[[nodiscard]] double cp_range(const std::vector<double>& cp);
 
 // Camera for the view: a turntable around the body (3D) or looking down on
-// the section plane (2D), framing the body and its near wake.
+// the section plane (2D), framing the body and, with a flow field, its near
+// wake.
 [[nodiscard]] render::TurntableMode view_camera(const geom::Bounds& body_bounds,
-                                                bool two_dimensional, double aspect,
+                                                bool two_dimensional, bool with_wake, double aspect,
                                                 const render::CameraLens& lens);
 
 // Bounds of a mesh in the view frame.

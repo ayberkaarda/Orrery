@@ -23,10 +23,10 @@
 // along +x and the body shows its angle of attack, as in a wind tunnel.
 //   3D   (drag, side, lift) directions of FlowConditions: x downstream,
 //        y to the side, z up (the body axes at zero angles).
-//   2D   the section plane is the view's x-y plane: x downstream, y along
-//        the lift direction, z = -(body span axis). This is the plane of the
-//        2D lattice in the render API (flow_field_from(MacroFields2D)), and a
-//        camera looking down -z sees the classic section picture.
+//   2D   the same with zero sideslip: the section lies in the view's x-z
+//        plane (x downstream, z along the lift) and the span axis stays y,
+//        so a 2D run looks like a short wing cut by a light sheet at y = 0.
+//        The 2D lattice node (i, j) sits at origin + spacing (i, 0, j).
 namespace orrery::sim {
 
 struct ViewFrame {

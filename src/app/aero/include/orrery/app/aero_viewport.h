@@ -30,9 +30,10 @@ public:
 
     // Draws into the bound HDR scene target; advances the particles by dt
     // while the solver runs. Returns the number of triangles drawn.
-    [[nodiscard]] core::Result<std::size_t, std::string>
-    draw(const AeroViewState& state, const render::Camera& camera, const render::FrameInfo& frame,
-         double dt);
+    [[nodiscard]] core::Result<std::size_t, std::string> draw(const AeroViewState& state,
+                                                              const render::Camera& camera,
+                                                              const render::FrameInfo& frame,
+                                                              double dt);
     // Legends into the bound sRGB overlay target.
     void draw_overlay(const render::FrameInfo& frame);
 

@@ -82,7 +82,9 @@ struct AeroViewport::Impl {
         view_revision = state.view_revision;
         conditions = state.conditions;
         cp_layer = state.layers.cp_surface;
-        options = view_options(state.layers, two_dimensional, body_bounds, grid);
+        options = view_options(state.layers, two_dimensional, body_bounds, grid,
+                               state.layers.cp_surface && state.surface_cp ? *state.surface_cp
+                                                                           : std::vector<double>{});
     }
 };
 

@@ -51,7 +51,7 @@ ViewFrame view_frame(const aero::FlowConditions& conditions, bool two_dimensiona
 
 geom::Vector3 to_view(const geom::Vector3& body, const ViewFrame& frame) noexcept {
     if (frame.two_dimensional) {
-        return {geom::dot(body, frame.drag), geom::dot(body, frame.lift), -body.y};
+        return {geom::dot(body, frame.drag), body.y, geom::dot(body, frame.lift)};
     }
     return {geom::dot(body, frame.drag), geom::dot(body, frame.side), geom::dot(body, frame.lift)};
 }
@@ -98,9 +98,10 @@ std::vector<double> panel_cp(const std::vector<geom::SectionPoint>& section,
     return cp;
 }
 
-core::Result<FlowSnapshot, std::string>
-capture_flow(aero::IAeroSolver& solver, const PreparedGeometry& geometry,
-             const aero::FlowConditions& conditions, const aero::ReferenceValues& reference) {
+core::Result<FlowSnapshot, std::string> capture_flow(aero::IAeroSolver& solver,
+                                                     const PreparedGeometry& geometry,
+                                                     const aero::FlowConditions& conditions,
+                                                     const aero::ReferenceValues& reference) {
     FlowSnapshot out;
     if (auto* lbm2 = dynamic_cast<aero::lbm::LbmAeroSolver2D*>(&solver)) {
         aero::lbm::Lbm2DSolver* lattice = lbm2->lattice();
@@ -113,12 +114,12 @@ capture_flow(aero::IAeroSolver& solver, const PreparedGeometry& geometry,
         }
         const aero::lbm::LatticeUnits& units = *lbm2->units();
         const ViewFrame frame = view_frame(conditions, true);
-        const geom::SectionPoint centre = section_to_wind(
-            {reference.moment_centre.x, reference.moment_centre.z}, frame);
+        const geom::SectionPoint centre =
+            section_to_wind({reference.moment_centre.x, reference.moment_centre.z}, frame);
         const std::array<double, 2> lattice_centre = lbm2->moment_centre();
         out.spacing = units.dx();
-        out.origin = {centre.x - lattice_centre[0] * out.spacing,
-                      centre.z - lattice_centre[1] * out.spacing, 0.0};
+        out.origin = {centre.x - lattice_centre[0] * out.spacing, 0.0,
+                      centre.z - lattice_centre[1] * out.spacing};
         out.velocity_scale = units.velocity_to_si(1.0);
         out.reference_speed = units.lattice_velocity();
         out.step = lattice->steps();
@@ -147,11 +148,11 @@ capture_flow(aero::IAeroSolver& solver, const PreparedGeometry& geometry,
         const double dx = units.dx();
         const double upstream = aero::lbm::LbmSolver3DOptions{}.upstream;
         out.spacing = dx;
-        out.origin = {
-            lo.x - upstream * reference.length - kPlacementShift3D * dx,
-            0.5 * (lo.y + hi.y) - (0.5 * static_cast<double>(config.ny - 1) + kPlacementShift3D) * dx,
-            0.5 * (lo.z + hi.z) -
-                (0.5 * static_cast<double>(config.nz - 1) + kPlacementShift3D) * dx};
+        out.origin = {lo.x - upstream * reference.length - kPlacementShift3D * dx,
+                      0.5 * (lo.y + hi.y) -
+                          (0.5 * static_cast<double>(config.ny - 1) + kPlacementShift3D) * dx,
+                      0.5 * (lo.z + hi.z) -
+                          (0.5 * static_cast<double>(config.nz - 1) + kPlacementShift3D) * dx};
         out.velocity_scale = units.velocity_to_si(1.0);
         out.reference_speed = units.lattice_velocity();
         out.step = lattice->steps();

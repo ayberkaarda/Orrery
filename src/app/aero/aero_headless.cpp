@@ -5,8 +5,8 @@
 #include <utility>
 #include <vector>
 
-#include "orrery/app/aero_scene.h"
 #include "orrery/app/aero_headless.h"
+#include "orrery/app/aero_scene.h"
 #include "orrery/render/aero_view.h"
 #include "orrery/render/gl_context.h"
 #include "orrery/render/snapshot.h"
@@ -31,11 +31,13 @@ render_aero_headless(const scene::AeroExperiment& experiment, const std::filesys
     std::optional<std::uint64_t> limit;
     if (request.frames > 0) {
         limit = static_cast<std::uint64_t>(request.frames) *
-                static_cast<std::uint64_t>(std::max<std::int64_t>(1, experiment.solver.steps_per_frame));
+                static_cast<std::uint64_t>(
+                    std::max<std::int64_t>(1, experiment.solver.steps_per_frame));
     }
     auto solved = sim::solve(spec, limit);
     if (!solved) {
-        return core::failure(HeadlessError{HeadlessErrorKind::failure, std::string(solved.error())});
+        return core::failure(
+            HeadlessError{HeadlessErrorKind::failure, std::string(solved.error())});
     }
     AeroHeadlessFrame out;
     out.outcome = std::move(solved).value();
@@ -50,8 +52,8 @@ render_aero_headless(const scene::AeroExperiment& experiment, const std::filesys
                                        : sim::triangle_cp(geometry.mesh, outcome.result.surface);
     std::optional<sim::FlowSnapshot> flow;
     if (outcome.solver_instance && outcome.solver == aero::SolverKind::lattice_boltzmann) {
-        auto captured =
-            sim::capture_flow(*outcome.solver_instance, geometry, outcome.flow.flow, outcome.reference);
+        auto captured = sim::capture_flow(*outcome.solver_instance, geometry, outcome.flow.flow,
+                                          outcome.reference);
         if (!captured) {
             return core::failure(HeadlessError{HeadlessErrorKind::failure,
                                                "flow field: " + std::string(captured.error())});
@@ -99,12 +101,14 @@ render_aero_headless(const scene::AeroExperiment& experiment, const std::filesys
     aero_view.set_forces(view_forces(outcome.result, outcome.flow.flow, geometry, frame));
     const AeroLayers layers;
     const render::AeroViewOptions options =
-        view_options(layers, geometry.two_dimensional, bounds, grid);
+        view_options(layers, geometry.two_dimensional, bounds, grid, cp);
     render::Camera camera;
     const render::FrameInfo info{request.width, request.height};
-    camera.set_mode(view_camera(bounds, geometry.two_dimensional, info.aspect(), camera.lens()));
-    (void)camera.update(0.0, render::CameraInput{},
-                        [](core::BodyId) -> std::optional<render::BodyFrame> { return std::nullopt; });
+    camera.set_mode(view_camera(bounds, geometry.two_dimensional, flow.has_value(), info.aspect(),
+                                camera.lens()));
+    (void)camera.update(
+        0.0, render::CameraInput{},
+        [](core::BodyId) -> std::optional<render::BodyFrame> { return std::nullopt; });
 
     std::string draw_error;
     auto image = offscreen.render(

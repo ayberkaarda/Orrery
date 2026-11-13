@@ -7,8 +7,8 @@
 #include <cstddef>
 #include <fstream>
 #include <numbers>
-#include <system_error>
 #include <span>
+#include <system_error>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -35,8 +35,8 @@ namespace {
 
 constexpr double kDragRadiansPerPixel = 0.005;
 constexpr double kZoomPerNotch = 0.15;
-constexpr std::array<std::int64_t, 10> kStepsPerFrame{10,  20,  50,   100,  200,
-                                                       500, 1000, 2000, 5000, 10000};
+constexpr std::array<std::int64_t, 10> kStepsPerFrame{10,  20,   50,   100,  200,
+                                                      500, 1000, 2000, 5000, 10000};
 // UTF-8 of the Latin-1 symbols the default font covers.
 constexpr const char* kSquared = "m\xC2\xB2";
 constexpr const char* kCubed = "m\xC2\xB3";
@@ -308,10 +308,9 @@ struct AeroWorkspace::Impl {
             return;
         }
         const std::vector<sim::UnitChoice> units = sim::unit_choices();
-        const double scale =
-            pending_unit < static_cast<int>(units.size())
-                ? units[static_cast<std::size_t>(pending_unit)].scale
-                : pending_scale;
+        const double scale = pending_unit < static_cast<int>(units.size())
+                                 ? units[static_cast<std::size_t>(pending_unit)].scale
+                                 : pending_scale;
         const geom::UpAxis up = pending_up == 1 ? geom::UpAxis::y_up : geom::UpAxis::z_up;
         sim::ImportedModel model = std::move(*pending_import);
         pending_import.reset();
@@ -353,7 +352,8 @@ struct AeroWorkspace::Impl {
                 rebuild_queued = false;
                 rebuild_geometry();
             } else if (prepared) {
-                auto ready = std::make_shared<const sim::PreparedGeometry>(std::move(prepared).value());
+                auto ready =
+                    std::make_shared<const sim::PreparedGeometry>(std::move(prepared).value());
                 experiment.geometry = ready->ref;
                 geometry = std::move(ready);
                 ++geometry_revision;
@@ -425,6 +425,16 @@ struct AeroWorkspace::Impl {
         return experiment.conditions.flow();
     }
 
+    // Whether the view frames the wake as well: for lattice Boltzmann runs,
+    // which have a flow field to show.
+    [[nodiscard]] bool wake_view() const {
+        const sim::AeroProgress& p = runner.latest();
+        if (p.spec && p.spec->geometry == geometry) {
+            return p.status.solver == aero::SolverKind::lattice_boltzmann;
+        }
+        return input_flow().solver == aero::SolverKind::lattice_boltzmann;
+    }
+
     // Frames the body in the scene area: the framing is computed for the
     // area's aspect, moved back so that the area's height (not the
     // window's) spans the field of view, and the focus is shifted so that
@@ -443,11 +453,12 @@ struct AeroWorkspace::Impl {
         const double aspect = usable ? camera_scene.width / camera_scene.height
                                      : static_cast<double>(camera_width) / camera_height;
         render::TurntableMode mode =
-            view_camera(bounds, geometry->two_dimensional, aspect, camera.lens());
+            view_camera(bounds, geometry->two_dimensional, wake_view(), aspect, camera.lens());
         if (usable) {
-            mode.distance *= std::max(1.0, static_cast<double>(camera_height) / camera_scene.height);
-            const double per_pixel = 2.0 * mode.distance *
-                                     std::tan(0.5 * camera.lens().vertical_fov) / camera_height;
+            mode.distance *=
+                std::max(1.0, static_cast<double>(camera_height) / camera_scene.height);
+            const double per_pixel =
+                2.0 * mode.distance * std::tan(0.5 * camera.lens().vertical_fov) / camera_height;
             const double shift_x =
                 (camera_scene.x + 0.5 * camera_scene.width - 0.5 * camera_width) * per_pixel;
             const double shift_up =
@@ -534,9 +545,9 @@ struct AeroWorkspace::Impl {
         if (!layout_built) {
             layout_built = true;
             ImGui::DockBuilderRemoveNode(dock_id);
-            ImGui::DockBuilderAddNode(dock_id,
-                                      static_cast<ImGuiDockNodeFlags>(ImGuiDockNodeFlags_DockSpace) |
-                                          ImGuiDockNodeFlags_PassthruCentralNode);
+            ImGui::DockBuilderAddNode(
+                dock_id, static_cast<ImGuiDockNodeFlags>(ImGuiDockNodeFlags_DockSpace) |
+                             ImGuiDockNodeFlags_PassthruCentralNode);
             ImGui::DockBuilderSetNodePos(dock_id, viewport->WorkPos);
             ImGui::DockBuilderSetNodeSize(dock_id, viewport->WorkSize);
             ImGuiID rest = 0;
@@ -563,10 +574,9 @@ struct AeroWorkspace::Impl {
             ImGui::DockBuilderFinish(dock_id);
         }
         ImGui::DockSpaceOverViewport(dock_id, viewport, ImGuiDockNodeFlags_PassthruCentralNode);
-        render::UiRect area{static_cast<double>(viewport->WorkPos.x),
-                            static_cast<double>(viewport->WorkPos.y),
-                            static_cast<double>(viewport->WorkSize.x),
-                            static_cast<double>(viewport->WorkSize.y)};
+        render::UiRect area{
+            static_cast<double>(viewport->WorkPos.x), static_cast<double>(viewport->WorkPos.y),
+            static_cast<double>(viewport->WorkSize.x), static_cast<double>(viewport->WorkSize.y)};
         if (const ImGuiDockNode* central = ImGui::DockBuilderGetCentralNode(dock_id)) {
             area = {static_cast<double>(central->Pos.x), static_cast<double>(central->Pos.y),
                     static_cast<double>(central->Size.x), static_cast<double>(central->Size.y)};
@@ -616,8 +626,7 @@ void AeroWorkspace::Impl::draw_geometry_panel() {
 
     if (geometry_task.started() || import_task.started()) {
         ImGui::Dummy(ImVec2(0.0F, 2.0F));
-        const char* stage =
-            import_task.started() ? import_task.stage() : geometry_task.stage();
+        const char* stage = import_task.started() ? import_task.stage() : geometry_task.stage();
         w::muted(std::string("Working: ") + stage + dots());
     }
     draw_geometry_report();
@@ -708,7 +717,8 @@ void AeroWorkspace::Impl::draw_import_inputs() {
     } else {
         w::section("MODEL URL");
         w::row_label("URL");
-        (void)ImGui::InputTextWithHint("##url", "https://...", url_buffer.data(), url_buffer.size());
+        (void)ImGui::InputTextWithHint("##url", "https://...", url_buffer.data(),
+                                       url_buffer.size());
         w::muted("https only, at most 200 MB; zip archives are opened one level deep");
     }
     w::row_label("Licence");
@@ -735,7 +745,8 @@ void AeroWorkspace::Impl::draw_import_inputs() {
     const sim::ImportedModel& model = *pending_import;
     const geom::UnitEstimate& estimate = model.imported.unit;
     w::section("CONFIRM UNITS AND ORIENTATION");
-    w::text(model.file_name + kDot + w::grouped(model.imported.mesh.triangles.size()) + " triangles");
+    w::text(model.file_name + kDot + w::grouped(model.imported.mesh.triangles.size()) +
+            " triangles");
     w::wrapped("Largest extent " + w::significant(estimate.raw_extent, 4) + " file units; " +
                    (estimate.from_format ? "the format defines " : "the size suggests ") +
                    estimate.unit + ".",
@@ -800,7 +811,8 @@ void AeroWorkspace::Impl::draw_geometry_report() {
                 return std::to_string(before) + " \xE2\x86\x92 " + std::to_string(after);
             };
             w::property("Boundary edges", change(r.before.boundary_edges, r.after.boundary_edges));
-            w::property("Non-manifold", change(r.before.non_manifold_edges, r.after.non_manifold_edges));
+            w::property("Non-manifold",
+                        change(r.before.non_manifold_edges, r.after.non_manifold_edges));
             w::property("Inconsistent edges",
                         change(r.before.inconsistent_edges, r.after.inconsistent_edges));
             w::property("Components", change(r.before.components, r.after.components));
@@ -825,7 +837,8 @@ void AeroWorkspace::Impl::draw_geometry_report() {
         w::section("REFERENCE QUANTITIES");
         if (w::begin_properties("##reference", "Planform area")) {
             w::property("Frontal area", w::significant(g.quantities.frontal_area) + " " + kSquared);
-            w::property("Planform area", w::significant(g.quantities.planform_area) + " " + kSquared);
+            w::property("Planform area",
+                        w::significant(g.quantities.planform_area) + " " + kSquared);
             w::property("Wetted area", w::significant(g.quantities.wetted_area) + " " + kSquared);
             w::property("Length", w::significant(g.quantities.reference_length) + " m");
             w::property("Span", w::significant(g.quantities.span) + " m");
@@ -904,9 +917,8 @@ void AeroWorkspace::Impl::draw_flow_panel() {
         if (ImGui::Selectable(recommended.c_str(), !experiment.solver.solver)) {
             experiment.solver.solver.reset();
         }
-        for (const aero::SolverKind kind :
-             {aero::SolverKind::panel, aero::SolverKind::newtonian,
-              aero::SolverKind::lattice_boltzmann}) {
+        for (const aero::SolverKind kind : {aero::SolverKind::panel, aero::SolverKind::newtonian,
+                                            aero::SolverKind::lattice_boltzmann}) {
             const bool available = sim::solver_available(kind, two_d);
             ImGui::BeginDisabled(!available);
             if (ImGui::Selectable(std::string(sim::solver_display_name(kind)).c_str(),
@@ -1054,10 +1066,9 @@ void AeroWorkspace::Impl::draw_results_panel() {
     }
     // Coefficients of the run renormalised to the selected reference.
     const double area_factor = have && shown.area > 0.0 ? run_area / shown.area : 1.0;
-    const double moment_factor =
-        have && shown.area > 0.0 && shown.length > 0.0
-            ? run_area * run_length / (shown.area * shown.length)
-            : 1.0;
+    const double moment_factor = have && shown.area > 0.0 && shown.length > 0.0
+                                     ? run_area * run_length / (shown.area * shown.length)
+                                     : 1.0;
     w::section("COEFFICIENTS");
     const ImGuiStyle& style = ImGui::GetStyle();
     if (ImGui::BeginTable("##coefficients", two_d ? 4 : 5, ImGuiTableFlags_SizingStretchSame)) {
@@ -1102,8 +1113,7 @@ void AeroWorkspace::Impl::draw_results_panel() {
                 w::property("Stagnation heat flux",
                             w::significant(*r.stagnation_heat_flux * 1.0e-6, 3) + " MW/m2");
             }
-            w::property("Force", w::significant(geom::norm(r.force), 4) +
-                                     (two_d ? " N/m" : " N"));
+            w::property("Force", w::significant(geom::norm(r.force), 4) + (two_d ? " N/m" : " N"));
             w::end_properties();
         }
         if (r.cd_friction != 0.0) {
@@ -1119,7 +1129,8 @@ void AeroWorkspace::Impl::draw_results_panel() {
     if (lbm) {
         w::section("LATTICE BOLTZMANN");
         w::row_label("Steps per frame");
-        if (ImGui::BeginCombo("##spf", w::grouped(static_cast<std::uint64_t>(steps_per_frame)).c_str())) {
+        if (ImGui::BeginCombo("##spf",
+                              w::grouped(static_cast<std::uint64_t>(steps_per_frame)).c_str())) {
             for (const std::int64_t steps : kStepsPerFrame) {
                 if (ImGui::Selectable(w::grouped(static_cast<std::uint64_t>(steps)).c_str(),
                                       steps == steps_per_frame)) {
@@ -1137,9 +1148,9 @@ void AeroWorkspace::Impl::draw_results_panel() {
         w::tooltip("Step back to back until the run's duration is reached instead of pacing "
                    "the solver with the frames.");
         if (diagnostics != nullptr && diagnostics->planned_steps > 0) {
-            const double fraction = std::min(
-                1.0, static_cast<double>(diagnostics->lattice_steps) /
-                         static_cast<double>(diagnostics->planned_steps));
+            const double fraction =
+                std::min(1.0, static_cast<double>(diagnostics->lattice_steps) /
+                                  static_cast<double>(diagnostics->planned_steps));
             const std::string overlay = w::grouped(diagnostics->lattice_steps) + " / " +
                                         w::grouped(diagnostics->planned_steps) + " steps";
             ImGui::ProgressBar(static_cast<float>(fraction), ImVec2(-1.0F, 0.0F), overlay.c_str());
@@ -1239,8 +1250,8 @@ void AeroWorkspace::Impl::draw_convergence(const sim::RunDiagnostics* diagnostic
             index.push_back(static_cast<double>(i + 1));
         }
     }
-    if (positive.size() > 1 &&
-        ImPlot::BeginPlot("##residual", ImVec2(-1.0F, height * 0.6F), flags | ImPlotFlags_NoLegend)) {
+    if (positive.size() > 1 && ImPlot::BeginPlot("##residual", ImVec2(-1.0F, height * 0.6F),
+                                                 flags | ImPlotFlags_NoLegend)) {
         ImPlot::SetupAxes("update", "residual", ImPlotAxisFlags_AutoFit, ImPlotAxisFlags_AutoFit);
         ImPlot::SetupAxisScale(ImAxis_Y1, ImPlotScale_Log10);
         ImPlotSpec spec;
@@ -1298,10 +1309,9 @@ void AeroWorkspace::Impl::draw_experiments_panel() {
     constexpr ImGuiTableFlags kTableFlags = ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
                                             ImGuiTableFlags_SizingStretchProp |
                                             ImGuiTableFlags_ScrollY;
-    const float list_height =
-        std::min(ImGui::GetTextLineHeightWithSpacing() *
-                     static_cast<float>(listing.experiments.size() + 2),
-                 ImGui::GetFontSize() * 12.0F);
+    const float list_height = std::min(ImGui::GetTextLineHeightWithSpacing() *
+                                           static_cast<float>(listing.experiments.size() + 2),
+                                       ImGui::GetFontSize() * 12.0F);
     if (!listing.experiments.empty() &&
         ImGui::BeginTable("##saved", 8, kTableFlags, ImVec2(0.0F, list_height))) {
         ImGui::TableSetupScrollFreeze(0, 1);
@@ -1373,9 +1383,9 @@ void AeroWorkspace::Impl::draw_experiments_panel() {
         if (ImGui::SmallButton("Export CSV")) {
             export_comparison(table);
         }
-        if (ImGui::BeginTable("##comparison", 9, ImGuiTableFlags_RowBg |
-                                                     ImGuiTableFlags_BordersInnerH |
-                                                     ImGuiTableFlags_SizingStretchSame)) {
+        if (ImGui::BeginTable("##comparison", 9,
+                              ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerH |
+                                  ImGuiTableFlags_SizingStretchSame)) {
             for (const char* header :
                  {"AoA", "Solver", "Cd", "Cl", "Cm", "dCd", "dCl", "dCm", "L/D"}) {
                 ImGui::TableSetupColumn(header);
@@ -1586,10 +1596,10 @@ void AeroWorkspace::draw_bar(double fps) {
                          ? p.status.solver == aero::SolverKind::lattice_boltzmann
                          : s.input_flow().solver == aero::SolverKind::lattice_boltzmann;
     ImGui::BeginDisabled(!lbm);
-    const std::string pace = s.to_convergence
-                                 ? std::string("to convergence")
-                                 : w::grouped(static_cast<std::uint64_t>(s.steps_per_frame)) +
-                                       " steps/frame";
+    const std::string pace =
+        s.to_convergence
+            ? std::string("to convergence")
+            : w::grouped(static_cast<std::uint64_t>(s.steps_per_frame)) + " steps/frame";
     if (ImGui::Button((pace + "##pace").c_str())) {
         ImGui::OpenPopup("##pace_menu");
     }
@@ -1604,7 +1614,8 @@ void AeroWorkspace::draw_bar(double fps) {
         }
         ImGui::Separator();
         for (const std::int64_t steps : kStepsPerFrame) {
-            const std::string label = w::grouped(static_cast<std::uint64_t>(steps)) + " steps per frame";
+            const std::string label =
+                w::grouped(static_cast<std::uint64_t>(steps)) + " steps per frame";
             if (ImGui::Selectable(label.c_str(), !s.to_convergence && steps == s.steps_per_frame)) {
                 s.to_convergence = false;
                 s.steps_per_frame = steps;
@@ -1630,8 +1641,8 @@ void AeroWorkspace::draw_bar(double fps) {
 
     // Right-aligned status and frame rate.
     std::string status = state_label(state);
-    if (const sim::RunDiagnostics* d = p.diagnostics.get(); d != nullptr && d->planned_steps > 0 &&
-                                                             state != sim::AeroRunState::idle) {
+    if (const sim::RunDiagnostics* d = p.diagnostics.get();
+        d != nullptr && d->planned_steps > 0 && state != sim::AeroRunState::idle) {
         status += kDot + w::grouped(d->lattice_steps) + " / " + w::grouped(d->planned_steps);
         if (state == sim::AeroRunState::running && p.status.steps_per_second > 0.0) {
             status += kDot + w::grouped(static_cast<std::uint64_t>(p.status.steps_per_second)) +
@@ -1642,9 +1653,9 @@ void AeroWorkspace::draw_bar(double fps) {
                   w::fixed(p.result->cl, 4);
     }
     if (s.geometry_task.started() || s.import_task.started()) {
-        status = std::string(s.import_task.started() ? s.import_task.stage()
-                                                     : s.geometry_task.stage()) +
-                 dots();
+        status =
+            std::string(s.import_task.started() ? s.import_task.stage() : s.geometry_task.stage()) +
+            dots();
     }
     const std::string fps_text = w::fixed(fps, 0) + " fps";
     const float status_width = ImGui::CalcTextSize(status.c_str()).x;

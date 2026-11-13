@@ -83,11 +83,10 @@ scene::AeroExperiment tiny_lbm_experiment() {
 } // namespace
 
 TEST_CASE("Primitives are watertight, outward and face the free stream", "[aero][workspace]") {
-    const auto shape = GENERATE(scene::AeroShape::sphere, scene::AeroShape::cube,
-                                scene::AeroShape::cylinder, scene::AeroShape::cone,
-                                scene::AeroShape::ellipsoid, scene::AeroShape::flat_plate,
-                                scene::AeroShape::wedge, scene::AeroShape::capsule,
-                                scene::AeroShape::naca_wing);
+    const auto shape =
+        GENERATE(scene::AeroShape::sphere, scene::AeroShape::cube, scene::AeroShape::cylinder,
+                 scene::AeroShape::cone, scene::AeroShape::ellipsoid, scene::AeroShape::flat_plate,
+                 scene::AeroShape::wedge, scene::AeroShape::capsule, scene::AeroShape::naca_wing);
     CAPTURE(scene::to_string(shape));
     const auto geometry = prepared(primitive(shape));
     CHECK_FALSE(geometry->two_dimensional);
@@ -184,8 +183,7 @@ TEST_CASE("Flow summary derives Re and Mach and never blocks on the envelope",
 
     // An override is honoured, with its envelope warnings.
     c.speed_m_s = 50.0;
-    const sim::FlowSummary forced =
-        sim::summarize_flow(c, 1.0, aero::SolverKind::newtonian, false);
+    const sim::FlowSummary forced = sim::summarize_flow(c, 1.0, aero::SolverKind::newtonian, false);
     CHECK(forced.solver == aero::SolverKind::newtonian);
     CHECK(forced.regime.overridden);
     CHECK(std::any_of(forced.warnings.begin(), forced.warnings.end(),
@@ -283,9 +281,8 @@ TEST_CASE("The solver thread runs per frame, to convergence, pauses and stops",
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         CHECK(runner.step_calls() == idle_calls);
         runner.wake();
-        REQUIRE(app_test::wait_until([&] {
-            return latest().diagnostics && latest().diagnostics->lattice_steps >= 50;
-        }));
+        REQUIRE(app_test::wait_until(
+            [&] { return latest().diagnostics && latest().diagnostics->lattice_steps >= 50; }));
         CHECK(latest().diagnostics->lattice_steps % 50 == 0);
         runner.send(sim::SetAeroPaused{true});
         REQUIRE(app_test::wait_until(
@@ -305,8 +302,8 @@ TEST_CASE("The solver thread runs per frame, to convergence, pauses and stops",
             [&] { return latest().status.state == sim::AeroRunState::finished; }));
         CHECK(latest().diagnostics->lattice_steps >= latest().diagnostics->planned_steps);
         runner.send(sim::StopAeroRun{});
-        REQUIRE(app_test::wait_until(
-            [&] { return latest().status.state == sim::AeroRunState::idle; }));
+        REQUIRE(
+            app_test::wait_until([&] { return latest().status.state == sim::AeroRunState::idle; }));
         CHECK(latest().result != nullptr); // the last result stays readable
     }
     SECTION("a solver that cannot set up reports the failure") {
@@ -452,7 +449,7 @@ TEST_CASE("User models: import errors are reported, units are confirmed",
 }
 
 TEST_CASE("View data places the lattice where the solver put it", "[aero][workspace][view]") {
-    SECTION("2D: the section plane is the view's x-y plane") {
+    SECTION("2D: the section lies in the view's x-z plane") {
         sim::AeroRunSpec spec;
         spec.experiment = tiny_lbm_experiment();
         spec.geometry = prepared(spec.experiment.geometry);
@@ -467,7 +464,8 @@ TEST_CASE("View data places the lattice where the solver put it", "[aero][worksp
         REQUIRE(solver->result().velocity.has_value()); // zero angle of attack
         const aero::VelocityField& field = *solver->result().velocity;
         CHECK(snapshot.value().origin.x == Approx(field.origin.x).margin(1e-12));
-        CHECK(snapshot.value().origin.y == Approx(field.origin.z).margin(1e-12));
+        CHECK(snapshot.value().origin.y == 0.0);
+        CHECK(snapshot.value().origin.z == Approx(field.origin.z).margin(1e-12));
         CHECK(snapshot.value().spacing == Approx(field.spacing));
         CHECK(snapshot.value().step == 50);
         const auto cp = sim::panel_cp(spec.geometry->section, solver->result().surface);
