@@ -4,9 +4,13 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <string>
+#include <variant>
+#include <vector>
 
 #include "lbm3d_test_support.h"
 #include "orrery/aero/compute/null_compute_backend.h"
@@ -84,6 +88,71 @@ TEST_CASE("The GPU D3Q19 driver uploads, ping-pongs and reads back", "[aero][lbm
     const MacroFields3D fields = take(solver->macroscopic());
     CHECK(fields.density.size() == setup.mask.solid.size());
     CHECK(fields.velocity_z.size() == setup.mask.solid.size());
+}
+
+TEST_CASE("The GPU D3Q19 force dispatch stays within 65535 work groups per dimension",
+          "[aero][lbm3d]") {
+    // A periodic 128 x 128 x 66 lattice, fluid where x and y are even: each
+    // fluid node has 16 links (all but +-z), 4,325,376 in all, more than the
+    // 65535 x 64 = 4,194,240 work items one dimension of 64-item groups
+    // reaches at the minimum GL_MAX_COMPUTE_WORK_GROUP_COUNT.
+    constexpr std::uint64_t kLocalSize = 64; // lbm_d3q19_force.comp.glsl
+    constexpr std::uint64_t kMaxGroups = 65535;
+    const Lbm3DConfig config = periodic_box(128, 128, 66, 0.6);
+    SolidMask3D mask = fluid_mask_3d(128, 128, 66);
+    for (std::size_t z = 0; z < 66; ++z) {
+        for (std::size_t y = 0; y < 128; ++y) {
+            for (std::size_t x = 0; x < 128; ++x) {
+                mask.solid[mask.index(x, y, z)] = x % 2 == 0 && y % 2 == 0 ? 0 : 1;
+            }
+        }
+    }
+    // The force kernel emulated on the host with the device limit: every
+    // work item of the rounded-up groups forms its link index as the GLSL
+    // kernel does and counts its visit.
+    compute::NullComputeBackend backend;
+    std::vector<std::uint8_t> visits;
+    backend.register_kernel(
+        std::string(kernel3d_force),
+        [&visits](const compute::DispatchCommand& command,
+                  const compute::NullComputeBackend::Bindings&) -> compute::Status {
+            const std::uint64_t groups_x = (command.global.x + kLocalSize - 1) / kLocalSize;
+            if (groups_x > kMaxGroups || command.global.y > kMaxGroups ||
+                command.global.z > kMaxGroups) {
+                return orrery::core::failure(std::string("more than 65535 work groups"));
+            }
+            if (command.global.z != 1) {
+                return orrery::core::failure(std::string("the emulation tiles x and y only"));
+            }
+            std::uint64_t count = 0;
+            std::uint64_t row = 0;
+            for (const compute::Uniform& uniform : command.uniforms) {
+                if (uniform.name == "u_link_count") {
+                    count = std::get<std::uint32_t>(uniform.value);
+                } else if (uniform.name == "u_link_row") {
+                    row = std::get<std::uint32_t>(uniform.value);
+                }
+            }
+            visits.assign(count, 0);
+            for (std::uint64_t y = 0; y < command.global.y; ++y) {
+                for (std::uint64_t x = 0; x < groups_x * kLocalSize; ++x) {
+                    const std::uint64_t k = x + row * y;
+                    if (k < count && visits[k] < 255) {
+                        ++visits[k];
+                    }
+                }
+            }
+            return std::monostate{};
+        });
+    auto solver = take(make_gpu_solver(backend, config, mask));
+    const std::size_t links = solver->links().size();
+    REQUIRE(links == std::size_t{128} * 128 * 66 / 4 * 16);
+    REQUIRE(links > kMaxGroups * kLocalSize);
+    const auto force = solver->force();
+    INFO((force ? std::string() : force.error()));
+    REQUIRE(force);
+    REQUIRE(visits.size() == links);
+    CHECK(std::all_of(visits.begin(), visits.end(), [](std::uint8_t v) { return v == 1; }));
 }
 
 TEST_CASE("The GPU D3Q19 driver refuses what binary32 cannot carry", "[aero][lbm3d]") {

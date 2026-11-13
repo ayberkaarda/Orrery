@@ -44,6 +44,22 @@ constexpr std::uint32_t kBindWall = 7;
 
 constexpr std::size_t kOutletSlots = detail3d::outlet_directions.size();
 
+// The force kernel runs one work item per link in rows of kLinkRow items
+// (1024 groups of its 64), link k = x + kLinkRow y: no dimension needs more
+// than the 65535 groups every device supports (GL_MAX_COMPUTE_WORK_GROUP_COUNT
+// minimum); 2^32 links would take 65536 rows, and the 32-bit cell index
+// bound of make_gpu_solver keeps the link count (at most 18 per cell) below
+// that.
+constexpr std::uint32_t kLinkRow = 65536;
+
+DispatchSize link_dispatch(std::size_t links) noexcept {
+    if (links <= kLinkRow) {
+        return DispatchSize{static_cast<std::uint32_t>(links), 1, 1};
+    }
+    const std::size_t rows = (links + kLinkRow - 1) / kLinkRow;
+    return DispatchSize{kLinkRow, static_cast<std::uint32_t>(rows), 1};
+}
+
 std::uint32_t wall_code(WallKind kind) noexcept {
     switch (kind) {
         case WallKind::periodic:
@@ -159,6 +175,7 @@ public:
             Uniform{"u_force_y", Float32Uniform{config_.body_force_y}},
             Uniform{"u_force_z", Float32Uniform{config_.body_force_z}},
             Uniform{"u_link_count", static_cast<std::uint32_t>(links_.size())},
+            Uniform{"u_link_row", kLinkRow},
             Uniform{"u_outlet_mode",
                     static_cast<std::uint32_t>(config_.outlet == Outlet::extrapolation)},
             Uniform{"u_outlet_speed", Float32Uniform{config_.inlet_ux}},
@@ -394,7 +411,7 @@ public:
             BufferBinding{kBindLinkForce, link_force_.id()},
             BufferBinding{kBindWall, wall_.id()},
         };
-        const DispatchSize size{static_cast<std::uint32_t>(links_.size()), 1, 1};
+        const DispatchSize size = link_dispatch(links_.size());
         if (auto done = backend_->dispatch({kernel3d_force, size, uniforms_, bindings}); !done) {
             return core::failure(with_context("force", done.error()));
         }

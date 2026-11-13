@@ -16,9 +16,10 @@ layout(std430, binding = 5) writeonly buffer Lbm3LinkForce {
 };
 
 uniform uint u_link_count;
+uniform uint u_link_row; // work items per row: link k = x + u_link_row * y
 
 void main() {
-    uint k = gl_GlobalInvocationID.x;
+    uint k = gl_GlobalInvocationID.x + u_link_row * gl_GlobalInvocationID.y;
     if (k >= u_link_count) {
         return;
     }

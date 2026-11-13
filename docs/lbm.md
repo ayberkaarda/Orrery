@@ -414,11 +414,15 @@ populations shifted by their weights) share `lbm3d_internal.h`:
 |---|---|---|
 | `lbm_d3q19_step` | 0 source, 1 node classes, 2 destination, 6 outlet history, 7 wall fractions | nx x ny x nz |
 | `lbm_d3q19_moments` | 0 populations, 1 node classes, 3 rho - 1, u_x, u_y, u_z | nx x ny x nz |
-| `lbm_d3q19_force` | 0 populations, 1 node classes, 4 links, 5 per-link f*_o + f_j, 7 wall fractions | links |
+| `lbm_d3q19_force` | 0 populations, 1 node classes, 4 links, 5 per-link f*_o + f_j, 7 wall fractions | links, in rows of 65536: link k = x + 65536 y |
 
 A node class is 0 solid, 1 bulk fluid (plain streaming without any check), 2
 boundary fluid, or 3 + s for a node with wall fractions in slot s (19 per
-slot). Before allocating, `make_gpu_solver` refuses what binary32 cannot
+slot). The force dispatch is tiled in rows of 1024 groups of 64 so that no
+dimension exceeds 65535 work groups, the minimum of
+GL_MAX_COMPUTE_WORK_GROUP_COUNT (a 128^3 periodic checkerboard has 6.3
+million links, 98,304 groups in one row); tested with a host emulation of
+the kernel under that limit, 4.3 million links each visited once. Before allocating, `make_gpu_solver` refuses what binary32 cannot
 carry (as in 2D), a population buffer above the largest binding and a
 lattice above the free device memory, when the backend reports them
 (ADR-020; the RX 9060 XT reports 2048 MiB per binding and its free memory
