@@ -57,7 +57,10 @@ struct ComparisonTable {
 compare_by_geometry(std::span<const scene::AeroExperiment> experiments);
 
 // The table as CSV (RFC 4180: comma separated, quoted where needed, one
-// header line, '.' decimal point, full precision).
+// header line, '.' decimal point, full precision). Text cells that a
+// spreadsheet would read as a formula (a leading '=', '+', '-', '@', tab or
+// carriage return) are quoted with an apostrophe in front, so names from
+// untrusted files are never evaluated.
 [[nodiscard]] std::string comparison_csv(const ComparisonTable& table);
 
 // --- Files -----------------------------------------------------------------

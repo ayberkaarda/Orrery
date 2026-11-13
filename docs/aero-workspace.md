@@ -221,7 +221,10 @@ aero files are listed as problems, other domains skipped), Load, and the
 attack, with Cd, Cl, Cm, their differences to the lowest angle, L/D, and the
 least-squares lift slope per degree and per radian (2 pi for thin-airfoil
 theory). Export CSV writes the table next to the experiments
-(`<geometry>_comparison.csv`, RFC 4180, full precision).
+(`<geometry>_comparison.csv`, RFC 4180, full precision). Text cells that a
+spreadsheet would read as a formula (a leading `=`, `+`, `-`, `@`, tab or
+carriage return, as an experiment name from an untrusted file may have) are
+written quoted with an apostrophe in front, so they open as text.
 
 ## 7. Headless
 

@@ -9,6 +9,7 @@
 #include <iterator>
 #include <numbers>
 #include <sstream>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -35,11 +36,20 @@ std::string trimmed_number(double value) {
     return out.str();
 }
 
+// True for text a spreadsheet would read as a formula (OWASP "CSV
+// injection"): a leading '=', '+', '-', '@', tab or carriage return.
+bool formula_like(const std::string& text) noexcept {
+    return !text.empty() && std::string_view("=+-@\t\r").find(text.front()) != std::string::npos;
+}
+
+// A text cell: quoted where needed (RFC 4180), and prefixed with an
+// apostrophe and quoted where it would otherwise start a formula.
 std::string csv_field(const std::string& text) {
-    if (text.find_first_of(",\"\r\n") == std::string::npos) {
+    const bool formula = formula_like(text);
+    if (!formula && text.find_first_of(",\"\r\n") == std::string::npos) {
         return text;
     }
-    std::string quoted = "\"";
+    std::string quoted = formula ? "\"'" : "\"";
     for (const char c : text) {
         quoted += c;
         if (c == '"') {

@@ -359,6 +359,37 @@ TEST_CASE("Comparison table: same geometry, different angles of attack",
     CHECK(sim::comparison_csv(tables[1]).find("\"cambered, \"\"quoted\"\"\"") != std::string::npos);
 }
 
+TEST_CASE("Comparison CSV text cells cannot start a spreadsheet formula",
+          "[aero][workspace][experiment]") {
+    // Each name and the field the CSV must hold for it (between the label
+    // and the solver columns).
+    const std::vector<std::pair<std::string, std::string>> cases{
+        {"=1+1", "\"'=1+1\""},
+        {"+SUM(A1:A2)", "\"'+SUM(A1:A2)\""},
+        {"-2+3", "\"'-2+3\""},
+        {"@SUM(A1)", "\"'@SUM(A1)\""},
+        {"\tindent", "\"'\tindent\""},
+        {"\rreturn", "\"'\rreturn\""},
+        {"=a,\"b\"", "\"'=a,\"\"b\"\"\""},
+        {"plain name", "plain name"},
+        {"a, b", "\"a, b\""},
+        {"say \"hi\"", "\"say \"\"hi\"\"\""},
+        {"x=1", "x=1"},
+    };
+    sim::ComparisonTable table;
+    table.label = "=HYPERLINK(\"http://example.invalid\")";
+    for (const auto& [name, field] : cases) {
+        sim::ComparisonRow row;
+        row.name = name;
+        row.angle_of_attack_deg = -2.0; // numbers keep their sign
+        table.rows = {row};
+        const std::string csv = sim::comparison_csv(table);
+        INFO(csv);
+        const std::string label = "\"'=HYPERLINK(\"\"http://example.invalid\"\")\"";
+        CHECK(csv.find("\r\n" + label + "," + field + ",panel,-2,") != std::string::npos);
+    }
+}
+
 TEST_CASE("Experiment files save, list and load back", "[aero][workspace][experiment]") {
     const std::filesystem::path dir = scratch_dir("store");
     scene::AeroExperiment e = naca_section_experiment(4.0);
