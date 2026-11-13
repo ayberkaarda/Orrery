@@ -279,7 +279,10 @@ target_link_libraries(orrery_test_sim PRIVATE orrery_sim Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_sim PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
 orrery_configure_target(orrery_test_sim)
-catch_discover_tests(orrery_test_sim DISCOVERY_MODE PRE_TEST)
+# RUN_SERIAL: the physics and solver thread tests observe intermediate frames
+# of a running thread, which a fully loaded machine (ctest --parallel) can
+# make them miss; they run alone.
+catch_discover_tests(orrery_test_sim DISCOVERY_MODE PRE_TEST PROPERTIES RUN_SERIAL TRUE)
 
 # The shortcut and journey tests queue keyboard events on the Dear ImGui
 # context (app/key_events.h), as the GLFW backend does in the window.
