@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# Shell scripts run on Linux and in Git Bash on Windows runners: always LF.
+*.sh text eol=lf
