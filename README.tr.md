@@ -61,8 +61,8 @@ kara delik.
 - Paneller: Body Inspector (seçili cismin oskülatör yörüngesi), System
   Monitor (enerji kayması, adım süresi, zaman hızlandırma), Experiment (uzay
   deneylerini kaydetme ve açma), Render Settings.
-- Render: kayan orijin, logaritmik derinlik, izler, yıldız alanı, bloom ve ton
-  eşlemeli HDR; ışın yürütmeli Schwarzschild merceklenme geçişi ve Doppler
+- Render: kayan orijin, logaritmik derinlik, izler, yıldız alanı, ACES ton
+  eşlemeli HDR ve analitik yıldız parlaması (bloom geçişi yok); ışın yürütmeli Schwarzschild merceklenme geçişi ve Doppler
   parlaması ile kütleçekimsel kırmızıya kaymalı ince birikim diskiyle kara
   delikler.
 
@@ -88,8 +88,8 @@ kara delik.
 
 **Entry çalışma alanı.**
 
-- US Standard Atmosphere 1976, bir Mars referans tablosu ve üstel
-  atmosferler; Dünya ve Mars.
+- US Standard Atmosphere 1976, ortalama bir Mars profili (NASA Glenn
+  uyumu) ve üstel atmosferler; Dünya ve Mars.
 - Sabit kütleli, kaldırmasız bir sonda; Cd(Mach) tablosu elle düzenlenir ya
   da Newton çözücüsünden örneklenir; adımın kütleçekim kısmı için IAS15,
   Yoshida 4 ya da leapfrog.
@@ -252,8 +252,9 @@ belgelerdedir):
   genel görelilik değil, sözde-Newton potansiyeli kullanır.
 - Giriş: sabit kütle, kaldırma yok, dönme yok, ablasyon yok; ısı akısı
   gösterim amaçlı bir durma noktası bağıntısıdır.
-- Güneş sistemi yaklaşık J2000 ortalama elemanlarından başlar; bir efemeris
-  değildir.
+- J2000 Güneş sistemi, JPL Horizons durum vektörlerinden alınan on noktasal
+  kütledir (asteroitler, basıklık ve görelilik yok); efemeristen yılda
+  yaklaşık 1e-6 AU uzaklaşır.
 - Aero çalışma alanı lattice Boltzmann çözücüsünü CPU üzerinde çalıştırır;
   büyük 3B ızgaralar orada yavaştır.
 - İçe aktarılan modeller doğrulanmaz; indirilen modellerin lisansları
@@ -273,7 +274,7 @@ belgelerdedir):
 | `tests` | birim, özellik, doğrulama (`tests/aero_validation`) ve altın görüntü testleri |
 | `assets` | hazır senaryolar ve deneyler |
 | `docs` | başvuru belgeleri ve mimari karar kayıtları (`docs/adr`) |
-| `tools` | `check_deps.py`, bağımlılık sınırı denetimi |
+| `tools` | `check_deps.py` (bağımlılık sınırları), `check_docs.py` (belge bağlantıları ve fizik dizini), `make_screenshots.py` (README görüntüleri) |
 
 Kütüphaneler yalnız tek yönde bağımlıdır: core, geom, atmo ve simülasyon
 tarafı hiçbir zaman OpenGL, GLFW ya da Dear ImGui'ye bağlanmaz (CI'da
@@ -281,13 +282,16 @@ denetlenir).
 
 ## Belgeler
 
-- [docs/physics.md](docs/physics.md) - formüller, kaynaklar, yaklaşıklıklar ve ölçülen sonuçlar
+- [docs/README.md](docs/README.md) - tüm belgelerin ve karar kayıtlarının dizini
+- [docs/physics.md](docs/physics.md) - formül dizini, kaynaklar, yaklaşıklıklar ve ölçülen sonuçlar
 - [docs/app.md](docs/app.md) - uygulama döngüsü, zaman hızlandırma bütçesi, çalışma alanları, kısayollar, yapılandırma, hata yüzeyi
 - [docs/rendering.md](docs/rendering.md) - render, kullanıcı arayüzü, altın görüntüler
 - [docs/aero.md](docs/aero.md), [docs/lbm.md](docs/lbm.md) - aerodinamik çözücüler
 - [docs/aero-workspace.md](docs/aero-workspace.md), [docs/aero-visualisation.md](docs/aero-visualisation.md) - Aero çalışma alanı ve görünümü
 - [docs/atmosphere.md](docs/atmosphere.md), [docs/entry-workspace.md](docs/entry-workspace.md) - atmosferler, giriş ve Entry çalışma alanı
 - [docs/geometry-import.md](docs/geometry-import.md), [docs/url-import-security.md](docs/url-import-security.md) - geometri içe aktarma ve indirme sınırları
-- [docs/adr](docs/adr) - mimari karar kayıtları
+- [docs/roadmap.md](docs/roadmap.md) - V1, V2 ve V3 yol haritası, ertelenen soyutlamalar ve bağlaşım deseni
+- [docs/screenshots.md](docs/screenshots.md) - README ekran görüntülerinin yeniden üretilmesi
+- [docs/adr](docs/adr/README.md) - mimari karar kayıtları
 
 Belgeler İngilizcedir. Bu dosyanın İngilizce sürümü: [README.md](README.md).
