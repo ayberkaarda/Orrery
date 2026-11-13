@@ -115,7 +115,10 @@ time-marching run advances `steps_per_frame` lattice steps for every frame
 that woke the thread (in calls of 50 lattice steps in 2D, 20 in 3D; frames
 that arrive while a batch runs merge), so the view animates with the frame
 rate; run to convergence steps back to back until the solver's duration is
-reached, polling commands between calls. Direct solvers finish in their
+reached, polling commands between calls. A per-frame batch also ends after
+the call in progress when a start, pause or stop command arrives, so these
+act within one solver call even at a large steps per frame (tested with a
+batch of two million calls). Direct solvers finish in their
 first step either way. `converged` is the solver's own test (steady or
 settled periodic force history for the lattice solvers).
 

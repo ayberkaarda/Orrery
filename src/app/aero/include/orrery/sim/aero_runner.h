@@ -144,6 +144,12 @@ private:
     void start(StartAeroRun& start, const std::stop_token& stop);
     // One IAeroSolver::step() call; false once the run cannot continue.
     bool step_once();
+    // Solver calls for one frame's steps_per_frame lattice steps (1 for a
+    // direct solver).
+    [[nodiscard]] std::int64_t calls_per_frame() const;
+    // Up to `calls` solver calls; ends early when the run ends, the thread
+    // is asked to stop or a control command (start, pause, stop) waits.
+    void run_batch(std::int64_t calls, const std::stop_token& stop);
     void publish(bool with_result);
     // Recomputes the view data when due (or `force`).
     void refresh_view(bool force);
@@ -158,6 +164,8 @@ private:
     std::atomic<std::uint64_t> step_calls_{0};
     // Frames requested by wake() since the solver last advanced one.
     std::atomic<std::uint32_t> frames_pending_{0};
+    // Control commands sent and not yet taken from the queue.
+    std::atomic<std::uint32_t> controls_pending_{0};
     std::chrono::steady_clock::time_point last_view_{}; // solver thread only
     std::jthread thread_; // last: started after, joined before the others
 };

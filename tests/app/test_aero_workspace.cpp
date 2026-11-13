@@ -320,6 +320,41 @@ TEST_CASE("The solver thread runs per frame, to convergence, pauses and stops",
     }
 }
 
+TEST_CASE("Pause and Stop take effect between the solver calls of one frame",
+          "[aero][workspace][thread]") {
+    sim::AeroRunner runner;
+    const auto latest = [&runner]() -> const sim::AeroProgress& {
+        (void)runner.fetch();
+        return runner.latest();
+    };
+    sim::AeroRunSpec spec;
+    spec.experiment = tiny_lbm_experiment();
+    spec.experiment.solver.lbm_duration = 5000.0;        // far more calls than one frame needs
+    spec.experiment.solver.steps_per_frame = 100'000'000; // one frame: millions of calls
+    spec.geometry = prepared(spec.experiment.geometry);
+    runner.send(sim::StartAeroRun{spec, false});
+    REQUIRE(
+        app_test::wait_until([&] { return latest().status.state == sim::AeroRunState::running; }));
+    // Waits for a frame's batch to make calls, then sends `command`; the
+    // batch must end within a few calls, not run to its end.
+    constexpr std::uint64_t kBound = 3;
+    const auto interrupt = [&](sim::AeroCommand command, sim::AeroRunState expected) {
+        const std::uint64_t before = runner.step_calls();
+        runner.wake();
+        REQUIRE(app_test::wait_until([&] { return runner.step_calls() >= before + 2; }));
+        const std::uint64_t sent = runner.step_calls();
+        runner.send(std::move(command));
+        REQUIRE(app_test::wait_until([&] { return latest().status.state == expected; },
+                                     std::chrono::seconds(10)));
+        CHECK(runner.step_calls() - sent <= kBound);
+    };
+    interrupt(sim::SetAeroPaused{true}, sim::AeroRunState::paused);
+    runner.send(sim::SetAeroPaused{false});
+    REQUIRE(
+        app_test::wait_until([&] { return latest().status.state == sim::AeroRunState::running; }));
+    interrupt(sim::StopAeroRun{}, sim::AeroRunState::idle);
+}
+
 TEST_CASE("Comparison table: same geometry, different angles of attack",
           "[aero][workspace][experiment]") {
     std::vector<scene::AeroExperiment> runs;

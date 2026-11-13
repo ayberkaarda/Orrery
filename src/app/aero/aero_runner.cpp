@@ -4,6 +4,7 @@
 #include <chrono>
 #include <exception>
 #include <utility>
+#include <variant>
 
 #include <tbb/concurrent_queue.h>
 
@@ -59,7 +60,13 @@ AeroRunner::~AeroRunner() {
 }
 
 void AeroRunner::send(AeroCommand command) {
+    const bool control = std::holds_alternative<StartAeroRun>(command) ||
+                         std::holds_alternative<SetAeroPaused>(command) ||
+                         std::holds_alternative<StopAeroRun>(command);
     queue_->commands.push(std::move(command));
+    if (control) {
+        controls_pending_.fetch_add(1, std::memory_order_acq_rel);
+    }
     wake_.release();
 }
 
@@ -87,6 +94,7 @@ void AeroRunner::loop(const std::stop_token& stop) {
         try {
             bool changed = false;
             AeroCommand command;
+            controls_pending_.store(0, std::memory_order_release);
             while (!stop.stop_requested() && queue_->commands.try_pop(command)) {
                 changed = apply(command, stop) || changed;
             }
@@ -98,15 +106,7 @@ void AeroRunner::loop(const std::stop_token& stop) {
                     publish(true);
                     changed = false;
                 } else if (frames > 0) {
-                    const auto granularity =
-                        static_cast<std::int64_t>(lbm_steps_per_call(run_->plan.two_dimensional));
-                    const std::int64_t calls = std::max<std::int64_t>(
-                        1, (status_.steps_per_frame + granularity - 1) / granularity);
-                    for (std::int64_t call = 0; call < calls && !stop.stop_requested(); ++call) {
-                        if (!step_once()) {
-                            break;
-                        }
-                    }
+                    run_batch(calls_per_frame(), stop);
                     publish(true);
                     changed = false;
                 }
@@ -143,18 +143,7 @@ bool AeroRunner::apply(AeroCommand& command, const std::stop_token& stop) {
     if (std::holds_alternative<StepAeroFrame>(command)) {
         if (run_ &&
             (status_.state == AeroRunState::running || status_.state == AeroRunState::paused)) {
-            const auto granularity =
-                static_cast<std::int64_t>(lbm_steps_per_call(run_->plan.two_dimensional));
-            const bool direct = run_->plan.kind != aero::SolverKind::lattice_boltzmann;
-            const std::int64_t calls =
-                direct ? 1
-                       : std::max<std::int64_t>(1, (status_.steps_per_frame + granularity - 1) /
-                                                       granularity);
-            for (std::int64_t call = 0; call < calls && !stop.stop_requested(); ++call) {
-                if (!step_once()) {
-                    break;
-                }
-            }
+            run_batch(calls_per_frame(), stop);
             if (status_.state == AeroRunState::running) {
                 status_.state = AeroRunState::paused;
             }
@@ -221,6 +210,24 @@ void AeroRunner::start(StartAeroRun& start_run, const std::stop_token& stop) {
     run_ = std::move(run);
     status_.state = AeroRunState::running;
     publish(true);
+}
+
+std::int64_t AeroRunner::calls_per_frame() const {
+    if (!run_ || run_->plan.kind != aero::SolverKind::lattice_boltzmann) {
+        return 1;
+    }
+    const auto granularity =
+        static_cast<std::int64_t>(lbm_steps_per_call(run_->plan.two_dimensional));
+    const std::int64_t steps = status_.steps_per_frame;
+    return std::max<std::int64_t>(1, steps / granularity + (steps % granularity != 0 ? 1 : 0));
+}
+
+void AeroRunner::run_batch(std::int64_t calls, const std::stop_token& stop) {
+    for (std::int64_t call = 0; call < calls && !stop.stop_requested(); ++call) {
+        if (!step_once() || controls_pending_.load(std::memory_order_acquire) != 0) {
+            break;
+        }
+    }
 }
 
 bool AeroRunner::step_once() {
