@@ -20,8 +20,13 @@ araçtır. Her fiziksel basitleştirme kodda işaretlenir ve
 [docs/physics.md](docs/physics.md) içinde listelenir; hiçbir çözücü
 doğrulanmış CFD iddiasında bulunmaz.
 
-Sürüm 0.0.1. Windows (MSVC 2022) ve Linux (GCC 13, Clang 17) desteklenir;
-macOS kapsam dışıdır (OpenGL 4.6 yok).
+Sürüm 0.0.1. Windows (MSVC 2022), uygulamanın geliştirildiği ve test edildiği
+platformdur: pencere, GPU testleri ve paketlenmiş uygulama orada
+çalıştırılmıştır. Linux (GCC 13, Clang 17): headless derleme ve testleri CI'da
+çalışır, pencereli derleme de orada derlenir (sanitizer ve gecelik işler),
+ancak CI makinelerinde OpenGL yoktur; bu yüzden pencere ve GPU testleri
+Linux'ta hiç çalıştırılmamıştır, tarball ve AppImage test edilmemiştir. macOS
+kapsam dışıdır (OpenGL 4.6 yok).
 
 ## İçindekiler
 
@@ -170,10 +175,12 @@ ctest --preset release
 
 `[gl]` etiketli testler bir OpenGL 4.6 bağlamı ister; bağlam yoksa
 atlanırlar, `ORRERY_REQUIRE_GL=1` ayarlıysa başarısız olurlar. Sürekli
-entegrasyon, Ubuntu'da GCC 13 ve Clang 17 ile, Windows'ta MSVC ile derler ve
-test eder; bir AddressSanitizer işi, clang-format, clang-tidy, cppcheck ve
-kütüphane bağımlılık sınırlarının denetimini (`tools/check_deps.py`)
-çalıştırır.
+entegrasyon, headless ön ayarları Ubuntu'da GCC 13 ve Clang 17 ile, Windows'ta
+MSVC ile derler ve test eder (OpenGL olmadığından `[gl]` testleri atlanır);
+Linux'ta bir AddressSanitizer ve UBSan işi (GCC 13, pencereli hata ayıklama
+derlemesi), clang-format, clang-tidy, cppcheck, kütüphane bağımlılık
+sınırlarının denetimi (`tools/check_deps.py`) ve belgelerin denetimi
+(`tools/check_docs.py`) çalıştırır; bkz. [docs/ci.md](docs/ci.md).
 
 ## Çalıştırma
 
@@ -196,8 +203,11 @@ orrery_app --help | --version | --modules
   sonuna kadar çalıştırıldıktan sonra tüm çalışma alanıyla. Hiçbir zaman
   pencere göstermez ama bir OpenGL 4.6 sürücüsü ister; yoksa 3 çıkış koduyla
   sonlanır.
-- `--benchmark N` kare sürelerini yazdırır (pencerede ya da headless
-  görüntüden sonra).
+- `--benchmark N` vsync olmadan N kare çizer, ortalama kare süresini yazdırır
+  ve çıkar (pencerede) ya da headless görüntüden sonra N ekran dışı kareyi
+  ölçer (yalnız uzay deneyleri).
+- `--trace <dosya>` çalıştırmanın profil bölgelerini bir iz dosyasına yazar
+  ([docs/observability.md](docs/observability.md)).
 - Hazır deneyler `assets/experiments` altındadır: `solar_system`,
   `sun_earth_moon`, `figure_eight`, `sgr_a_s2`, `black_hole`,
   `aero_naca0012_panel`, `aero_naca0012_lbm`, `aero_naca2412_wing`,
@@ -241,12 +251,12 @@ belgelerdedir):
 
 | Alan | Referans | Sonuç |
 |---|---|---|
-| İki cisim yörüngeleri | analitik Kepler çözümü | Yoshida4 10 yörünge sonra 2.7e-8 AU; Kepler periyodu 2.4e-10'a kadar |
-| Güneş sistemi, 1000 yıl, Yoshida4 | enerji korunumu | en büyük abs(dE/E0) 1.4e-10 (hedef 1e-9) |
+| İki cisim yörüngeleri | analitik Kepler çözümü | Yoshida4 10 yörünge sonra 2.7e-8 AU; Kepler periyodunda göreli hata 2.4e-10 |
+| Güneş ve sekiz gezegen, 1000 yıl, Yoshida4 (0.25 g adım) | enerji korunumu | en büyük abs(dE/E0) 1.4e-10 (hedef 1e-9) |
 | Dairesel yörünge, 100 yörünge, leapfrog | analitik yörünge | 3.8e-7 AU (hedef 1e-6 AU) |
 | Determinizm | durum özeti (hash) | aynı adım sayısından sonra, her kare temposunda ve zaman hızlandırma bütçesiyle (belli bir duvar saati süresinde atılan adım sayısını değiştirebilir) bit düzeyinde aynı |
 | Paczynski-Wiita yörüngeleri ve ISCO | analitik periyot; 3 r_s civarında kararlılık | periyot hatası 9e-12; üstünde kararlı, altında dalış |
-| Kara delik merceklenmesi | zayıf alan sapma serisi, güçlü sapma (Bozza 2002), CPU jeodezikleri | üçüncü mertebe terim içinde; Einstein halkası yarıçapı 0.01 px içinde eşleşir |
+| Kara delik merceklenmesi | zayıf alan sapma serisi, güçlü sapma (Bozza 2002), CPU jeodezikleri | üçüncü mertebe terim içinde; Einstein halkası yarıçapı 143.52 px, öngörülen 143.52 px (test sınırı 2 px) |
 | Geometri | kapalı biçimli hacimler ve alanlar | 65 denetimde en kötü göreli hata 6.1e-14 |
 | Küre vokselleştirme | gerçek küre | 85184 hücrenin 85184'ü uyuşur |
 | NACA 0012, 2B panel yöntemi | ince kanat eğimi rad başına 2 pi; kalın kesit (Joukowski) değerleri | eğim 1.098 x 2 pi (yüzde 10 ölçütü içinde); Cl kalın kesit değerlerinden en fazla yüzde 0.7 farklı |
@@ -263,7 +273,7 @@ belgelerdedir):
 
 ## Sınırlamalar
 
-- Belirtimin V1'de gerçeklenmeyen maddeleri (bloom, Hill küreleri ve hayalet
+- Planlanıp V1'de gerçeklenmeyen maddeler (bloom, Hill küreleri ve hayalet
   yörüngeler, Rayleigh + Mie atmosferi ve farklı biçimde yapılan iki madde)
   durumlarıyla birlikte [docs/limitations.md](docs/limitations.md) içinde
   listelenir.
@@ -275,15 +285,15 @@ belgelerdedir):
   1e-4 ölçütünün üstünde, 7.1e-4'e kadar (göreli L2) ayrışır; kilitlenmeden
   sonra yeniden uyuşur ([docs/lbm.md](docs/lbm.md)).
 - Kare hızı ve iş hacmi değerleri tek bir makinede ölçülmüştür (AMD Radeon RX
-  9060 XT); belirtimdeki GTX 1660 sınıfı hedefler o sınıf donanımda
-  ölçülmemiştir.
+  9060 XT); GTX 1660 sınıfı bir GPU için konan V1 hedefleri o sınıf
+  donanımda ölçülmemiştir.
 - Kara delikler yalnız Schwarzschild'dir (dönme yok); yakınlarındaki dinamik
   genel görelilik değil, sözde-Newton potansiyeli kullanır.
 - Giriş: sabit kütle, kaldırma yok, dönme yok, ablasyon yok; ısı akısı
   gösterim amaçlı bir durma noktası bağıntısıdır.
 - J2000 Güneş sistemi, JPL Horizons durum vektörlerinden alınan on noktasal
-  kütledir (asteroitler, basıklık ve görelilik yok); efemeristen yılda
-  yaklaşık 1e-6 AU uzaklaşır.
+  kütledir (asteroitler, basıklık ve görelilik yok); bir yıl sonra efemeristen
+  yaklaşık 1e-6 AU içinde kalır (Merkür 3.9e-7 AU).
 - Aero çalışma alanı lattice Boltzmann çözücüsünü CPU üzerinde çalıştırır;
   büyük 3B ızgaralar orada yavaştır.
 - İçe aktarılan modeller doğrulanmaz; indirilen modellerin lisansları
@@ -303,7 +313,7 @@ belgelerdedir):
 | `tests` | birim, özellik, doğrulama (`tests/aero_validation`) ve altın görüntü testleri |
 | `assets` | hazır senaryolar ve deneyler |
 | `docs` | başvuru belgeleri ve mimari karar kayıtları (`docs/adr`) |
-| `tools` | `check_deps.py` (bağımlılık sınırları), `check_docs.py` (belge bağlantıları ve fizik dizini), `make_screenshots.py` (README görüntüleri) |
+| `tools` | `check_deps.py` (bağımlılık sınırları), `check_docs.py` (belge bağlantıları, fizik dizini, yayımlanmamış belirtime numaralı atıf olmaması), `make_screenshots.py` (README görüntüleri) |
 
 Kütüphaneler yalnız tek yönde bağımlıdır: core, geom, atmo ve simülasyon
 tarafı hiçbir zaman OpenGL, GLFW ya da Dear ImGui'ye bağlanmaz (CI'da
@@ -319,6 +329,11 @@ denetlenir).
 - [docs/aero-workspace.md](docs/aero-workspace.md), [docs/aero-visualisation.md](docs/aero-visualisation.md) - Aero çalışma alanı ve görünümü
 - [docs/atmosphere.md](docs/atmosphere.md), [docs/entry-workspace.md](docs/entry-workspace.md) - atmosferler, giriş ve Entry çalışma alanı
 - [docs/geometry-import.md](docs/geometry-import.md), [docs/url-import-security.md](docs/url-import-security.md) - geometri içe aktarma ve indirme sınırları
+- [docs/observability.md](docs/observability.md) - profil bölgeleri, Tracy ve `--trace` çıktısı
+- [docs/performance.md](docs/performance.md) - kıyaslamalar ve V1 hedeflerine karşı ölçülen sonuçlar
+- [docs/ci.md](docs/ci.md) - CI işleri, önbellekler, ölçülen çalışma süreleri ve gecelik iş akışı
+- [docs/packaging.md](docs/packaging.md) - kurulum paketleri, kurulum düzeni, lisans bildirimleri ve sürümler
+- [docs/limitations.md](docs/limitations.md) - planlanıp V1'de gerçeklenmeyen maddeler
 - [docs/roadmap.md](docs/roadmap.md) - V1, V2 ve V3 yol haritası, ertelenen soyutlamalar ve bağlaşım deseni
 - [docs/screenshots.md](docs/screenshots.md) - yukarıdaki ekran görüntülerinin yeniden üretilmesi
 - [docs/adr](docs/adr/README.md) - mimari karar kayıtları
