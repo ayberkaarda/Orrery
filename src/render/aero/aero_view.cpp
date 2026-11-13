@@ -474,27 +474,36 @@ struct AeroView::State {
     // Overlay.
     std::optional<Texture> overlay_texture;
     std::string overlay_key;
+    ScalarGrid empty_grid;
     glm::ivec2 overlay_size{0};
     glm::ivec2 overlay_position{0};
 
     const ScalarGrid& derived_grid(FieldQuantity quantity, Axis axis) {
-        const Axis key_axis = flow->velocity.grid.is_2d() ? Axis::z : axis;
+        if (!flow) {
+            return empty_grid;
+        }
+        const FlowField& f = *flow;
+        const Axis key_axis = f.velocity.grid.is_2d() ? Axis::z : axis;
         const Axis normal = quantity == FieldQuantity::vorticity ? key_axis : Axis::z;
         const auto key = std::make_pair(quantity, normal);
         auto found = derived.find(key);
         if (found == derived.end()) {
-            found = derived.emplace(key, derive(*flow, quantity, normal)).first;
+            found = derived.emplace(key, derive(f, quantity, normal)).first;
         }
         return found->second;
     }
 
     // Range of a quantity over the fluid nodes of the whole field.
     ScalarRange field_range(FieldQuantity quantity, Axis axis, const ColorScale& scale) {
+        if (!flow) {
+            return resolve_range(scale, {});
+        }
+        const std::vector<std::uint8_t>& solid = flow->solid;
         const ScalarGrid& grid = derived_grid(quantity, axis);
         std::vector<double> fluid;
         fluid.reserve(grid.values.size());
         for (std::size_t n = 0; n < grid.values.size(); ++n) {
-            if (flow->solid.empty() || flow->solid[n] == 0) {
+            if (solid.empty() || solid[n] == 0) {
                 fluid.push_back(grid.values[n]);
             }
         }
@@ -520,6 +529,9 @@ struct AeroView::State {
         if (!layer.seeds.empty()) {
             return layer.seeds;
         }
+        if (!flow) {
+            return {};
+        }
         const GridGeometry& g = flow->velocity.grid;
         const double inset = 0.5 * g.spacing;
         if (g.is_2d()) {
@@ -534,6 +546,9 @@ struct AeroView::State {
         if (field_buffers && field_buffer_version == flow_version) {
             return std::monostate{};
         }
+        if (!flow) {
+            return core::failure(std::string("aero view: no flow field"));
+        }
         auto uploaded = detail::upload_field(*compute, flow->velocity, flow->solid);
         if (!uploaded) {
             return core::failure("aero view: " + uploaded.error());
@@ -543,16 +558,15 @@ struct AeroView::State {
         return std::monostate{};
     }
 
-    [[nodiscard]] const Texture& lut(Colormap map) const {
-        switch (map) {
-            case Colormap::diverging:
-                return *lut_diverging;
-            case Colormap::diverging_dark:
-                return *lut_diverging_dark;
-            case Colormap::sequential:
-                break;
+    // Binds the table of `map` to texture unit 0 (ensure_luts made them).
+    void bind_lut(Colormap map) const {
+        const std::optional<Texture>& table =
+            map == Colormap::diverging
+                ? lut_diverging
+                : (map == Colormap::diverging_dark ? lut_diverging_dark : lut_sequential);
+        if (table) {
+            table->bind(0);
         }
-        return *lut_sequential;
     }
 
     DrawStatus ensure_luts(double exposure) {
@@ -590,7 +604,7 @@ struct AeroView::State {
         surface_program.set("u_opacity", opacity);
         surface_program.set("u_contours", contours);
         surface_program.set("u_contour_strength", detail::to_float(kContourStrength));
-        lut(map).bind(0);
+        bind_lut(map);
         surface_program.use();
         mesh.vao.bind();
         if (mesh.indices) {
@@ -740,7 +754,7 @@ struct AeroView::State {
             section_program.set("u_opacity", detail::to_float(opacity));
             section_program.set("u_contours", glm::vec2(0.0F));
             section_program.set("u_contour_strength", 0.0F);
-            lut(colormap_of(g.plane)).bind(0);
+            bind_lut(colormap_of(g.plane));
             g.values.bind(1);
             if (translucent) {
                 glEnable(GL_BLEND);
@@ -858,13 +872,16 @@ struct AeroView::State {
     }
 
     DrawStatus update_streamlines(const StreamlineLayer& layer) {
+        if (!flow) {
+            return std::monostate{};
+        }
+        const FlowField& f = *flow;
         const std::vector<glm::dvec3> seeds = seeds_for(layer);
         if (streamlines && streamlines->seeds == seeds &&
             same_settings(streamlines->settings, layer.settings)) {
             return std::monostate{};
         }
-        auto lines =
-            trace_streamlines_gpu(*compute, flow->velocity, flow->solid, seeds, layer.settings);
+        auto lines = trace_streamlines_gpu(*compute, f.velocity, f.solid, seeds, layer.settings);
         if (!lines) {
             return core::failure("aero view: " + lines.error());
         }
@@ -905,7 +922,7 @@ struct AeroView::State {
         line_program.set("u_color", c.precompensate(layer.color));
         line_program.set("u_log_depth_scale", c.depth_scale);
         line_program.set("u_depth_bias", detail::to_float(kLineDepthBias));
-        lut(Colormap::sequential).bind(0);
+        bind_lut(Colormap::sequential);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthMask(GL_FALSE);
@@ -1094,6 +1111,10 @@ core::Result<std::monostate, std::string> AeroView::advance(double dt,
     if (auto ready = s.ensure_field_buffers(); !ready) {
         return ready;
     }
+    if (!s.field_buffers) {
+        return core::failure(std::string("aero view: no field buffers"));
+    }
+    const detail::FieldBuffers& field_buffers = *s.field_buffers;
     const GridGeometry& g = s.flow->velocity.grid;
     const std::size_t trace_points = std::clamp<std::size_t>(layer.trace_points, 2, 64);
     const std::vector<glm::dvec3> seeds = s.seeds_for(options.streamlines);
@@ -1160,7 +1181,7 @@ core::Result<std::monostate, std::string> AeroView::advance(double dt,
     ParticlesGpu& p = *s.particles;
     const double time = dt * layer.time_scale;
     // Substeps keep each step below half a grid spacing.
-    const double cells = time * static_cast<double>(s.field_buffers->max_speed) / g.spacing;
+    const double cells = time * static_cast<double>(field_buffers.max_speed) / g.spacing;
     const int substeps = std::clamp(static_cast<int>(std::ceil(cells / 0.5)), 1, 64);
     const double step = time / substeps;
     p.head = (p.head + 1) % static_cast<std::uint32_t>(p.trace_points);
@@ -1182,8 +1203,8 @@ core::Result<std::monostate, std::string> AeroView::advance(double dt,
             Uniform{"u_jitter", Float32Uniform{1.0}},
         };
         const std::array<BufferBinding, 5> buffers{
-            BufferBinding{0, s.field_buffers->velocity.id()},
-            BufferBinding{1, s.field_buffers->solid.id()},
+            BufferBinding{0, field_buffers.velocity.id()},
+            BufferBinding{1, field_buffers.solid.id()},
             BufferBinding{2, p.seed_buffer.id()},
             BufferBinding{3, p.state.id()},
             BufferBinding{4, p.traces.id()},
