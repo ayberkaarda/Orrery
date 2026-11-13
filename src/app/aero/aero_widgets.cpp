@@ -176,7 +176,13 @@ void chip(const std::string& label, const render::UiColor& tint, const char* too
 }
 
 void chip_after(const std::string& label, const render::UiColor& tint, const char* tooltip_text) {
-    ImGui::SameLine();
+    // On the same line when the chip fits there, else on the next one.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float width = ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2.0F;
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + width <= right) {
+        ImGui::SameLine();
+    }
     chip(label, tint, tooltip_text);
 }
 
