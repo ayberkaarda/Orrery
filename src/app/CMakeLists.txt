@@ -27,6 +27,28 @@ target_link_libraries(orrery_sim PUBLIC orrery_core orrery_scene)
 target_link_libraries(orrery_sim PRIVATE TBB::tbb)
 orrery_configure_target(orrery_sim)
 
+# Phase 8b: the graphics-free side of the Aero workspace (docs/aero-workspace.md):
+# geometry preparation, flow summary and regime choice, solver thread,
+# background imports (URL downloads through orrery_geom_net), experiment
+# files and the comparison table. Still free of OpenGL, GLFW and ImGui.
+target_sources(orrery_sim PRIVATE
+    aero/aero_comparison.cpp
+    aero/aero_flow.cpp
+    aero/aero_geometry.cpp
+    aero/aero_import.cpp
+    aero/aero_runner.cpp
+    aero/aero_solve.cpp
+    aero/include/orrery/sim/aero_comparison.h
+    aero/include/orrery/sim/aero_flow.h
+    aero/include/orrery/sim/aero_geometry.h
+    aero/include/orrery/sim/aero_import.h
+    aero/include/orrery/sim/aero_runner.h
+    aero/include/orrery/sim/aero_solve.h
+    aero/include/orrery/sim/background_task.h)
+target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/aero/include)
+target_link_libraries(orrery_sim PUBLIC orrery_aero orrery_geom)
+target_link_libraries(orrery_sim PRIVATE orrery_geom_net)
+
 add_library(orrery_app_core STATIC
     cli.cpp
     frame_stats.cpp

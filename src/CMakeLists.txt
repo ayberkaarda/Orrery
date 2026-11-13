@@ -6,7 +6,9 @@
 #   aero   -> core, geom
 #   scene  -> core, geom, aero, atmo
 #   render -> core, geom, aero
-#   sim      -> core, scene          (physics thread, commands; src/app/sim)
+#   sim      -> core, scene, aero, geom, geom_net
+#                                    (physics thread, commands, aero solver
+#                                    thread and imports; src/app/sim, src/app/aero)
 #   app_core -> sim, render          (command line, headless renderer)
 #   app      -> app_core             (the orrery_app executable)
 #

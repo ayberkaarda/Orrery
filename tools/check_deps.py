@@ -75,7 +75,10 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
     # Phase 4c: the simulation side of the application (physics thread,
     # commands, experiments) is graphics-free; the command line and headless
     # renderer join it with render; the executable links only those.
-    "orrery_sim": {"orrery_core", "orrery_scene"},
+    # Phase 8b: the Aero workspace's graphics-free side (solver thread,
+    # geometry preparation, URL imports) adds aero, geom and geom_net.
+    "orrery_sim": {"orrery_core", "orrery_scene", "orrery_aero", "orrery_geom",
+                   "orrery_geom_net"},
     "orrery_app_core": {"orrery_sim", "orrery_render"},
     "orrery_app": {"orrery_app_core"},
 }
