@@ -12,8 +12,9 @@ permissions:
 # Accepted risks: pip packages are version-pinned without hashes. Action
 # tags remain mutable.
 #
-# Time budget (docs/ci.md): every job restores the vcpkg binary cache and
-# the Linux compiling jobs restore a ccache saved by main.
+# Time budget (docs/ci.md): every job restores the vcpkg binary cache, the
+# Linux compiling jobs restore a ccache saved by main, and ctest runs one
+# test process per runner core.
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -190,7 +191,10 @@ jobs:
           path: .ccache
           key: ccache-${{ matrix.name }}-${{ github.run_id }}
       - name: Test
-        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+        shell: bash
+        # One test process per runner core (the tests are independent
+        # processes; the simulation thread tests run alone, RUN_SERIAL).
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure --parallel "$(nproc)"
 
   asan:
     name: asan (ubuntu-24.04-gcc-13)
