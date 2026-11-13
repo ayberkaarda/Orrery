@@ -141,6 +141,14 @@ void LbmAeroSolver3D::setup(const AeroGeometry& geometry, const FlowConditions& 
     const auto nx = static_cast<std::size_t>(std::ceil(span_real[0])) + 1;
     const auto ny = static_cast<std::size_t>(std::ceil(span_real[1])) + 1;
     const auto nz = static_cast<std::size_t>(std::ceil(span_real[2])) + 1;
+    // The solver needs three nodes per axis, and the body placement below
+    // clamps to the interior nodes [1, n - 2], an empty range below three.
+    if (nx < 3 || ny < 3 || nz < 3) {
+        throw std::invalid_argument("lbm3d: the lattice " + std::to_string(nx) + " x " +
+                                    std::to_string(ny) + " x " + std::to_string(nz) +
+                                    " needs at least 3 nodes along each axis; raise the "
+                                    "resolution or the domain");
+    }
 
     // Cell budget: the caller's, else the device memory the backend reports,
     // else the conservative cap; checked before anything is allocated.

@@ -246,6 +246,32 @@ TEST_CASE("The 3D LBM solver rejects unusable problems", "[aero][lbm3d][solver]"
     CHECK_THROWS_AS(refused.setup(geometry, flow_at(100.0, 1.0)), std::invalid_argument);
 }
 
+TEST_CASE("The 3D LBM solver refuses a domain with fewer than three nodes along an axis",
+          "[aero][lbm3d][solver]") {
+    // A body 0.01 long at one cell per reference length, with 0.01 lengths
+    // ahead and behind: a 2 x 6 x 6 lattice, refused before the body is
+    // placed (placing it would clamp to an empty range of nodes).
+    AeroGeometry sliver;
+    sliver.mesh = geom::box_mesh(0.01, 0.5, 0.5);
+    sliver.reference.length = 1.0;
+    sliver.reference.area = 1.0;
+    LbmSolver3DOptions options = coarse_options();
+    options.resolution = LatticeResolution{1.0, 0.05};
+    options.upstream = 0.01;
+    options.downstream = 0.01;
+    LbmAeroSolver3D solver(options);
+    try {
+        solver.setup(sliver, flow_at(20.0, 1.0));
+        FAIL("a lattice with two nodes along x was accepted");
+    } catch (const std::invalid_argument& error) {
+        const std::string message = error.what();
+        INFO(message);
+        CHECK(message.find("2 x 6 x 6") != std::string::npos);
+        CHECK(message.find("at least 3 nodes") != std::string::npos);
+    }
+    CHECK(solver.lattice() == nullptr);
+}
+
 TEST_CASE("The 3D LBM solver refuses lattices above its cell budget", "[aero][lbm3d][solver]") {
     const AeroGeometry geometry = sphere_geometry(1.0);
     LbmSolver3DOptions options = coarse_options();

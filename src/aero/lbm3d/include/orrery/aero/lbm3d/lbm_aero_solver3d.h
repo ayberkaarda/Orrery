@@ -98,7 +98,8 @@ public:
     // or covers no lattice node, non-finite or non-positive conditions or
     // reference values, invalid options (no_slip sides included), lattice
     // units that cannot be built (lattice Mach number of 0.1 or more), a
-    // lattice above the cell budget (options.max_cells or
+    // lattice with fewer than 3 nodes along an axis, a lattice above the cell
+    // budget (options.max_cells or
     // default_max_cells_3d) or the device memory, a duration or averaging
     // window of 2^53 lattice steps or more (all checked before the lattice is
     // allocated), or a backend that cannot run it.
