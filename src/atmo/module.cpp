@@ -6,7 +6,9 @@
 namespace orrery::atmo {
 
 namespace {
-constexpr std::array<std::string_view, 1> kDependencies{"core"};
+// aero: the Cd(Mach) table is sampled from the aerodynamic solvers and the
+// heat flux uses their Sutton-Graves correlation.
+constexpr std::array<std::string_view, 2> kDependencies{"core", "aero"};
 } // namespace
 
 core::ModuleInfo module_info() noexcept {

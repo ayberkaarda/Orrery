@@ -12,7 +12,7 @@ TEST_CASE("atmo reports its name", "[atmo][smoke]") {
 }
 
 TEST_CASE("atmo declares exactly its direct dependencies", "[atmo][smoke]") {
-    constexpr std::array<std::string_view, 1> expected{"core"};
+    constexpr std::array<std::string_view, 2> expected{"core", "aero"};
     const orrery::core::ModuleInfo info = orrery::atmo::module_info();
     REQUIRE(info.dependencies.size() == expected.size());
     for (std::size_t i = 0; i < expected.size(); ++i) {
