@@ -55,8 +55,10 @@ body_frames(std::shared_ptr<const core::SimSnapshot> snapshot);
 [[nodiscard]] std::filesystem::path executable_path(const std::filesystem::path& argv0);
 
 // Directories holding the bundled assets (experiments/, scenarios/), most
-// specific first: `assets` next to the executable when it exists, then the
-// source tree's assets directory when the build recorded it.
+// specific first: `assets` next to the executable (a portable copy), then
+// `../share/orrery/assets` from the executable's directory (an installed
+// tree, docs/packaging.md), each when it exists, then the source tree's
+// assets directory when the build recorded it (ORRERY_SOURCE_ASSET_FALLBACK).
 [[nodiscard]] std::vector<std::filesystem::path>
 asset_directories(const std::filesystem::path& executable);
 
