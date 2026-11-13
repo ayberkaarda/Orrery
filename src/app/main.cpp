@@ -7,6 +7,7 @@
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -87,7 +88,8 @@ int run_window_mode(const orrery::app::CliOptions& options,
                     const std::filesystem::path& executable) {
     using namespace orrery;
     app::AppConfig config = app::default_config();
-    if (auto loaded = app::load_config(app::default_config_path())) {
+    const std::filesystem::path config_path = app::default_config_path();
+    if (auto loaded = app::load_config(config_path)) {
         config = loaded.value().config;
         for (const std::string& warning : loaded.value().warnings) {
             std::cerr << "orrery_app: config: " << warning << '\n';
@@ -98,8 +100,8 @@ int run_window_mode(const orrery::app::CliOptions& options,
     const std::vector<std::filesystem::path> dirs = app::experiment_search_dirs(executable);
     app::WindowRequest request;
     request.config = config;
-    request.workspace = config.start_workspace == app::Workspace::aero ? app::Workspace::aero
-                                                                       : app::Workspace::space;
+    request.config_path = config_path;
+    request.workspace = config.start_workspace;
     std::string space_name = "solar_system";
     if (options.experiment) {
         const auto path = sim::resolve_experiment(*options.experiment, dirs);
@@ -139,6 +141,15 @@ int run_window_mode(const orrery::app::CliOptions& options,
         return app::kExitFailure;
     }
     request.experiment = std::move(experiment).value();
+    // The bundled experiments folder: the one the default experiment came
+    // from when it was found there.
+    for (const std::filesystem::path& dir : dirs) {
+        std::error_code error;
+        if (std::filesystem::is_directory(dir, error)) {
+            request.bundled_experiment_dir = dir;
+            break;
+        }
+    }
     request.scenarios = sim::list_scenarios(request.experiment.scenario_path.parent_path());
     request.width = options.width.value_or(config.window_width);
     request.height = options.height.value_or(config.window_height);
@@ -192,6 +203,19 @@ int run(int argc, char** argv) {
     return app::kExitFailure;
 }
 
+// An exception that reached main is recorded in the crash log as well, like
+// a termination (docs/app.md, "Error surface"). Never throws.
+void report_to_crash_log(const char* what) noexcept {
+    try {
+        const std::string reason = std::string("unexpected error: ") + what;
+        (void)orrery::app::append_crash_log(
+            orrery::app::default_crash_log(),
+            orrery::app::crash_log_entry(reason, orrery::core::version_string()));
+    } catch (...) {
+        std::fputs("orrery_app: the crash report could not be written\n", stderr);
+    }
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -206,8 +230,10 @@ int main(int argc, char** argv) {
         std::fputs("orrery_app: unexpected error: ", stderr);
         std::fputs(error.what(), stderr);
         std::fputs("\n", stderr);
+        report_to_crash_log(error.what());
     } catch (...) {
         std::fputs("orrery_app: unexpected error\n", stderr);
+        report_to_crash_log("non-standard exception");
     }
     return orrery::app::kExitFailure;
 }

@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -21,6 +22,9 @@
 #include "orrery/app/entry_viewport.h"
 #include "orrery/app/entry_workspace.h"
 #include "orrery/app/frame_stats.h"
+#include "orrery/app/shortcut_input.h"
+#include "orrery/app/shortcuts.h"
+#include "orrery/app/space_experiment_panel.h"
 #include "orrery/app/space_view.h"
 #include "orrery/app/workspace_strip.h"
 #include "orrery/core/sim_snapshot.h"
@@ -109,7 +113,8 @@ public:
               render::SpaceRenderer& space, sim::PhysicsThread& physics, std::ostream& out)
         : request_(std::move(request)), gl_(gl), ui_(ui), space_(space), physics_(physics),
           out_(out), trails_(trail_settings(settings_)), workspace_(request_.workspace),
-          aero_(aero_options(request_.config)), entry_(entry_options(request_.config)) {
+          aero_(aero_options(request_.config)), entry_(entry_options(request_.config)),
+          space_panel_(request_.config.experiment_dir, request_.bundled_experiment_dir) {
         for (const sim::ScenarioEntry& entry : request_.scenarios) {
             scenario_names_.push_back(entry.name);
         }
@@ -143,10 +148,14 @@ private:
     }
 
     void take(const sim::PublishedFrame& frame);
+    void handle_shortcuts(std::span<const ShortcutAction> actions);
+    void save_experiment();
+    void open_experiments();
+    void draw_space_experiment();
     void reframe(const render::UiRect& scene, int window_height);
     void build_ui(double dt, int width, int height);
     void draw_space_bar(double fps);
-    void build_space_ui(double dt, int height);
+    void build_space_ui(const render::SceneInput& input, double dt, int height);
     void handle_scene_input(const render::SceneInput& input, double dt);
     void draw_aero_scene(const render::FrameInfo& frame, double dt, std::ostream& err);
     void draw_entry_scene(const render::FrameInfo& frame, std::ostream& err);
@@ -192,6 +201,11 @@ private:
     bool entry_view_failed_ = false;
     std::string entry_view_problem_;
     render::UiRect entry_scene_;
+
+    // Phase 10: the help overlay of the keyboard shortcuts and the Space
+    // workspace's Experiment panel.
+    bool help_open_ = false;
+    SpaceExperimentPanel space_panel_;
 };
 
 void WindowApp::take(const sim::PublishedFrame& frame) {
@@ -205,6 +219,10 @@ void WindowApp::take(const sim::PublishedFrame& frame) {
         drift_.clear();
         if (requested_scenario_ && status_.message.empty()) {
             current_scenario_ = requested_scenario_;
+        }
+        if (!status_.scenario_file.empty()) {
+            // Loaded by a command (scenario selector or an opened experiment).
+            current_scenario_ = scenario_index(request_.scenarios, status_.scenario_file);
         }
         requested_scenario_.reset();
         if (selected_ && snapshot_ && !snapshot_->index_of(*selected_)) {
@@ -278,20 +296,115 @@ void WindowApp::build_ui(double dt, int width, int height) {
     if (const auto picked = draw_workspace_strip(workspace_)) {
         workspace_ = *picked;
     }
-    if (const auto key = read_workspace_shortcut()) {
-        workspace_ = *key;
-    }
+    // One table drives every key (docs/app.md, "Keyboard shortcuts").
+    const std::vector<ShortcutAction> actions =
+        match_shortcuts(request_.config.shortcuts, read_key_frame(), workspace_);
+    handle_shortcuts(actions);
+    const render::SceneInput scene_input = scene_input_from(render::read_scene_input(), actions);
     if (workspace_ == Workspace::aero) {
         aero_scene_ = aero_.draw_panels();
-        aero_.handle_scene_input(render::read_scene_input(), dt);
-        return;
-    }
-    if (workspace_ == Workspace::entry) {
+        aero_.handle_scene_input(scene_input, dt);
+    } else if (workspace_ == Workspace::entry) {
         entry_scene_ = entry_.draw_panels();
-        entry_.handle_scene_input(render::read_scene_input(), dt);
-        return;
+        entry_.handle_scene_input(scene_input, dt);
+    } else {
+        build_space_ui(scene_input, dt, height);
     }
-    build_space_ui(dt, height);
+    if (std::find(actions.begin(), actions.end(), ShortcutAction::open) != actions.end()) {
+        open_experiments(); // after the panels exist this frame
+    }
+    draw_shortcut_help(request_.config.shortcuts, workspace_, help_open_,
+                       request_.config_path.string());
+}
+
+void WindowApp::handle_shortcuts(std::span<const ShortcutAction> actions) {
+    for (const ShortcutAction action : actions) {
+        switch (action) {
+            case ShortcutAction::workspace_space:
+                workspace_ = Workspace::space;
+                break;
+            case ShortcutAction::workspace_aero:
+                workspace_ = Workspace::aero;
+                break;
+            case ShortcutAction::workspace_entry:
+                workspace_ = Workspace::entry;
+                break;
+            case ShortcutAction::help:
+                help_open_ = !help_open_;
+                break;
+            case ShortcutAction::close:
+                if (help_open_) {
+                    help_open_ = false;
+                } else if (workspace_ == Workspace::space) {
+                    selected_.reset();
+                } else if (workspace_ == Workspace::entry) {
+                    entry_.set_cursor_time(std::nullopt);
+                }
+                break;
+            case ShortcutAction::save:
+                save_experiment();
+                break;
+            case ShortcutAction::warp_down:
+            case ShortcutAction::warp_up:
+                physics_.send(sim::SetTimeWarp{render::step_time_warp(
+                    status_.time_warp, action == ShortcutAction::warp_up ? +1 : -1)});
+                break;
+            case ShortcutAction::reset:
+                physics_.send(sim::Reset{});
+                break;
+            case ShortcutAction::open:
+            case ShortcutAction::toggle_pause:
+            case ShortcutAction::single_step:
+            case ShortcutAction::reset_view:
+                break; // after the panels, and through the scene input
+        }
+    }
+}
+
+void WindowApp::save_experiment() {
+    if (workspace_ == Workspace::aero) {
+        (void)aero_.save();
+    } else if (workspace_ == Workspace::entry) {
+        (void)entry_.save();
+    } else {
+        const std::filesystem::path scenario = status_.scenario_file.empty()
+                                                   ? request_.experiment.scenario_path
+                                                   : status_.scenario_file;
+        (void)space_panel_.save(scenario, status_, snapshot_ ? snapshot_->time().value() : 0.0);
+    }
+}
+
+void WindowApp::open_experiments() {
+    if (workspace_ == Workspace::aero) {
+        focus_window(kExperimentsWindow);
+    } else if (workspace_ == Workspace::entry) {
+        entry_.refresh_experiments();
+        focus_window(kEntryExperimentsWindow);
+    } else {
+        space_panel_.refresh();
+        focus_window(kSpaceExperimentWindow);
+    }
+}
+
+void WindowApp::draw_space_experiment() {
+    SpaceRunView run;
+    run.scenario = status_.scenario;
+    run.experiment = status_.experiment_file.empty()
+                         ? request_.experiment.experiment_path.filename().string()
+                         : status_.experiment_file.filename().string();
+    run.integrator = status_.integrator;
+    run.force_model = status_.force_model;
+    run.dt_days = status_.dt_days;
+    run.time_warp = status_.time_warp;
+    run.sim_time_days = snapshot_ ? snapshot_->time().value() : 0.0;
+    const SpaceExperimentIntent intent = space_panel_.draw(run);
+    if (intent.save) {
+        save_experiment();
+    }
+    if (intent.open) {
+        physics_.send(sim::LoadExperiment{*intent.open});
+        space_panel_.set_notice("Opening " + intent.open->filename().string());
+    }
 }
 
 void WindowApp::draw_space_bar(double fps) {
@@ -300,6 +413,10 @@ void WindowApp::draw_space_bar(double fps) {
     bar.time_warp = status_.time_warp;
     bar.effective_warp = status_.effective_warp;
     bar.warp_limited = warp_limited_hold_ > 0.0;
+    bar.warp_reduced = status_.warp_reduced;
+    bar.step_ms = status_.step_ms;
+    bar.physics_load = status_.physics_load;
+    bar.load_limit = status_.load_limit;
     bar.sim_time_days = snapshot_ ? snapshot_->time().value() : 0.0;
     bar.scenarios = scenario_names_;
     bar.scenario = current_scenario_;
@@ -325,13 +442,13 @@ void WindowApp::draw_space_bar(double fps) {
     }
 }
 
-void WindowApp::build_space_ui(double dt, int height) {
+void WindowApp::build_space_ui(const render::SceneInput& input, double dt, int height) {
     const render::UiRect scene = ui_.dockspace();
     if (reframe_pending_) {
         reframe_pending_ = false;
         reframe(scene, height);
     }
-    handle_scene_input(render::read_scene_input(), dt);
+    handle_scene_input(input, dt);
 
     if (snapshot_) {
         const render::BodyInspectorIntent inspector =
@@ -358,11 +475,19 @@ void WindowApp::build_space_ui(double dt, int height) {
     monitor.frame_time_ms = frame_seconds_ * 1000.0;
     monitor.physics_step_ms = status_.step_ms;
     monitor.integrator = status_.integrator;
+    render::WarpReadout warp;
+    warp.requested = status_.time_warp;
+    warp.achieved = status_.effective_warp;
+    warp.limited = status_.warp_reduced && !status_.paused;
+    warp.load = status_.physics_load;
+    warp.load_limit = status_.load_limit;
+    monitor.warp = warp;
     monitor.series_time_days = drift_.time_days;
     monitor.series_values = drift_.values;
     if (render::draw_system_monitor(monitor).clear_series) {
         drift_.clear();
     }
+    draw_space_experiment();
 
     render::RenderSettingsContext panel_context;
     if (snapshot_) {
@@ -580,6 +705,11 @@ int run_window(WindowRequest request, std::ostream& out, std::ostream& err) {
 
     sim::SimulationConfig config = request.experiment.config;
     config.step_time_budget_s = kInteractiveStepBudget;
+    // The time-warp budget (docs/app.md, "Time-warp budget"): the warp is
+    // lowered while stepping would take more than this share of the time.
+    sim::WarpBudget warp_budget;
+    warp_budget.load_limit = request.config.physics_budget;
+    config.warp_budget = warp_budget;
     auto simulation = sim::Simulation::create(request.experiment.scene, config);
     if (!simulation) {
         err << "orrery_app: " << simulation.error() << '\n';
