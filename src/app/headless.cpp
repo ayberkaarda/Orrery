@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "orrery/app/aero_headless.h"
+#include "orrery/app/entry_headless.h"
 #include "orrery/app/frame_stats.h"
 #include "orrery/app/space_view.h"
 #include "orrery/render/gl_context.h"
@@ -269,6 +270,8 @@ int run_headless_command(const CliOptions& options,
         if (const auto generic = scene::parse_experiment(text.value());
             generic && generic.value().domain == scene::Domain::aero) {
             return run_aero_headless(options, path.value(), generic.value(), out, err);
+        } else if (generic && generic.value().domain == scene::Domain::entry) {
+            return run_entry_headless_command(options, path.value(), generic.value(), out, err);
         }
     }
     const auto experiment = sim::load_space_experiment(path.value());

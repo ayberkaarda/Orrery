@@ -2,7 +2,7 @@
 #   core   -> (none)
 #   geom   -> core
 #   geom_net -> core                 (URL model loader; src/geom/net)
-#   atmo   -> core
+#   atmo   -> core, aero             (Cd(Mach) table from the aero solvers)
 #   aero   -> core, geom
 #   scene  -> core, geom, aero, atmo
 #   render -> core, geom, aero

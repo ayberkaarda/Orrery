@@ -22,5 +22,6 @@
 | [018](018-geometry-kernels.md) | Geometry kernels in orrery_geom, assimp behind a validation gate | Accepted |
 | [019](019-compute-backend.md) | Compute backend with byte buffers, named kernels and binary32 at the boundary | Accepted; amended by 020 |
 | [020](020-compute-kernel-families-and-memory.md) | Kernel families and device memory in the compute backend | Accepted |
+| [021](021-entry-drag-splitting.md) | Atmospheric drag as a split-step velocity kick | Accepted |
 
 Each record has Context, Decision, Consequences (including rejected alternatives) and Status sections.

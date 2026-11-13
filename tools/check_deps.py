@@ -68,7 +68,9 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
     # Phase 6b: the URL model loader (src/geom/net) downloads and unpacks
     # files only; it never parses meshes, so it does not need orrery_geom.
     "orrery_geom_net": {"orrery_core"},
-    "orrery_atmo": {"orrery_core"},
+    # Phase 9a: the entry bridge samples its Cd(Mach) table from the
+    # aerodynamic solvers and uses their heat-flux correlation.
+    "orrery_atmo": {"orrery_core", "orrery_aero"},
     "orrery_aero": {"orrery_core", "orrery_geom"},
     "orrery_scene": {"orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo"},
     "orrery_render": {"orrery_core", "orrery_geom", "orrery_aero"},

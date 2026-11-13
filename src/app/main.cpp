@@ -19,6 +19,7 @@
 #include "orrery/scene/aero_experiment.h"
 #include "orrery/scene/experiment.h"
 #include "orrery/scene/scenario.h"
+#include "orrery/sim/entry_experiments.h"
 #include "orrery/sim/space_experiment.h"
 
 #if !defined(ORRERY_HEADLESS)
@@ -62,6 +63,26 @@ std::optional<orrery::scene::AeroExperiment> aero_experiment_at(const std::files
     return std::move(typed).value();
 }
 
+// The entry experiment at `path`, or nothing when the file is not one.
+std::optional<orrery::sim::StoredEntry> entry_experiment_at(const std::filesystem::path& path,
+                                                            std::string& error) {
+    using namespace orrery;
+    const auto text = scene::read_text_file(path);
+    if (!text) {
+        return std::nullopt;
+    }
+    const auto generic = scene::parse_experiment(text.value());
+    if (!generic || generic.value().domain != scene::Domain::entry) {
+        return std::nullopt;
+    }
+    auto typed = sim::entry_from_experiment(generic.value());
+    if (!typed) {
+        error = "experiment " + path.string() + ": " + typed.error();
+        return std::nullopt;
+    }
+    return std::move(typed).value();
+}
+
 int run_window_mode(const orrery::app::CliOptions& options,
                     const std::filesystem::path& executable) {
     using namespace orrery;
@@ -92,9 +113,16 @@ int run_window_mode(const orrery::app::CliOptions& options,
             std::cerr << "orrery_app: " << aero_error << '\n';
             return app::kExitFailure;
         }
+        request.entry_experiment = entry_experiment_at(path.value(), aero_error);
+        if (!aero_error.empty()) {
+            std::cerr << "orrery_app: " << aero_error << '\n';
+            return app::kExitFailure;
+        }
         if (request.aero_experiment) {
             request.aero_base_dir = path.value().parent_path();
             request.workspace = app::Workspace::aero;
+        } else if (request.entry_experiment) {
+            request.workspace = app::Workspace::entry;
         } else {
             space_name = path.value().string();
             request.workspace = app::Workspace::space;

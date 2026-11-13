@@ -124,8 +124,10 @@ finite numbers: residuals, force history) that older files simply lack. The
 typed record is `orrery/scene/aero_experiment.h`; keys and examples are in
 [aero-workspace.md](aero-workspace.md#experiments). The command line and the
 window look at the domain first: an aero file opens the Aero workspace or
-the aero headless renderer, anything else goes to the space loader (entry
-experiments arrive with their phase and are still rejected).
+the aero headless renderer, an entry file (Phase 9, domain `entry`, the typed
+record `orrery/scene/entry_experiment.h`) the Entry workspace or the entry
+headless renderer ([entry-workspace.md](entry-workspace.md)), anything else
+goes to the space loader.
 
 Bundled experiments (`assets/experiments`):
 
@@ -140,7 +142,9 @@ Bundled experiments (`assets/experiments`):
 Bundled aero experiments: `aero_naca0012_panel` (2D panel method, 4 deg),
 `aero_naca0012_lbm` (2D lattice Boltzmann at Re 400, 4 deg),
 `aero_naca2412_wing` (3D panel method, 5 deg) and `aero_apollo_capsule`
-(Newtonian impact theory at Mach 20); see aero-workspace.md.
+(Newtonian impact theory at Mach 20); see aero-workspace.md. Bundled entry
+experiment: `entry_apollo_like` (the ballistic Apollo-like lunar return, 11
+km/s at -5.7 deg, about 6.8 g); see entry-workspace.md.
 
 A name given on the command line is looked up as `<assets>/experiments/<name>.json`,
 where `<assets>` is `assets/` next to the executable if present (located
@@ -265,16 +269,18 @@ and 2.67 ms (374 fps) for `solar_system` (no hole).
 
 ## 9. Workspaces
 
-The window has two working workspaces, Space and Aero, and a disabled Entry
-tab for Phase 9 (spec 8). They are switched in a slim strip under the main
-bar (`workspace_strip.h`, in the look of the bar's workspace tab, with the
-current workspace's caption on the right) or with Ctrl+1 / Ctrl+2. Each
-workspace has its own main bar, dock layout, panels and camera; the space
-simulation keeps its state while the Aero workspace is shown (the physics
-thread is not woken by Aero frames, so a running warp continues at its idle
-tick rate). `--experiment` with an aero file opens the Aero workspace with
-it; otherwise the window opens on the workspace of the configuration. The
-Aero workspace is described in [aero-workspace.md](aero-workspace.md).
+The window has three workspaces, Space, Aero and Entry (spec 8). They are
+switched in a slim strip under the main bar (`workspace_strip.h`, in the
+look of the bar's workspace tab, with the current workspace's caption on the
+right) or with Ctrl+1 / Ctrl+2 / Ctrl+3. Each workspace has its own main
+bar, dock layout, panels and camera; the space simulation keeps its state
+while another workspace is shown (the physics thread is not woken by their
+frames, so a running warp continues at its idle tick rate), and the aero and
+entry solver threads keep their runs. `--experiment` with an aero or entry
+file opens that workspace with it; otherwise the window opens on the
+workspace of the configuration. The Aero workspace is described in
+[aero-workspace.md](aero-workspace.md), the Entry workspace (Phase 9b) in
+[entry-workspace.md](entry-workspace.md).
 
 The strip is drawn by the application rather than in the main bar because
 `render::draw_app_bar` shows only the Space tab; a workspace list in
