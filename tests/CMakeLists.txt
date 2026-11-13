@@ -275,6 +275,13 @@ target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2With
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")
+# Phase 9b: the Entry workspace under a headless UiContext, and its golden
+# snapshot through the headless path (render/golden/entry, [gl][golden]).
+target_sources(orrery_test_app PRIVATE
+    app/test_entry_golden.cpp
+    app/test_entry_workspace.cpp)
+target_compile_definitions(orrery_test_app PRIVATE
+    ORRERY_RENDER_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/golden")
 orrery_configure_target(orrery_test_app)
 set(app_discover_props)
 if(ORRERY_SANITIZE AND NOT MSVC)

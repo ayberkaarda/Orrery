@@ -11,8 +11,10 @@
 #include <vector>
 
 #include "app_test_support.h"
+#include "orrery/scene/experiment.h"
 #include "orrery/sim/entry_backend.h"
 #include "orrery/sim/entry_comparison.h"
+#include "orrery/sim/entry_experiments.h"
 #include "orrery/sim/entry_model.h"
 #include "orrery/sim/entry_runner.h"
 
@@ -240,4 +242,51 @@ TEST_CASE("Entry comparison sorts by flight-path angle and escapes CSV cells", "
         CHECK(cell.rfind("\"'", 0) == 0);
     }
     CHECK(sim::csv_text_cell("plain") == "plain");
+}
+
+TEST_CASE("Entry records round-trip through the experiment JSON", "[app][entry]") {
+    sim::EntrySetup setup = sim::entry_presets().back().setup; // Mars, its own Cd table
+    setup.atmosphere = sim::EntryAtmosphere::exponential;
+    setup.exponential_density_kg_m3 = 0.0158;
+    setup.exponential_scale_height_m = 11'100.0;
+    setup.start = sim::EntryStart::periapsis;
+    setup.periapsis_altitude_m = 21'500.0;
+    setup.cd_source = sim::CdSource::aero_solver;
+    auto run = sim::run_entry(setup);
+    REQUIRE(run.has_value());
+    const sim::EntryTrace trace{run.value().series, run.value().summary};
+
+    const scene::Experiment record = sim::entry_to_experiment(setup, &trace);
+    CHECK(record.domain == scene::Domain::entry);
+    const std::string json = scene::save_experiment(record);
+    auto parsed = scene::parse_experiment(json);
+    REQUIRE(parsed.has_value());
+    CHECK(parsed.value() == record);
+    auto back = sim::entry_from_experiment(parsed.value());
+    INFO((back ? std::string() : back.error()));
+    REQUIRE(back.has_value());
+    const sim::StoredEntry& stored = back.value();
+    CHECK(stored.setup == setup);
+    REQUIRE(stored.result != nullptr);
+    CHECK(stored.result->series.time_s == trace.series.time_s);
+    CHECK(stored.result->series.heat_flux_w_m2 == trace.series.heat_flux_w_m2);
+    CHECK(stored.result->summary == trace.summary);
+
+    // Inputs only: no result section, nothing recorded.
+    auto inputs_only = sim::entry_from_experiment(sim::entry_to_experiment(setup, nullptr));
+    REQUIRE(inputs_only.has_value());
+    CHECK(inputs_only.value().result == nullptr);
+
+    // Problems name the key.
+    scene::Experiment broken = record;
+    broken.inputs["planet"] = std::string("venus");
+    auto rejected = sim::entry_from_experiment(broken);
+    REQUIRE_FALSE(rejected.has_value());
+    CHECK(rejected.error().find("inputs.planet") != std::string::npos);
+    broken = record;
+    broken.series["g_load"].pop_back();
+    CHECK_FALSE(sim::entry_from_experiment(broken).has_value());
+    broken = record;
+    broken.domain = scene::Domain::aero;
+    CHECK_FALSE(sim::entry_from_experiment(broken).has_value());
 }
