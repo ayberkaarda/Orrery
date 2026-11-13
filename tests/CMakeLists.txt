@@ -249,7 +249,9 @@ add_executable(orrery_test_app
     app/test_cli.cpp
     app/test_headless.cpp
     app/test_app_bar.cpp
-    app/test_frame_stats.cpp)
+    app/test_frame_stats.cpp
+    app/test_config.cpp
+    app/test_aero_ui.cpp)
 target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
@@ -312,6 +314,15 @@ add_test(NAME app.headless_black_hole_benchmark
         -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
         -P ${ORRERY_EXPECT_EXIT})
 set_tests_properties(app.headless_black_hole_benchmark PROPERTIES SKIP_RETURN_CODE 77)
+# Phase 8b: an aero experiment end to end (panel method on the bundled
+# NACA 0012 section, drawn by the Aero view).
+add_test(NAME app.headless_aero_png
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=0
+        "-DEXPECT_STDOUT=wrote .*app_output/cli_aero_naca0012.png \\(480x270\\): NACA 0012 section"
+        "-DARGS=--headless;--experiment;aero_naca0012_panel;--size;480x270;--out;${CMAKE_CURRENT_BINARY_DIR}/app_output/cli_aero_naca0012.png"
+        -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
+        -P ${ORRERY_EXPECT_EXIT})
+set_tests_properties(app.headless_aero_png PROPERTIES SKIP_RETURN_CODE 77)
 # Started by its bare name through PATH from another directory, the
 # executable still finds the assets next to itself.
 add_test(NAME app.bare_name_finds_its_assets
@@ -323,7 +334,7 @@ set_tests_properties(app.bare_name_finds_its_assets PROPERTIES SKIP_RETURN_CODE 
 if(ORRERY_SANITIZE AND NOT MSVC)
     # The executable calls glfwInit without a display; see lsan.supp.
     set_tests_properties(app.headless_png app.headless_black_hole_benchmark
-        app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
+        app.headless_aero_png app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
         "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
 endif()
 
