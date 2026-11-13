@@ -8,6 +8,7 @@
 #include <assimp/scene.h>
 
 #include "model_prescan.h"
+#include "orrery/core/profile.h"
 
 #include <algorithm>
 #include <array>
@@ -614,6 +615,7 @@ core::Result<ModelFormat, ImportError> format_from_extension(std::string_view ex
 
 core::Result<ImportedMesh, ImportError> import_mesh_file(const std::filesystem::path& path,
                                                          const ImportLimits& limits) {
+    ORRERY_ZONE("import");
     auto format = format_from_extension(utf8_from_path(path.extension()));
     if (!format) {
         return core::failure(copy_error(format.error()));

@@ -33,6 +33,11 @@ struct WindowRequest {
     std::filesystem::path aero_base_dir;
     // Phase 9b: an entry experiment to open in the Entry workspace.
     std::optional<sim::StoredEntry> entry_experiment;
+    // Phase 10: the bundled experiments folder (the Space Experiment panel
+    // lists its space experiments) and the configuration file shown by the
+    // shortcut help.
+    std::filesystem::path bundled_experiment_dir;
+    std::filesystem::path config_path;
 };
 
 // Runs the window until it is closed. Returns an exit code of cli.h; errors

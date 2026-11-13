@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <fstream>
 #include <optional>
 #include <system_error>
 #include <utility>
@@ -157,9 +158,21 @@ bool is_file(const std::filesystem::path& path) {
 
 } // namespace
 
+std::optional<std::string> special_file_problem(const std::filesystem::path& path) {
+    std::error_code error;
+    const std::filesystem::file_status status = std::filesystem::status(path, error);
+    if (error || !std::filesystem::exists(status) || std::filesystem::is_regular_file(status)) {
+        return std::nullopt;
+    }
+    return std::string("not a regular file");
+}
+
 core::Result<SpaceExperiment, std::string>
 load_space_experiment(const std::filesystem::path& path) {
     const std::string file = path.string();
+    if (auto problem = special_file_problem(path)) {
+        return core::failure("experiment " + file + ": " + *problem);
+    }
     const auto text_read = scene::read_text_file(path);
     if (!text_read) {
         return core::failure("experiment " + file + ": " + scene::to_string(text_read.error()));
@@ -172,8 +185,8 @@ load_space_experiment(const std::filesystem::path& path) {
     if (experiment.domain != scene::Domain::space) {
         return core::failure("experiment " + file + ": domain '" +
                              std::string(scene::to_string(experiment.domain)) +
-                             "' is not a space experiment (aero experiments open in the Aero "
-                             "workspace; entry arrives in a later phase)");
+                             "' is not a space experiment (aero and entry experiments open "
+                             "in their own workspaces)");
     }
     constexpr std::array<std::string_view, 1> kInputs{"scenario"};
     if (auto problem = unknown_key(experiment.inputs, kInputs, "inputs")) {
@@ -197,6 +210,10 @@ load_space_experiment(const std::filesystem::path& path) {
         scenario_path = path.parent_path() / scenario_path;
     }
     scenario_path = scenario_path.lexically_normal();
+    if (auto problem = special_file_problem(scenario_path)) {
+        return core::failure("scenario " + scenario_path.string() + " (from experiment " + file +
+                             "): " + *problem);
+    }
     auto loaded = scene::load_scene_file(scenario_path);
     if (!loaded) {
         return core::failure("scenario " + scenario_path.string() + " (from experiment " + file +
@@ -232,25 +249,163 @@ resolve_experiment(std::string_view name_or_path,
                          "' not found; tried:" + tried);
 }
 
-std::vector<ScenarioEntry> list_scenarios(const std::filesystem::path& directory) {
+namespace {
+
+// The *.json regular files of `directory`, sorted by name, and why the
+// listing is empty or incomplete: a directory that is missing is no problem
+// (the folder is optional), one that is not a directory or cannot be listed
+// is.
+std::vector<ScenarioEntry> json_files(const std::filesystem::path& directory,
+                                      std::vector<std::string>& problems) {
     std::vector<ScenarioEntry> entries;
     std::error_code error;
-    std::filesystem::directory_iterator it(directory, error);
-    if (error) {
+    const std::filesystem::file_status status = std::filesystem::status(directory, error);
+    if (status.type() == std::filesystem::file_type::not_found) {
         return entries;
     }
-    for (const std::filesystem::directory_iterator end; it != end; it.increment(error)) {
-        if (error) {
-            break;
-        }
+    if (!error && !std::filesystem::is_directory(status)) {
+        problems.push_back(directory.string() + ": not a directory");
+        return entries;
+    }
+    std::filesystem::directory_iterator it;
+    if (!error) {
+        it = std::filesystem::directory_iterator(directory, error);
+    }
+    for (const std::filesystem::directory_iterator end; !error && it != end; it.increment(error)) {
         const std::filesystem::path& path = it->path();
         if (path.extension() == ".json" && is_file(path)) {
             entries.push_back({path.stem().string(), path});
         }
     }
+    if (error) {
+        problems.push_back(directory.string() + ": cannot be listed: " + error.message());
+    }
     std::sort(entries.begin(), entries.end(),
               [](const ScenarioEntry& a, const ScenarioEntry& b) { return a.name < b.name; });
     return entries;
+}
+
+} // namespace
+
+std::vector<ScenarioEntry> list_scenarios(const std::filesystem::path& directory) {
+    std::vector<std::string> ignored;
+    return json_files(directory, ignored);
+}
+
+namespace {
+
+// `path` relative to `directory` when both are on the same root, else
+// absolute; '/' separators either way.
+std::string portable_reference(const std::filesystem::path& path,
+                               const std::filesystem::path& directory) {
+    std::error_code error;
+    const std::filesystem::path target = std::filesystem::absolute(path, error).lexically_normal();
+    if (error) {
+        return path.generic_string();
+    }
+    const std::filesystem::path base =
+        std::filesystem::absolute(directory, error).lexically_normal();
+    if (!error && target.root_name() == base.root_name()) {
+        const std::filesystem::path relative = target.lexically_relative(base);
+        if (!relative.empty()) {
+            return relative.generic_string();
+        }
+    }
+    return target.generic_string();
+}
+
+std::string summary_of(const SpaceExperiment& experiment) {
+    return experiment.scenario_path.stem().string() + ", " +
+           std::string(to_string(experiment.config.integrator));
+}
+
+} // namespace
+
+scene::Experiment space_record(const std::filesystem::path& scenario, const SimStatus& status,
+                               double sim_time_days, const std::filesystem::path& directory) {
+    scene::Experiment record;
+    record.domain = scene::Domain::space;
+    record.inputs["scenario"] = portable_reference(scenario, directory);
+    record.conditions["time_warp"] = static_cast<double>(status.time_warp);
+    record.conditions["paused"] = status.paused ? 1.0 : 0.0;
+    record.solver.name = std::string(to_string(status.settings.integrator));
+    record.solver.version = "1";
+    record.solver.settings["dt_days"] = status.dt_days;
+    record.solver.settings["force"] = std::string(to_string(status.settings.force));
+    record.solver.settings["softening_au"] = status.settings.softening_au;
+    record.solver.settings["max_steps_per_frame"] =
+        static_cast<double>(status.settings.max_steps_per_advance);
+    if (std::isfinite(sim_time_days)) {
+        record.result["sim_time_days"] = sim_time_days;
+    }
+    record.result["steps"] = static_cast<double>(status.steps);
+    record.result["events"] = static_cast<double>(status.events);
+    if (status.energy_drift && std::isfinite(*status.energy_drift)) {
+        record.result["energy_drift"] = *status.energy_drift;
+    }
+    return record;
+}
+
+core::Result<std::filesystem::path, std::string>
+save_space_experiment_file(const std::filesystem::path& path, const scene::Experiment& record) {
+    std::error_code error;
+    if (!path.parent_path().empty()) {
+        std::filesystem::create_directories(path.parent_path(), error);
+        if (error) {
+            return core::failure("cannot create " + path.parent_path().string() + ": " +
+                                 error.message());
+        }
+    }
+    std::filesystem::path temporary = path;
+    temporary += ".tmp";
+    {
+        std::ofstream out(temporary, std::ios::binary | std::ios::trunc);
+        if (!out) {
+            return core::failure("cannot write " + temporary.string());
+        }
+        const std::string text = scene::save_experiment(record);
+        out.write(text.data(), static_cast<std::streamsize>(text.size()));
+        out.close();
+        if (!out) {
+            std::filesystem::remove(temporary, error);
+            return core::failure("cannot write " + temporary.string());
+        }
+    }
+    std::filesystem::rename(temporary, path, error);
+    if (error) {
+        std::error_code ignored;
+        std::filesystem::remove(temporary, ignored);
+        return core::failure("cannot replace " + path.string() + ": " + error.message());
+    }
+    return path;
+}
+
+SpaceListing list_space_experiments(const std::filesystem::path& directory) {
+    SpaceListing listing;
+    for (const ScenarioEntry& file : json_files(directory, listing.problems)) {
+        const auto text = scene::read_text_file(file.path);
+        if (!text) {
+            listing.problems.push_back(file.path.filename().string() + ": " +
+                                       scene::to_string(text.error()));
+            continue;
+        }
+        const auto generic = scene::parse_experiment(text.value());
+        if (!generic) {
+            listing.problems.push_back(file.path.filename().string() + ": " +
+                                       scene::to_string(generic.error()));
+            continue;
+        }
+        if (generic.value().domain != scene::Domain::space) {
+            continue;
+        }
+        const auto loaded = load_space_experiment(file.path);
+        if (!loaded) {
+            listing.problems.push_back(file.path.filename().string() + ": " + loaded.error());
+            continue;
+        }
+        listing.entries.push_back(StoredSpace{file.path, file.name, summary_of(loaded.value())});
+    }
+    return listing;
 }
 
 } // namespace orrery::sim

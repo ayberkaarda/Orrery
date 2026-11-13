@@ -110,21 +110,4 @@ std::optional<Workspace> draw_workspace_strip(Workspace current) {
     return picked;
 }
 
-std::optional<Workspace> read_workspace_shortcut() {
-    const ImGuiIO& io = ImGui::GetIO();
-    if (io.WantCaptureKeyboard || !io.KeyCtrl) {
-        return std::nullopt;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_1, false)) {
-        return Workspace::space;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_2, false)) {
-        return Workspace::aero;
-    }
-    if (ImGui::IsKeyPressed(ImGuiKey_3, false)) {
-        return Workspace::entry;
-    }
-    return std::nullopt;
-}
-
 } // namespace orrery::app

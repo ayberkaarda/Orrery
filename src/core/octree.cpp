@@ -12,6 +12,8 @@
 #include <tbb/parallel_for.h>
 #include <tbb/parallel_sort.h>
 
+#include "orrery/core/profile.h"
+
 namespace orrery::core {
 
 namespace {
@@ -74,6 +76,7 @@ void Octree::clear() noexcept {
 
 bool Octree::build(std::span<const Vec3<space::Length>> positions, std::span<const double> gm,
                    std::span<const std::uint32_t> source_index, std::size_t leaf_capacity) {
+    ORRERY_ZONE("tree_build");
     if (leaf_capacity == 0) {
         throw std::invalid_argument("Octree::build: leaf capacity must be at least 1");
     }

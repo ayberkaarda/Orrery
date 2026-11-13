@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <ostream>
+#include <span>
 #include <string>
 #include <system_error>
 #include <thread>
@@ -21,6 +22,10 @@
 #include "orrery/app/entry_viewport.h"
 #include "orrery/app/entry_workspace.h"
 #include "orrery/app/frame_stats.h"
+#include "orrery/app/shortcut_dispatch.h"
+#include "orrery/app/shortcut_input.h"
+#include "orrery/app/shortcuts.h"
+#include "orrery/app/space_experiment_panel.h"
 #include "orrery/app/space_view.h"
 #include "orrery/app/workspace_strip.h"
 #include "orrery/core/sim_snapshot.h"
@@ -109,7 +114,8 @@ public:
               render::SpaceRenderer& space, sim::PhysicsThread& physics, std::ostream& out)
         : request_(std::move(request)), gl_(gl), ui_(ui), space_(space), physics_(physics),
           out_(out), trails_(trail_settings(settings_)), workspace_(request_.workspace),
-          aero_(aero_options(request_.config)), entry_(entry_options(request_.config)) {
+          aero_(aero_options(request_.config)), entry_(entry_options(request_.config)),
+          space_panel_(request_.config.experiment_dir, request_.bundled_experiment_dir) {
         for (const sim::ScenarioEntry& entry : request_.scenarios) {
             scenario_names_.push_back(entry.name);
         }
@@ -143,10 +149,13 @@ private:
     }
 
     void take(const sim::PublishedFrame& frame);
+    // What the shortcuts act on this frame (shortcut_dispatch.h).
+    ShortcutTargets shortcut_targets();
+    void draw_space_experiment();
     void reframe(const render::UiRect& scene, int window_height);
     void build_ui(double dt, int width, int height);
     void draw_space_bar(double fps);
-    void build_space_ui(double dt, int height);
+    void build_space_ui(const render::SceneInput& input, double dt, int height);
     void handle_scene_input(const render::SceneInput& input, double dt);
     void draw_aero_scene(const render::FrameInfo& frame, double dt, std::ostream& err);
     void draw_entry_scene(const render::FrameInfo& frame, std::ostream& err);
@@ -174,6 +183,8 @@ private:
     // The view is framed again (scenario loaded or reset, F/Home) once the
     // scene area of the dock space is known in the next UI frame.
     bool reframe_pending_ = true;
+    // Phase 10: the help overlay of the keyboard shortcuts is shown.
+    bool help_open_ = false;
     render::CameraInput camera_input_;
 
     // Phase 8b: workspaces. The Aero workspace's view is created in the
@@ -192,6 +203,9 @@ private:
     bool entry_view_failed_ = false;
     std::string entry_view_problem_;
     render::UiRect entry_scene_;
+
+    // Phase 10: the Space workspace's Experiment panel.
+    SpaceExperimentPanel space_panel_;
 };
 
 void WindowApp::take(const sim::PublishedFrame& frame) {
@@ -205,6 +219,10 @@ void WindowApp::take(const sim::PublishedFrame& frame) {
         drift_.clear();
         if (requested_scenario_ && status_.message.empty()) {
             current_scenario_ = requested_scenario_;
+        }
+        if (!status_.scenario_file.empty()) {
+            // Loaded by a command (scenario selector or an opened experiment).
+            current_scenario_ = scenario_index(request_.scenarios, status_.scenario_file);
         }
         requested_scenario_.reset();
         if (selected_ && snapshot_ && !snapshot_->index_of(*selected_)) {
@@ -243,13 +261,8 @@ void WindowApp::reframe(const render::UiRect& scene, int window_height) {
 }
 
 void WindowApp::handle_scene_input(const render::SceneInput& input, double dt) {
-    if (input.toggle_pause) {
-        physics_.send(sim::SetPaused{!status_.paused});
-    }
-    if (input.single_step) {
-        physics_.send(sim::SingleStep{});
-    }
-    if (input.reset_view) {
+    ShortcutTargets targets = shortcut_targets();
+    if (apply_space_scene_input(input, targets)) {
         reframe_pending_ = true;
     }
     camera_input_ = render::CameraInput{};
@@ -278,20 +291,52 @@ void WindowApp::build_ui(double dt, int width, int height) {
     if (const auto picked = draw_workspace_strip(workspace_)) {
         workspace_ = *picked;
     }
-    if (const auto key = read_workspace_shortcut()) {
-        workspace_ = *key;
-    }
+    // One table drives every key (docs/app.md, "Keyboard shortcuts"), read
+    // and carried out by the functions the end-to-end tests drive as well.
+    const std::vector<ShortcutAction> actions =
+        frame_shortcuts(request_.config.shortcuts, workspace_);
+    ShortcutTargets targets = shortcut_targets();
+    apply_shortcuts(actions, targets);
+    const render::SceneInput scene_input = scene_input_from(render::read_scene_input(), actions);
     if (workspace_ == Workspace::aero) {
         aero_scene_ = aero_.draw_panels();
-        aero_.handle_scene_input(render::read_scene_input(), dt);
-        return;
-    }
-    if (workspace_ == Workspace::entry) {
+        aero_.handle_scene_input(scene_input, dt);
+    } else if (workspace_ == Workspace::entry) {
         entry_scene_ = entry_.draw_panels();
-        entry_.handle_scene_input(render::read_scene_input(), dt);
-        return;
+        entry_.handle_scene_input(scene_input, dt);
+    } else {
+        build_space_ui(scene_input, dt, height);
     }
-    build_space_ui(dt, height);
+    apply_late_shortcuts(actions, targets); // open: after the panels exist this frame
+    draw_shortcut_help(request_.config.shortcuts, workspace_, help_open_,
+                       request_.config_path.string());
+}
+
+ShortcutTargets WindowApp::shortcut_targets() {
+    return ShortcutTargets{workspace_,
+                           help_open_,
+                           selected_,
+                           aero_,
+                           entry_,
+                           space_panel_,
+                           physics_,
+                           status_,
+                           running_scenario(status_, request_.experiment.scenario_path),
+                           snapshot_ ? snapshot_->time().value() : 0.0};
+}
+
+void WindowApp::draw_space_experiment() {
+    const SpaceRunView run = space_run_view(status_, request_.experiment.experiment_path,
+                                            snapshot_ ? snapshot_->time().value() : 0.0);
+    const SpaceExperimentIntent intent = space_panel_.draw(run);
+    if (intent.save) {
+        ShortcutTargets targets = shortcut_targets();
+        save_workspace_experiment(targets);
+    }
+    if (intent.open) {
+        physics_.send(sim::LoadExperiment{*intent.open});
+        space_panel_.set_notice("Opening " + intent.open->filename().string());
+    }
 }
 
 void WindowApp::draw_space_bar(double fps) {
@@ -300,6 +345,10 @@ void WindowApp::draw_space_bar(double fps) {
     bar.time_warp = status_.time_warp;
     bar.effective_warp = status_.effective_warp;
     bar.warp_limited = warp_limited_hold_ > 0.0;
+    bar.warp_reduced = status_.warp_reduced;
+    bar.step_ms = status_.step_ms;
+    bar.physics_load = status_.physics_load;
+    bar.load_limit = status_.load_limit;
     bar.sim_time_days = snapshot_ ? snapshot_->time().value() : 0.0;
     bar.scenarios = scenario_names_;
     bar.scenario = current_scenario_;
@@ -325,13 +374,13 @@ void WindowApp::draw_space_bar(double fps) {
     }
 }
 
-void WindowApp::build_space_ui(double dt, int height) {
+void WindowApp::build_space_ui(const render::SceneInput& input, double dt, int height) {
     const render::UiRect scene = ui_.dockspace();
     if (reframe_pending_) {
         reframe_pending_ = false;
         reframe(scene, height);
     }
-    handle_scene_input(render::read_scene_input(), dt);
+    handle_scene_input(input, dt);
 
     if (snapshot_) {
         const render::BodyInspectorIntent inspector =
@@ -358,11 +407,19 @@ void WindowApp::build_space_ui(double dt, int height) {
     monitor.frame_time_ms = frame_seconds_ * 1000.0;
     monitor.physics_step_ms = status_.step_ms;
     monitor.integrator = status_.integrator;
+    render::WarpReadout warp;
+    warp.requested = status_.time_warp;
+    warp.achieved = status_.effective_warp;
+    warp.limited = status_.warp_reduced && !status_.paused;
+    warp.load = status_.physics_load;
+    warp.load_limit = status_.load_limit;
+    monitor.warp = warp;
     monitor.series_time_days = drift_.time_days;
     monitor.series_values = drift_.values;
     if (render::draw_system_monitor(monitor).clear_series) {
         drift_.clear();
     }
+    draw_space_experiment();
 
     render::RenderSettingsContext panel_context;
     if (snapshot_) {
@@ -448,6 +505,7 @@ int WindowApp::run(std::ostream& err) {
     BenchmarkStats benchmark(kBenchmarkWarmupFrames);
 
     while (!gl_.should_close()) {
+        ORRERY_FRAME_ZONE();
         gl_.poll_events();
         const int width = gl_.framebuffer_width();
         const int height = gl_.framebuffer_height();
@@ -580,6 +638,11 @@ int run_window(WindowRequest request, std::ostream& out, std::ostream& err) {
 
     sim::SimulationConfig config = request.experiment.config;
     config.step_time_budget_s = kInteractiveStepBudget;
+    // The time-warp budget (docs/app.md, "Time-warp budget"): the warp is
+    // lowered while stepping would take more than this share of the time.
+    sim::WarpBudget warp_budget;
+    warp_budget.load_limit = request.config.physics_budget;
+    config.warp_budget = warp_budget;
     auto simulation = sim::Simulation::create(request.experiment.scene, config);
     if (!simulation) {
         err << "orrery_app: " << simulation.error() << '\n';

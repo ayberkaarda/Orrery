@@ -1,12 +1,11 @@
 #include <cstddef>
-#include <cstdio>
-#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <optional>
 #include <span>
 #include <string>
 #include <string_view>
+#include <system_error>
 #include <utility>
 #include <vector>
 
@@ -15,6 +14,7 @@
 #include "orrery/app/config.h"
 #include "orrery/app/error_surface.h"
 #include "orrery/app/headless.h"
+#include "orrery/app/run_guard.h"
 #include "orrery/app/space_view.h"
 #include "orrery/scene/aero_experiment.h"
 #include "orrery/scene/experiment.h"
@@ -87,7 +87,8 @@ int run_window_mode(const orrery::app::CliOptions& options,
                     const std::filesystem::path& executable) {
     using namespace orrery;
     app::AppConfig config = app::default_config();
-    if (auto loaded = app::load_config(app::default_config_path())) {
+    const std::filesystem::path config_path = app::default_config_path();
+    if (auto loaded = app::load_config(config_path)) {
         config = loaded.value().config;
         for (const std::string& warning : loaded.value().warnings) {
             std::cerr << "orrery_app: config: " << warning << '\n';
@@ -98,8 +99,8 @@ int run_window_mode(const orrery::app::CliOptions& options,
     const std::vector<std::filesystem::path> dirs = app::experiment_search_dirs(executable);
     app::WindowRequest request;
     request.config = config;
-    request.workspace = config.start_workspace == app::Workspace::aero ? app::Workspace::aero
-                                                                       : app::Workspace::space;
+    request.config_path = config_path;
+    request.workspace = config.start_workspace;
     std::string space_name = "solar_system";
     if (options.experiment) {
         const auto path = sim::resolve_experiment(*options.experiment, dirs);
@@ -139,6 +140,15 @@ int run_window_mode(const orrery::app::CliOptions& options,
         return app::kExitFailure;
     }
     request.experiment = std::move(experiment).value();
+    // The bundled experiments folder: the one the default experiment came
+    // from when it was found there.
+    for (const std::filesystem::path& dir : dirs) {
+        std::error_code error;
+        if (std::filesystem::is_directory(dir, error)) {
+            request.bundled_experiment_dir = dir;
+            break;
+        }
+    }
     request.scenarios = sim::list_scenarios(request.experiment.scenario_path.parent_path());
     request.width = options.width.value_or(config.window_width);
     request.height = options.height.value_or(config.window_height);
@@ -146,6 +156,8 @@ int run_window_mode(const orrery::app::CliOptions& options,
     return app::run_window(std::move(request), std::cout, std::cerr);
 }
 #endif
+
+int dispatch(const orrery::app::CliOptions& options, const std::filesystem::path& executable);
 
 int run(int argc, char** argv) {
     using namespace orrery;
@@ -163,6 +175,16 @@ int run(int argc, char** argv) {
         return app::kExitUsage;
     }
     const app::CliOptions& options = parsed.value();
+    if (!options.trace.empty()) {
+        // The trace is written however the run ends (docs/observability.md).
+        return app::run_traced(
+            options.trace, [&] { return dispatch(options, executable); }, std::cerr);
+    }
+    return dispatch(options, executable);
+}
+
+int dispatch(const orrery::app::CliOptions& options, const std::filesystem::path& executable) {
+    using namespace orrery;
     switch (options.mode) {
         case app::RunMode::help:
             std::cout << "Orrery " << core::version_string() << "\n\n" << app::usage_text();
@@ -196,18 +218,10 @@ int run(int argc, char** argv) {
 
 int main(int argc, char** argv) {
     // No silent crash: std::terminate reports its reason on stderr and in
-    // the crash log (docs/app.md, "Error surface").
-    orrery::app::install_terminate_handler(orrery::app::default_crash_log(),
-                                           orrery::core::version_string());
-    try {
-        return run(argc, argv);
-    } catch (const std::exception& error) {
-        // C stdio: reporting must not throw again.
-        std::fputs("orrery_app: unexpected error: ", stderr);
-        std::fputs(error.what(), stderr);
-        std::fputs("\n", stderr);
-    } catch (...) {
-        std::fputs("orrery_app: unexpected error\n", stderr);
-    }
-    return orrery::app::kExitFailure;
+    // the crash log, and so does an exception that reaches main
+    // (docs/app.md, "Error surface").
+    const std::filesystem::path crash_log = orrery::app::default_crash_log();
+    orrery::app::install_terminate_handler(crash_log, orrery::core::version_string());
+    return orrery::app::run_reporting_errors([&] { return run(argc, argv); }, crash_log,
+                                             orrery::core::version_string(), std::cerr);
 }

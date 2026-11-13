@@ -1,12 +1,14 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
 #include <vector>
 
 #include "orrery/core/result.h"
+#include "orrery/scene/experiment.h"
 #include "orrery/scene/scenario.h"
 #include "orrery/sim/simulation.h"
 
@@ -33,7 +35,7 @@
 //                      newtonian, barnes_hut, paczynski_wiita), softening_au,
 //                      max_steps_per_frame (default 4096)
 // Any other key in these maps is rejected, as are aero and entry domains
-// (their workspaces arrive in later phases).
+// (they open in their own workspaces). The result map is free-form.
 namespace orrery::sim {
 
 struct SpaceExperiment {
@@ -43,8 +45,17 @@ struct SpaceExperiment {
     SimulationConfig config;
 };
 
-// Reads, validates and loads an experiment and its scenario. Errors name the
-// offending file and value.
+// Empty when `path` is a regular file (links followed) or does not exist (the
+// loader then reports it), else "not a regular file". FIFOs, sockets,
+// devices and directories are refused before they are opened: opening a
+// FIFO without a writer blocks the reading thread, and a device may never
+// end. (A file swapped for one between this check and the open is not
+// caught.)
+[[nodiscard]] std::optional<std::string> special_file_problem(const std::filesystem::path& path);
+
+// Reads, validates and loads an experiment and its scenario, both refused
+// unless regular files (special_file_problem). Errors name the offending
+// file and value.
 [[nodiscard]] core::Result<SpaceExperiment, std::string>
 load_space_experiment(const std::filesystem::path& path);
 
@@ -64,5 +75,42 @@ struct ScenarioEntry {
 // The *.json files of a directory, sorted by name (empty when the directory
 // does not exist or cannot be read).
 [[nodiscard]] std::vector<ScenarioEntry> list_scenarios(const std::filesystem::path& directory);
+
+// Phase 10: saving and listing space experiments (docs/app.md, "Experiment
+// panel").
+//
+// The record of the running simulation: `scenario` (the file the system came
+// from) is written relative to `directory`, where the record will be saved,
+// when both share a root, else absolute; conditions and solver from `status`
+// (the requested warp, not the governed one); result: sim_time_days, steps,
+// events and, when known, energy_drift. Loading the record again gives the
+// same settings (tested).
+[[nodiscard]] scene::Experiment space_record(const std::filesystem::path& scenario,
+                                             const SimStatus& status, double sim_time_days,
+                                             const std::filesystem::path& directory);
+
+// Writes `record` to `path` through a temporary file that is renamed into
+// place (creating the directory); the path or the reason.
+[[nodiscard]] core::Result<std::filesystem::path, std::string>
+save_space_experiment_file(const std::filesystem::path& path, const scene::Experiment& record);
+
+struct StoredSpace {
+    std::filesystem::path path;
+    std::string name;    // file stem
+    std::string summary; // "solar_system_j2000, leapfrog_kdk"
+};
+
+struct SpaceListing {
+    std::vector<StoredSpace> entries; // sorted by file name
+    // Space experiments that cannot be loaded, as "<file>: <reason>"; files
+    // of other domains are skipped silently.
+    std::vector<std::string> problems;
+};
+
+// The space experiments of a directory: empty when it does not exist (the
+// folder is optional); a path that is not a directory, or a directory that
+// cannot be listed, is reported in `problems` ("<dir>: not a directory",
+// "<dir>: cannot be listed: <reason>") rather than shown as an empty folder.
+[[nodiscard]] SpaceListing list_space_experiments(const std::filesystem::path& directory);
 
 } // namespace orrery::sim

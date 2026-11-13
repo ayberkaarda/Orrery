@@ -17,6 +17,7 @@
 
 #include "orrery/aero/compute/float32_pack.h"
 #include "orrery/aero/lbm/lbm2d.h"
+#include "orrery/core/profile.h"
 
 namespace orrery::aero::lbm {
 
@@ -215,6 +216,7 @@ public:
     }
 
     [[nodiscard]] Status step(std::size_t count) override {
+        ORRERY_ZONE("lbm_step");
         const DispatchSize size{static_cast<std::uint32_t>(config_.nx),
                                 static_cast<std::uint32_t>(config_.ny), 1};
         for (std::size_t n = 0; n < count; ++n) {

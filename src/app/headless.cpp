@@ -12,6 +12,7 @@
 #include "orrery/app/entry_headless.h"
 #include "orrery/app/frame_stats.h"
 #include "orrery/app/space_view.h"
+#include "orrery/core/profile.h"
 #include "orrery/render/gl_context.h"
 #include "orrery/render/hdr_pipeline.h"
 #include "orrery/render/png.h"
@@ -128,6 +129,7 @@ core::Result<HeadlessFrame, HeadlessError> render_headless(const sim::SpaceExper
                                  &prepared_scene.camera, prepared_scene.settings};
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access): set by prepare_scene.
     render::SpaceRenderer& space = *prepared_scene.space;
+    ORRERY_FRAME_ZONE();
     // NOLINTNEXTLINE(bugprone-unchecked-optional-access): set by prepare_scene.
     auto image = prepared_scene.renderer->render(
         [&](const render::FrameInfo& info) { (void)space.draw(view, info); });
@@ -160,6 +162,7 @@ benchmark_headless(const sim::SpaceExperiment& experiment, const HeadlessRequest
     std::vector<double> gpu_ms;
     HeadlessBenchmark result;
     for (std::int64_t frame = 0; frame < frames + kHeadlessBenchmarkWarmup; ++frame) {
+        ORRERY_FRAME_ZONE();
         const auto start = std::chrono::steady_clock::now();
         timer.begin();
         pipeline.begin_scene();

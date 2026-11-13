@@ -15,12 +15,14 @@ add_library(orrery_sim STATIC
     sim/physics_thread.cpp
     sim/simulation.cpp
     sim/space_experiment.cpp
+    sim/warp_governor.cpp
     include/orrery/sim/command_queue.h
     include/orrery/sim/physics_thread.h
     include/orrery/sim/sim_command.h
     include/orrery/sim/simulation.h
     include/orrery/sim/space_experiment.h
-    include/orrery/sim/triple_buffer.h)
+    include/orrery/sim/triple_buffer.h
+    include/orrery/sim/warp_governor.h)
 add_library(orrery::sim ALIAS orrery_sim)
 target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(orrery_sim PUBLIC orrery_core orrery_scene)
@@ -71,10 +73,12 @@ add_library(orrery_app_core STATIC
     cli.cpp
     frame_stats.cpp
     headless.cpp
+    run_guard.cpp
     space_view.cpp
     include/orrery/app/cli.h
     include/orrery/app/frame_stats.h
     include/orrery/app/headless.h
+    include/orrery/app/run_guard.h
     include/orrery/app/space_view.h)
 add_library(orrery::app_core ALIAS orrery_app_core)
 target_include_directories(orrery_app_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
@@ -95,9 +99,18 @@ find_package(implot CONFIG REQUIRED)
 find_package(tomlplusplus CONFIG REQUIRED)
 target_sources(orrery_app_core PRIVATE
     config.cpp
+    shortcut_dispatch.cpp
+    shortcut_input.cpp
+    shortcuts.cpp
+    space_experiment_panel.cpp
     error_surface.cpp
     workspace_strip.cpp
     include/orrery/app/config.h
+    include/orrery/app/shortcut_dispatch.h
+    include/orrery/app/shortcut_input.h
+    include/orrery/app/shortcuts.h
+    include/orrery/app/space_experiment_panel.h
+    include/orrery/app/workspace.h
     include/orrery/app/error_surface.h
     include/orrery/app/headless_error.h
     include/orrery/app/workspace_strip.h

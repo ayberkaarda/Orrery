@@ -15,7 +15,7 @@ Checks:
          the first-party targets reachable from each target (also through
          non-first-party wrapper, interface and imported targets) match the
          intended transitive closure exactly;
-       - orrery_core, orrery_geom, orrery_atmo and orrery_sim do not reach OpenGL, GLFW or
+       - the GRAPHICS_FREE_TARGETS (core, geom, atmo, sim, ...) do not reach OpenGL, GLFW or
          ImGui through linkLibraries, interfaceLinkLibraries, build or compile
          dependencies, imported/interface (abstract) targets, raw link
          fragments or artifact names; an imported library without artifact
@@ -63,7 +63,10 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 
 EXPECTED_GRAPH: dict[str, set[str]] = {
-    "orrery_core": set(),
+    # Phase 10a: profiling zones and the built-in trace sink (src/core/profile).
+    # Core links it publicly, so every module reaches it through core.
+    "orrery_profile": set(),
+    "orrery_core": {"orrery_profile"},
     "orrery_geom": {"orrery_core"},
     # Phase 6b: the URL model loader (src/geom/net) downloads and unpacks
     # files only; it never parses meshes, so it does not need orrery_geom.
@@ -100,6 +103,10 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
 # orrery_geom_net (Phase 6b): libcurl (curl licence, https transport over
 # OpenSSL) and miniz (MIT, zip reading), both private and graphics-free.
 THIRD_PARTY_DEPS: dict[str, set[str]] = {
+    # orrery_profile (Phase 10a): the Tracy client (BSD-3-Clause), linked only
+    # when ORRERY_TRACY is on (never in the default or CI presets); a CPU-side
+    # telemetry library without graphics, checked like the rest below.
+    "orrery_profile": {"Tracy::TracyClient"},
     "orrery_geom_net": {"CURL::libcurl", "miniz::miniz"},
     "orrery_core": {"TBB::tbb"},
     # orrery_geom (Phase 6a): assimp (BSD-3-Clause) imports OBJ, STL, glTF 2.0,
@@ -131,8 +138,9 @@ UNVERIFIABLE_IMPORTED_OK = frozenset({"ZLIB::ZLIB", "OpenSSL::SSL", "OpenSSL::Cr
 # orrery_aero (Phase 7b) reaches the GPU only through IComputeBackend; the
 # OpenGL implementation lives in orrery_render.
 GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim",
-                         "orrery_geom_net", "orrery_aero")
-PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
+                         "orrery_geom_net", "orrery_aero", "orrery_profile")
+PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo",
+                   "orrery_profile")
 
 # Graphics libraries, matched against each link name after the linker-flag
 # spelling (-l, -l:, -Wl,, LINKER:, /DEFAULTLIB:, -framework), directories,

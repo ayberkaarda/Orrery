@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <optional>
 #include <span>
 #include <string>
@@ -27,6 +28,9 @@ namespace orrery::render {
 inline constexpr std::string_view kBodyInspectorWindow = "Body Inspector";
 inline constexpr std::string_view kSystemMonitorWindow = "System Monitor";
 inline constexpr std::string_view kRenderSettingsWindow = "Render Settings";
+// The Space workspace's experiment panel (drawn by orrery_app), docked as a
+// tab next to the System Monitor.
+inline constexpr std::string_view kSpaceExperimentWindow = "Experiment";
 
 struct BodyListEntry {
     core::BodyId id;
@@ -76,12 +80,25 @@ struct BodyInspectorIntent {
 
 [[nodiscard]] BodyInspectorIntent draw_body_inspector(const BodyInspectorData& data);
 
+// Time warp as the physics thread achieves it (docs/app.md, "Time-warp
+// budget").
+struct WarpReadout {
+    std::int64_t requested = 1; // [simulated s per wall-clock s]
+    double achieved = 0.0;
+    // The budget lowered the warp (shown in the warning colour with the
+    // reason).
+    bool limited = false;
+    std::optional<double> load; // share of wall time spent stepping
+    double load_limit = 0.0;    // the budget's share (0: no budget)
+};
+
 struct SystemMonitorData {
     double sim_time_days = 0.0;
     std::size_t body_count = 0;
     double frame_time_ms = 0.0;
     std::optional<double> physics_step_ms;
     std::string integrator;
+    std::optional<WarpReadout> warp; // absent: no time-warp tile
     // Recorded series supplied by the caller (for example the relative
     // energy drift from core::ConservationDiagnostics against time in days).
     // Both spans have the same length.

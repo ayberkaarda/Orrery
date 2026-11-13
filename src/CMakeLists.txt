@@ -1,5 +1,6 @@
 # Target graph (direct dependencies):
-#   core   -> (none)
+#   profile -> (none)                (profiling zones, trace sink; src/core/profile)
+#   core   -> profile
 #   geom   -> core
 #   geom_net -> core                 (URL model loader; src/geom/net)
 #   atmo   -> core, aero             (Cd(Mach) table from the aero solvers)
@@ -15,6 +16,7 @@
 # core, geom, geom_net, atmo and sim must never link against OpenGL, GLFW or ImGui;
 # tools/check_deps.py enforces this.
 
+add_subdirectory(core/profile)
 add_subdirectory(core)
 add_subdirectory(geom)
 add_subdirectory(geom/net)

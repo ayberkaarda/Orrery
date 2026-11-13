@@ -177,6 +177,10 @@ endif()
 # Phase 6b: URL model loader (orrery_test_geom_net, tests named "net.*").
 add_subdirectory(geom/net)
 
+# Phase 10a: profiling zones and trace sink (orrery_test_profile) and the
+# --trace command-line tests ("profile.*").
+add_subdirectory(profile)
+
 # Core: unit and property tests (including the former smoke test).
 # allocation_failure_injection.cpp replaces the global operator new/delete
 # family of each executable that lists it (allocation-failure tests).
@@ -259,11 +263,14 @@ catch_discover_tests(orrery_test_scene DISCOVERY_MODE PRE_TEST)
 # application bar. Bundled assets are found through ORRERY_SCENARIO_DIR.
 add_executable(orrery_test_sim
     app/app_test_support.h
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp
     app/test_triple_buffer.cpp
     app/test_command_queue.cpp
     app/test_simulation.cpp
     app/test_physics_thread.cpp
     app/test_space_experiment.cpp
+    app/test_warp_governor.cpp
     app/test_aero_workspace.cpp)
 # Phase 9b: the Entry workspace's graphics-free side (inputs, solver thread,
 # comparison and CSV).
@@ -274,16 +281,29 @@ target_compile_definitions(orrery_test_sim PRIVATE
 orrery_configure_target(orrery_test_sim)
 catch_discover_tests(orrery_test_sim DISCOVERY_MODE PRE_TEST)
 
+# The shortcut and journey tests queue keyboard events on the Dear ImGui
+# context (app/key_events.h), as the GLFW backend does in the window.
+find_package(imgui CONFIG REQUIRED)
 add_executable(orrery_test_app
     app/app_test_support.h
+    app/key_events.h
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp
     app/test_cli.cpp
     app/test_headless.cpp
     app/test_app_bar.cpp
     app/test_frame_stats.cpp
     app/test_config.cpp
+    app/test_shortcuts.cpp
+    app/test_workspace_journeys.cpp
+    app/test_workspace_render.cpp
     app/test_aero_ui.cpp
-    app/test_aero_viewport.cpp)
-target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
+    app/test_aero_viewport.cpp
+    app/test_run_guard.cpp)
+# nlohmann_json parses the traces written by run_traced (test_run_guard.cpp).
+find_package(nlohmann_json CONFIG REQUIRED)
+target_link_libraries(orrery_test_app PRIVATE orrery_app_core imgui::imgui
+    nlohmann_json::nlohmann_json Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")
@@ -391,6 +411,17 @@ set(ORRERY_EXPECT_ABORT ${CMAKE_CURRENT_SOURCE_DIR}/app/expect_abort.cmake)
 add_test(NAME app.terminate_report
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe> -DARGS=exception
         "-DEXPECT_STDERR=orrery_app: fatal: unhandled exception: probe failure"
+        -P ${ORRERY_EXPECT_ABORT})
+# Phase 10: end to end with the crash log - the report reaches standard
+# error and exactly one timestamped entry with the version reaches the log,
+# whose directory is created.
+set(ORRERY_CRASH_DIR ${CMAKE_CURRENT_BINARY_DIR}/app_output/crash)
+add_test(NAME app.terminate_writes_crash_log
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe>
+        "-DARGS=exception;${ORRERY_CRASH_DIR}/main/nested/crash.log"
+        -DLOG=${ORRERY_CRASH_DIR}/main/nested/crash.log -DLOG_DIR=${ORRERY_CRASH_DIR}/main
+        "-DEXPECT_STDERR=orrery_app: fatal: unhandled exception: probe failure"
+        "-DEXPECT_LOG=^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:]+Z Orrery probe: unhandled exception: probe failure with a message"
         -P ${ORRERY_EXPECT_ABORT})
 add_test(NAME app.terminate_report_out_of_memory
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe> -DARGS=out_of_memory

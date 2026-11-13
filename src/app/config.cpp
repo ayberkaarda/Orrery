@@ -1,17 +1,27 @@
 #include "orrery/app/config.h"
 
+#include <algorithm>
+#include <array>
+#include <charconv>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
+#include <optional>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
+#include <vector>
 
 #include <toml++/toml.hpp>
 
 #include "orrery/scene/scenario.h"
 #include "orrery/sim/aero_import.h"
+#include "orrery/sim/warp_governor.h"
 
 namespace orrery::app {
 
@@ -70,6 +80,89 @@ std::string where(std::string_view source, const toml::source_region& region) {
     std::ostringstream out;
     out << source << ':' << region.begin.line << ':' << region.begin.column;
     return out.str();
+}
+
+void read_space(const toml::table& space, std::string_view source, ConfigLoad& out) {
+    const toml::node* node = space.get("physics_budget");
+    if (node == nullptr) {
+        return;
+    }
+    // Integers are accepted as numbers too (physics_budget = 1 is out of
+    // range either way, but reported as such).
+    std::optional<double> value = node->value<double>();
+    if (value && std::isfinite(*value) && *value >= sim::kMinLoadLimit &&
+        *value <= sim::kMaxLoadLimit) {
+        out.config.physics_budget = *value;
+        return;
+    }
+    out.warnings.push_back(where(source, node->source()) +
+                           ": space.physics_budget: expected a number in [0.05, 0.95], ignored");
+}
+
+// One [shortcuts] entry: a chord string or an array of them (empty:
+// unbound). Any invalid chord rejects the whole entry.
+std::optional<std::vector<KeyChord>> read_chords(const toml::node& node, std::string& problem) {
+    std::vector<KeyChord> chords;
+    const auto add = [&](const toml::node& item) {
+        const auto text = item.value<std::string>();
+        if (!text) {
+            problem = "expected a key chord string or an array of them";
+            return false;
+        }
+        auto chord = parse_key_chord(*text);
+        if (!chord) {
+            problem = chord.error();
+            return false;
+        }
+        if (std::find(chords.begin(), chords.end(), chord.value()) == chords.end()) {
+            chords.push_back(chord.value());
+        }
+        return true;
+    };
+    if (const toml::array* list = node.as_array()) {
+        for (const toml::node& item : *list) {
+            if (!add(item)) {
+                return std::nullopt;
+            }
+        }
+        return chords;
+    }
+    if (!add(node)) {
+        return std::nullopt;
+    }
+    return chords;
+}
+
+void read_shortcuts(const toml::table& shortcuts, std::string_view source, ConfigLoad& out) {
+    std::vector<ShortcutOverride> overrides;
+    for (const auto& [key, node] : shortcuts) {
+        const std::string name(key.str());
+        const auto action = shortcut_action_from_name(name);
+        if (!action) {
+            std::string warning = where(source, node.source());
+            warning += ": shortcuts.";
+            warning += name;
+            warning += ": unknown action, ignored";
+            out.warnings.push_back(std::move(warning));
+            continue;
+        }
+        std::string problem;
+        auto chords = read_chords(node, problem);
+        if (!chords) {
+            std::string warning = where(source, node.source());
+            warning += ": shortcuts.";
+            warning += name;
+            warning += ": ";
+            warning += problem;
+            warning += "; keeping the default";
+            out.warnings.push_back(std::move(warning));
+            continue;
+        }
+        overrides.push_back({*action, std::move(*chords), where(source, node.source())});
+    }
+    for (std::string& warning : apply_shortcut_overrides(out.config.shortcuts, overrides)) {
+        out.warnings.push_back(std::move(warning));
+    }
 }
 
 std::string_view workspace_name(Workspace workspace) noexcept {
@@ -150,7 +243,12 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
             }
         }
     };
-    table_keys(root, "", {"paths", "window", "aero"});
+    table_keys(root, "", {"paths", "window", "aero", "space", "shortcuts"});
+    for (const char* section : {"paths", "window", "aero", "space", "shortcuts"}) {
+        if (const toml::node* node = root.get(section); node != nullptr && !node->is_table()) {
+            warn(*node, section, "expected a table, ignored");
+        }
+    }
 
     if (const toml::table* paths = root["paths"].as_table()) {
         table_keys(*paths, "paths.", {"experiments", "model_cache"});
@@ -190,8 +288,10 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
                 out.config.start_workspace = Workspace::space;
             } else if (value && *value == "aero") {
                 out.config.start_workspace = Workspace::aero;
+            } else if (value && *value == "entry") {
+                out.config.start_workspace = Workspace::entry;
             } else {
-                warn(*node, "window.workspace", R"(expected "space" or "aero", ignored)");
+                warn(*node, "window.workspace", R"(expected "space", "aero" or "entry", ignored)");
             }
         }
     }
@@ -208,6 +308,13 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
             }
         }
     }
+    if (const toml::table* space = root["space"].as_table()) {
+        table_keys(*space, "space.", {"physics_budget"});
+        read_space(*space, source_name, out);
+    }
+    if (const toml::table* shortcuts = root["shortcuts"].as_table()) {
+        read_shortcuts(*shortcuts, source_name, out);
+    }
     return out;
 }
 
@@ -223,27 +330,163 @@ core::Result<ConfigLoad, std::string> load_config(const std::filesystem::path& p
     return parse_config(text.value(), path.filename().string());
 }
 
-std::string config_to_toml(const AppConfig& config) {
-    toml::table paths;
-    paths.insert("experiments", config.experiment_dir.generic_string());
-    paths.insert("model_cache", config.model_cache_dir.generic_string());
-    toml::table window;
-    window.insert("width", static_cast<std::int64_t>(config.window_width));
-    window.insert("height", static_cast<std::int64_t>(config.window_height));
-    window.insert("workspace", std::string(workspace_name(config.start_workspace)));
-    toml::table aero;
-    aero.insert("steps_per_frame", config.steps_per_frame);
-    toml::table root;
-    root.insert("paths", std::move(paths));
-    root.insert("window", std::move(window));
-    root.insert("aero", std::move(aero));
-    std::ostringstream out;
-    out << "# Orrery configuration (docs/app.md, \"Configuration\").\n" << root << '\n';
-    return out.str();
+namespace {
+
+// The configuration's TOML is written by hand into one std::string: every
+// allocation failure propagates as std::bad_alloc. toml++'s printer formats
+// floats through a stream of its own where its library is built without
+// std::to_chars (GCC and Clang), and that stream swallows the failure and
+// keeps the digits it has (0.6 written as 0.5999999999999).
+
+void append_hex_escape(std::string& out, unsigned char c) {
+    constexpr std::string_view kHex = "0123456789ABCDEF";
+    out += '\\';
+    out += "u00";
+    out += kHex[static_cast<std::size_t>(c >> 4U)];
+    out += kHex[static_cast<std::size_t>(c & 0x0FU)];
 }
+
+// A TOML basic string: quotes, backslashes and control characters escaped,
+// everything else (UTF-8 included) as is.
+void append_string(std::string& out, std::string_view text) {
+    out += '"';
+    for (const char c : text) {
+        const auto byte = static_cast<unsigned char>(c);
+        if (c == '"' || c == '\\') {
+            out += '\\';
+            out += c;
+        } else if (byte < 0x20U || byte == 0x7FU) {
+            append_hex_escape(out, byte);
+        } else {
+            out += c;
+        }
+    }
+    out += '"';
+}
+
+void append_integer(std::string& out, std::int64_t value) {
+    std::array<char, 32> buffer{};
+    const auto written = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    out.append(buffer.data(), written.ptr);
+}
+
+// The shortest text that reads back as the same double, always a TOML float.
+void append_float(std::string& out, double value) {
+    std::array<char, 64> buffer{};
+    const auto written = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    const std::string_view text(buffer.data(),
+                                static_cast<std::size_t>(written.ptr - buffer.data()));
+    out += text;
+    if (text.find_first_of(".eEn") == std::string_view::npos) {
+        out += ".0";
+    }
+}
+
+void append_key(std::string& out, std::string_view key) {
+    out += key;
+    out += " = ";
+}
+
+void append_string_entry(std::string& out, std::string_view key, std::string_view value) {
+    append_key(out, key);
+    append_string(out, value);
+    out += '\n';
+}
+
+void append_shortcuts(std::string& out, const ShortcutTable& table) {
+    out += "\n[shortcuts]\n";
+    for (const ShortcutInfo& info : shortcut_actions()) {
+        append_key(out, info.name);
+        out += '[';
+        const std::vector<KeyChord>& chords = table.of(info.action);
+        for (std::size_t i = 0; i < chords.size(); ++i) {
+            out += i == 0 ? "" : ", ";
+            append_string(out, format_key_chord(chords[i]));
+        }
+        out += "]\n";
+    }
+}
+
+} // namespace
+
+std::string config_to_toml(const AppConfig& config) {
+    std::string out = "# Orrery configuration (docs/app.md, \"Configuration\").\n";
+    out += "\n[paths]\n";
+    append_string_entry(out, "experiments", config.experiment_dir.generic_string());
+    append_string_entry(out, "model_cache", config.model_cache_dir.generic_string());
+    out += "\n[window]\n";
+    append_key(out, "width");
+    append_integer(out, config.window_width);
+    out += '\n';
+    append_key(out, "height");
+    append_integer(out, config.window_height);
+    out += '\n';
+    append_string_entry(out, "workspace", workspace_name(config.start_workspace));
+    out += "\n[aero]\n";
+    append_key(out, "steps_per_frame");
+    append_integer(out, config.steps_per_frame);
+    out += "\n\n[space]\n";
+    append_key(out, "physics_budget");
+    append_float(out, config.physics_budget);
+    out += '\n';
+    append_shortcuts(out, config.shortcuts);
+    return out;
+}
+
+namespace {
+
+// A temporary file removed when it goes out of scope, on every path but the
+// rename into place: also when opening or writing it threw after the file
+// was created (libstdc++ can create the file and then fail to allocate the
+// stream's buffer). Only a regular file is removed, so a directory in its
+// way stays.
+class TemporaryFile {
+public:
+    explicit TemporaryFile(std::filesystem::path path) : path_(std::move(path)) {}
+    TemporaryFile(const TemporaryFile&) = delete;
+    TemporaryFile& operator=(const TemporaryFile&) = delete;
+    TemporaryFile(TemporaryFile&&) = delete;
+    TemporaryFile& operator=(TemporaryFile&&) = delete;
+    ~TemporaryFile() {
+        std::error_code ignored;
+        if (!renamed_ && std::filesystem::is_regular_file(path_, ignored)) {
+            std::filesystem::remove(path_, ignored);
+        }
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
+    void renamed() noexcept { renamed_ = true; }
+
+private:
+    std::filesystem::path path_;
+    bool renamed_ = false;
+};
+
+// Writes `text` to the temporary file; true only when the stream stayed good
+// through the write and the close and the file holds exactly the text.
+bool write_whole(const TemporaryFile& file, const std::string& text) {
+    std::ofstream out(file.path(), std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    out.close();
+    if (out.fail()) {
+        return false;
+    }
+    std::error_code error;
+    const std::uintmax_t size = std::filesystem::file_size(file.path(), error);
+    return !error && size == text.size();
+}
+
+} // namespace
 
 core::Result<std::filesystem::path, std::string> save_config(const std::filesystem::path& path,
                                                              const AppConfig& config) {
+    // Serialised before anything on disk changes; written to a sibling
+    // temporary file that then replaces the configuration in one rename, so
+    // a failure at any point leaves the previous file whole.
+    const std::string text = config_to_toml(config);
     // A bare file name has no directory to create (the working directory).
     if (const std::filesystem::path dir = path.parent_path(); !dir.empty()) {
         std::error_code error;
@@ -252,13 +495,18 @@ core::Result<std::filesystem::path, std::string> save_config(const std::filesyst
             return core::failure("cannot create " + dir.string() + ": " + error.message());
         }
     }
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    const std::string text = config_to_toml(config);
-    out.write(text.data(), static_cast<std::streamsize>(text.size()));
-    out.close();
-    if (!out) {
-        return core::failure("cannot write " + path.string());
+    std::filesystem::path temporary_path = path;
+    temporary_path += ".tmp";
+    TemporaryFile temporary(std::move(temporary_path));
+    if (!write_whole(temporary, text)) {
+        return core::failure("cannot write " + temporary.path().string());
     }
+    std::error_code error;
+    std::filesystem::rename(temporary.path(), path, error);
+    if (error) {
+        return core::failure("cannot replace " + path.string() + ": " + error.message());
+    }
+    temporary.renamed();
     return path;
 }
 

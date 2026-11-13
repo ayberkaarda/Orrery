@@ -2,6 +2,8 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -12,6 +14,7 @@
 #include "orrery/core/sim_state.h"
 #include "orrery/scene/scenario.h"
 #include "orrery/sim/sim_command.h"
+#include "orrery/sim/warp_governor.h"
 
 // Deterministic space simulation driven by wall-clock time (docs/app.md,
 // "Fixed-timestep accumulator"). Single-threaded: PhysicsThread owns one on
@@ -62,6 +65,15 @@ struct SimulationConfig {
     // A positive budget makes the number of steps depend on the machine, so
     // deterministic runs (headless, tests) leave it at 0.
     double step_time_budget_s = 0.0;
+    // Optional time-warp budget (warp_governor.h): the warp credited to the
+    // accumulator is lowered while the steps would take more than the
+    // budget's share of wall-clock time. Absent (the default, headless and
+    // tests): the requested warp is always credited.
+    std::optional<WarpBudget> warp_budget;
+    // Monotonic clock [ns] that times the steps (step_ms, the wall-clock
+    // budget, the warp budget); empty: std::chrono::steady_clock. Tests pass
+    // a fake clock.
+    std::function<std::int64_t()> clock;
 };
 
 inline constexpr double kMinStepDays = 1.0e-9;
@@ -74,9 +86,35 @@ inline constexpr std::int64_t kMaxAdvanceWallNs = 250'000'000;
 // Empty when the configuration is usable, else the reason.
 [[nodiscard]] std::optional<std::string> validate(const SimulationConfig& config);
 
+// The settings a space experiment records (space_experiment.h), as they
+// currently apply.
+struct RunSettings {
+    SpaceIntegrator integrator = SpaceIntegrator::leapfrog_kdk;
+    ForceChoice force = ForceChoice::automatic;
+    double softening_au = 0.0;
+    std::int64_t max_steps_per_advance = 4096;
+
+    friend bool operator==(const RunSettings&, const RunSettings&) = default;
+};
+
+// Where the simulated system came from: the one the simulation was created
+// with, a LoadScenario command or a LoadExperiment command (Reset keeps it).
+enum class SystemSource : std::uint8_t {
+    startup,
+    scenario,
+    experiment,
+};
+
 // Observable state of the simulation besides the bodies themselves.
 struct SimStatus {
-    std::string scenario;    // name of the loaded scenario
+    RunSettings settings;
+    std::string scenario; // name of the loaded scenario
+    SystemSource source = SystemSource::startup;
+    // File of the scenario loaded by a command (LoadScenario, or the
+    // scenario of a LoadExperiment), and of the experiment of a
+    // LoadExperiment; empty otherwise (see `source`).
+    std::filesystem::path scenario_file;
+    std::filesystem::path experiment_file;
     std::string integrator;  // integrator name
     std::string force_model; // force model name
     double dt_days = 0.0;
@@ -85,9 +123,17 @@ struct SimStatus {
     // Simulated seconds per wall-clock second actually achieved by the last
     // advance() (0 while paused).
     double effective_warp = 0.0;
-    // The step budget dropped simulated time in the last advance(): the
-    // requested warp cannot be sustained.
+    // The step budget dropped simulated time in the last advance(), or the
+    // warp budget lowered the warp: the requested warp is not sustained.
     bool warp_limited = false;
+    // The warp the time-warp budget lets the accumulator credit (the
+    // requested one without a budget), and whether it is below the request.
+    std::int64_t governed_warp = kMinTimeWarp;
+    bool warp_reduced = false;
+    // Smoothed share of wall-clock time spent stepping, and the budget's
+    // limit for it (0 without a budget).
+    std::optional<double> physics_load;
+    double load_limit = 0.0;
     std::uint64_t steps = 0;      // physics steps since the scenario was loaded or reset
     std::uint64_t generation = 0; // incremented by every load and reset
     // Mean wall-clock time of one physics step in the last advance() that

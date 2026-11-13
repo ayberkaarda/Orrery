@@ -18,6 +18,7 @@
 #include <glm/matrix.hpp>
 
 #include "gl_loader.h"
+#include "orrery/core/profile.h"
 #include "orrery/render/blackbody_spectrum.h"
 #include "orrery/render/embedded_shaders.h"
 #include "orrery/render/starfield.h"
@@ -354,6 +355,7 @@ void BlackHolePass::Impl::dispatch(const LensingTarget& target, const Camera& ca
 core::Result<std::monostate, std::string>
 BlackHolePass::draw(const LensingTarget& target, const Camera& camera, const FrameInfo& frame,
                     const RenderSettings& settings, const SkySource& sky) {
+    ORRERY_ZONE("bh_raymarch");
     Impl& p = *impl_;
     if (auto built = p.build_environment(sky); !built) {
         return built;

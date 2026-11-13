@@ -1,8 +1,10 @@
 # Orrery Application Reference
 
-The application layer of V1 Phase 4c (spec section 8, "UYGULAMA", and 7.7):
-the physics thread, the command channel, the interactive window and the
-headless command line. Rendering itself is described in `rendering.md`.
+The application layer of V1 (spec section 8, "UYGULAMA", and 7.7; Phases
+4c, 8b, 9b and 10): the physics thread, the command channel, the time-warp
+budget, the interactive window with its workspaces, panels and keyboard
+shortcuts, the configuration, the error surface and the headless command
+line. Rendering itself is described in `rendering.md`.
 
 ## 1. Targets
 
@@ -40,6 +42,12 @@ wall time credited, not on how it was split into frames, and the state is
 bit-identical for any frame pacing (tested with 60 Hz, 144 Hz, irregular
 1 to 50 ms frames and 250 ms chunks: same step count and `state_hash`), and
 bit-identical to calling the integrator directly the same number of times.
+This holds while only the count budget limits a call: the wall-clock step
+budget and the time-warp budget below make the number of steps in a given
+wall time depend on measured costs, and runs then agree after the same
+number of steps (tested: two governed runs at different step costs take
+different step counts over the same wall time and reach the same
+`state_hash` once their counts match).
 
 **Step budget.** One `advance` takes at most `max_steps_per_advance` steps
 (experiment setting `max_steps_per_frame`, default 4096) and, interactively,
@@ -51,6 +59,41 @@ times the step length per wall-clock time); the application bar shows it as
 a `LIMITED` chip. The wall-clock budget makes the step count machine
 dependent, so the headless renderer and the tests use the count budget only.
 
+**Time-warp budget** (Phase 10, `warp_governor.h`). The step budget only
+cuts a tick short; the window also keeps the physics thread within a share
+of wall-clock time (`[space] physics_budget`, default 0.6) by lowering the
+warp it credits. `WarpGovernor` smooths the measured wall time per step
+(time constant 0.25 s) and the share of time spent stepping. The warp that
+would use exactly the budget is `budget * step_ns / cost_per_step`; the
+credited warp is the highest 1-2-5 level (1, 2, 5, 10, ... 1e7) below it,
+never above the request:
+
+- it drops once the load has been over the budget for 0.25 s, straight to
+  the level that fits (several levels at once if need be);
+- it rises once the next level would have used at most 75 percent of the
+  budget for 1.5 s, to the highest level that keeps that margin.
+
+The two thresholds and the holds are the hysteresis: a load that jitters
+around a level boundary does not make the warp flicker (tested with a
++-8 percent jitter for 30 s: one change). A lower request applies at once, a
+higher one as far as the measured cost allows; a new scenario forgets the
+cost. The status carries the requested warp, the governed one
+(`governed_warp`, `warp_reduced`), the load and the budget; `warp_limited`
+is set while either budget holds the warp down. Only the warp changes,
+never the step, so the state after N steps is bit-identical with or
+without the governor (tested: a governed run whose warp dropped and
+recovered against a plain run of the same number of steps, same
+`state_hash`). The governor reads no clock: each tick hands it the wall
+time, the busy time and the step count, and `SimulationConfig::clock`
+replaces the step clock, so the tests drive it with a fake clock. Headless
+runs and tests without a `warp_budget` credit the requested warp as before.
+
+What the user sees: the bar's `LIMITED 2e5x` chip (its tooltip gives the
+requested warp, the cost of one step and the load against the budget, and
+says the warp returns by itself), and in the System Monitor a `TIME WARP`
+tile `2e5x / 1e7x` in the warning colour with a one-line reason under the
+tiles.
+
 **Commands** (`sim_command.h`), applied in order at the start of a tick:
 
 | Command | Effect |
@@ -60,6 +103,7 @@ dependent, so the headless renderer and the tests use the count budget only.
 | `LoadScenario{path}` | reads and builds the scenario on the physics thread; on failure the current system stays and the status carries the message |
 | `Reset{}` | the initial state of the scenario loaded last (fresh integrator, so IAS15 history never leaks) |
 | `SingleStep{}` | pause, then exactly one step |
+| `LoadExperiment{path}` | reads a space experiment on the physics thread and replaces the system with its scenario and its settings (integrator, force model, step, warp, paused); the interactive budgets stay. On failure nothing changes and the status carries the message |
 
 A failing step (non-finite state, IAS15 underflow) leaves the state as it
 was (integrator contract), pauses and reports the reason. Load and reset
@@ -116,6 +160,11 @@ A space experiment is an `orrery/scene` experiment record with domain
 `conditions.paused`, `solver.name` (the integrator) and `solver.settings`
 `dt_days`, `force`, `softening_au`, `max_steps_per_frame`. Unknown keys and
 out-of-range values are rejected with the file and key in the message.
+Experiment and scenario paths that exist but are not regular files (FIFOs,
+sockets, devices, directories) are refused as `not a regular file` before
+anything opens them, so a listing, an Open or a `LoadScenario` naming one
+neither blocks the UI nor the physics thread and its shutdown (tested with
+a FIFO without a writer on POSIX).
 
 Aero experiments (Phase 8b) use the same schema, version 1, with domain
 `aero`: a geometry reference, the free-stream conditions, the solver choice
@@ -178,6 +227,10 @@ no readback) and prints the mean wall time per frame from the first command
 until the frame's GPU timer query completes, the fps that follows, and the
 GPU median and 95th percentile. This is the measurement that never opens a
 window (`app::benchmark_headless`).
+
+`--trace <file>` (any mode) writes the profiling zones of the run as Chrome
+trace-event JSON with per-zone totals; zones are compiled in only by
+`ORRERY_PROFILING` builds. Format and options: [observability.md](observability.md).
 
 ## 6. Headless rendering
 
@@ -247,11 +300,31 @@ most 72 bytes, cut at a UTF-8 character boundary, full text in its tooltip)
 and the frame rate is the first item dropped when space runs out. Checked
 at 1024 px by the multi-size render test of `rendering.md` section 14.
 
-**Input:** left drag orbits the camera, the wheel zooms, Space runs/pauses,
-`.` or Right steps, F or Home reframes; only when ImGui does not want the
-pointer or keyboard. The Body Inspector's Focus orbits the selected body at
-twelve radii. The System Monitor shows the physics step time, the integrator
-and the energy drift series (decimated by two at 4096 points).
+**Input:** left drag orbits the camera, the wheel zooms; keys come from the
+shortcut table (section 12), only when ImGui does not want the pointer or
+keyboard. The Body Inspector's Focus orbits the selected body at twelve
+radii. The System Monitor shows the simulated time, the time warp (achieved
+against requested while the budget holds it down), the body count, the
+frame and physics step times, the integrator and the energy drift series
+(decimated by two at 4096 points).
+
+**Experiment panel** (Phase 10, `space_experiment_panel.h`; spec 8
+"Scenario/Experiment"), docked as a tab beside the System Monitor: on the
+left what runs (scenario; the experiment: the one the window started with,
+the one opened last, or none after a scenario picked on its own, told
+apart by `SimStatus::source`; integrator and step, force model, warp) and
+Save with a name field; on the right the saved space
+experiments of the experiments folder and the bundled ones, with Open (or a
+double click) and Refresh. Save writes `sim::space_record` - the scenario
+file (relative to the experiments folder when both share a root), the
+requested warp and paused flag, integrator, step, force model, softening and
+step budget, and as result the simulated time, step and event counts and
+the energy drift - to a new file (`<name>.json`, `<name>_2.json`, ...),
+through a temporary file that is renamed into place. Open sends
+`LoadExperiment`. Unreadable space experiments are listed as problems,
+files of other domains are skipped. A missing folder is simply empty, but a
+folder path that is not a directory or a folder that cannot be listed is
+shown as a problem, not as an empty library.
 
 **Measured:** `orrery_app --size 1920x1080 --benchmark 600` (vsync off, 30
 warm-up frames) on an AMD Radeon RX 9060 XT, Release MSVC: 600 frames at
@@ -272,7 +345,7 @@ and 2.67 ms (374 fps) for `solar_system` (no hole).
 The window has three workspaces, Space, Aero and Entry (spec 8). They are
 switched in a slim strip under the main bar (`workspace_strip.h`, in the
 look of the bar's workspace tab, with the current workspace's caption on the
-right) or with Ctrl+1 / Ctrl+2 / Ctrl+3. Each workspace has its own main
+right) or with Ctrl+1 / Ctrl+2 / Ctrl+3 (section 12). Each workspace has its own main
 bar, dock layout, panels and camera; the space simulation keeps its state
 while another workspace is shown (the physics thread is not woken by their
 frames, so a running warp continues at its idle tick rate), and the aero and
@@ -303,16 +376,31 @@ model_cache = "D:/cache/models" # default: the platform model cache
 [window]
 width = 1600                    # 320 .. 8192 px
 height = 900
-workspace = "aero"              # "space" (default) or "aero"
+workspace = "entry"             # "space" (default), "aero" or "entry"
 [aero]
 steps_per_frame = 200           # 1 .. 100000 lattice steps per frame
+[space]
+physics_budget = 0.5            # 0.05 .. 0.95 of wall time (time-warp budget)
+[shortcuts]
+save = "F5"                     # one chord
+help = ["F1", "?"]              # or a list of them
+open = []                       # or none: unbound
 ```
 
 A missing file means the defaults. Unknown keys and invalid values are
 reported on stderr as `orrery_app: config: config.toml:<line>:<column>: <key>:
 <reason>` and ignored, the rest of the file still applies; a file that is not
 TOML is reported with its position and the defaults are used. Command-line
-options win over the file.
+options win over the file. A `[shortcuts]` entry with an unknown action, a
+value that is not a chord string or a list of them, or a chord that does
+not parse is reported and the action keeps its default; so is an entry
+that conflicts with another action (section 12). `config_to_toml` writes
+every key, the shortcut table included, so a saved file documents itself
+(round trip tested). `save_config` serialises first, writes the text to
+`config.toml.tmp` beside the file and renames that over it (a replacing
+rename, on Windows too), so a failed save leaves the previous file
+byte-identical: tested with every allocation failing in turn, a temporary
+file that cannot be written and a file that cannot be replaced.
 
 ## 11. Error surface
 
@@ -326,9 +414,109 @@ No failure is silent (spec 8):
 - `main` installs a `std::set_terminate` handler (`error_surface.h`) before
   anything else runs: it prints `orrery_app: fatal: <reason>` (the active
   exception's message when there is one) and appends a timestamped entry
-  with the version to `<data dir>/crash.log`, then aborts. Exceptions that
-  reach `main` are reported there as before; the physics and solver threads
-  catch everything per tick and report it in their status.
+  with the version to `<data dir>/crash.log` (creating the directory), says
+  where on stderr, then aborts. An exception that reaches `main` is printed
+  as `orrery_app: unexpected error: <what>`, also appended to the crash log,
+  and ends with exit code 1 (`run_guard.h`); the next line names the log,
+  or says `orrery_app: cannot write the crash report to <log>` when it
+  cannot be written (tested with a log whose parent is a regular file).
+- The physics, aero and entry solver threads catch every exception, of any
+  type, per tick and report it in their status (the simulation pauses).
+  This matters beyond tidiness: the MSVC runtime keeps `std::terminate`
+  handlers per thread, so an exception escaping a worker thread there would
+  end the process without the report.
+- Tested in processes of their own (`orrery_terminate_probe`, which aborts):
+  `app.terminate_report` (the report on stderr, exactly once),
+  `app.terminate_report_out_of_memory` (the allocation-free fallback when
+  every allocation fails) and `app.terminate_writes_crash_log` (the report,
+  one timestamped entry with the version in a crash log whose nested
+  directory the handler creates, and the line naming the log).
 - AddressSanitizer reports of the sanitizer builds go to stderr as usual
   (`ASAN_OPTIONS=log_path=...` sends them to a file); the crash log does not
   capture them.
+
+## 12. Keyboard shortcuts
+
+One table (`shortcuts.h`) holds every key of the window; nothing else reads
+the keyboard. Defaults:
+
+| Action (config key) | Keys | Where |
+|---|---|---|
+| `toggle_pause` | Space | all (Space: simulation; Aero and Entry: the run) |
+| `single_step` | `.`, Right | Space (one physics step), Aero (one frame) |
+| `reset_view` | F, Home | all |
+| `warp_down`, `warp_up` | `[`, `]` | Space: previous or next 1-2-5 warp preset |
+| `reset` | Ctrl+R | Space: initial state of the scenario |
+| `workspace_space`, `workspace_aero`, `workspace_entry` | Ctrl+1, Ctrl+2, Ctrl+3 | all |
+| `save` | Ctrl+S | the workspace's experiment (Space: the Experiment panel's Save) |
+| `open` | Ctrl+O | brings the workspace's experiments panel to the front |
+| `help` | F1, `?` | the help overlay |
+| `close` | Esc | closes the help; else Space releases the selected body, Entry the pinned cursor |
+
+**Chords.** `Ctrl+S`, `Shift+F1`, `Alt+1`, `PageDown`, `Esc` name a key
+position with exactly these modifiers (Ctrl, Shift, Alt; names are
+case-insensitive). A single punctuation character (`?`, `[`, `]`, `.`) is
+a typed character: it matches what the keyboard layout types, so `?` works
+on any layout. With a modifier, punctuation names its US key (`Ctrl+[`);
+a shifted symbol has no key of its own (`Ctrl+?` is refused with a hint).
+Stepping and the warp keys repeat while held; the others fire once per
+press. Typed characters follow the same rule: a character that arrives in a
+frame in which no key went down was typed by key repeat, so a held `?`
+toggles the help once while a held `[` keeps lowering the warp. No shortcut
+fires while a text field has the keyboard.
+
+**Conflicts.** Two actions that apply in a common workspace may not share a
+chord; a typed character also conflicts with the key that types it on a US
+layout (`.` and the period key, `?` and Shift+/), and with every chord that
+holds Alt on a key that types: AltGr (Ctrl+Alt on Windows) and Option (Alt
+on macOS) type characters that depend on the layout (AltGr+8 types `[` on a
+German layout). At run time one key event fires one action: while a bound
+key chord is down, the characters of the frame are taken as typed by it
+and fire nothing. The defaults are conflict-free (tested). User bindings are applied together, so swapping two
+keys works; a binding that still conflicts is reverted to its default and
+reported with both actions, so the table in use never has a conflict.
+
+**Help overlay.** F1 or `?` opens a centred, opaque window listing every
+action with its keys as key caps, grouped by where they apply (the groups
+of the current workspace first) and naming `config.toml` as the place to
+change them; Esc, F1, `?` or its close button closes it.
+
+Tested without a window (`test_shortcuts.cpp`): the action list, parsing
+and canonical formatting (round trip), the defaults, matching (modifiers,
+repeats, text input, one action per frame), conflicts across key and
+character chords, overrides with a swap and a rejected conflict, the
+configuration's `[shortcuts]` and `[space]` tables and their warnings, and
+the overlay under a headless UI context (placed centred inside 1600x900,
+gone when closed).
+
+## 13. End to end
+
+`test_workspace_journeys.cpp` runs each workspace from a fresh start to a
+saved result that loads back, with headless UI frames and no window. Keys
+are Dear ImGui key and character events queued as the GLFW backend queues
+them; they reach the actions through the window's own path
+(`shortcut_dispatch.h`: `frame_shortcuts`, which calls `read_key_frame`, then
+`apply_shortcuts`, `apply_space_scene_input` and `apply_late_shortcuts`,
+which `window_app.cpp` calls as well), with every workspace and the physics
+thread alive as in the window:
+
+- Space: a paused `sun_earth_moon` experiment on a physics thread; Space
+  runs it, `]` raises the warp and again on a key repeat, a held `?` opens
+  the help once and Esc closes it, Ctrl+2, Ctrl+3 and Ctrl+1 switch
+  workspaces, nothing fires while a text field has the keyboard, Ctrl+S
+  saves it from the Experiment panel; the saved file loads with the raised
+  warp, and `LoadExperiment` opens it on the running thread.
+- Aero: the default NACA 0012 section; Space runs the panel method to the
+  end, Ctrl+S saves; the record lists back with its result and opens in a
+  new workspace as a recorded result.
+- Entry: the Apollo-like preset; Space flies it to the ground (peak 6 to
+  8 g), Esc releases the cursor, Ctrl+S saves; the record lists back with
+  its series and opens in a new workspace as a recorded run.
+
+Images (offscreen, hidden context): the Space workspace with the warp
+budget at work, the Experiment panel and the help overlay are written to
+`<build>/tests/app_output` for inspection, and the whole Aero workspace
+after a NACA 0012 panel-method run is a golden
+(`tests/render/golden/aero/aero_workspace_naca0012.png`, SSIM > 0.98),
+beside the Entry workspace golden of entry-workspace.md and the space
+goldens of section 6 and rendering.md.

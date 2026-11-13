@@ -1016,7 +1016,7 @@ void AeroWorkspace::Impl::draw_free_stream() {
     row("Density", "##density", &c.density_kg_m3, kDensity, "%.4g");
     row("Viscosity", "##viscosity", &c.viscosity_pa_s, "Pa s", "%.4g");
     row("Temperature", "##temperature", &c.temperature_k, "K", "%.5g");
-    w::row_label_with_unit("Angle of attack", kDegree);
+    w::row_label_with_unit("Angle (AoA)", kDegree);
     const double alpha_min = -25.0;
     const double alpha_max = 25.0;
     (void)ImGui::SliderScalar("##alpha", ImGuiDataType_Double, &c.angle_of_attack_deg, &alpha_min,
@@ -1253,7 +1253,8 @@ void AeroWorkspace::Impl::draw_breakdown(const aero::AeroResult& r, double area_
         w::end_properties();
     }
     if (r.cd_friction != 0.0) {
-        w::muted("Skin friction is an estimate, reported apart and not included in Cd.");
+        w::wrapped("Skin friction is an estimate, reported apart and not included in Cd.",
+                   ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     }
 }
 
