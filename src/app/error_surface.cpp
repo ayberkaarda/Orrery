@@ -55,13 +55,15 @@ void write_crash_log(const char* reason) noexcept {
         std::abort();
     }
     std::string reason;
-    const char* text = "std::terminate (the reason could not be formatted)";
+    bool formatted = false;
     try {
         reason = describe_termination(std::current_exception());
-        text = reason.c_str();
+        formatted = true;
     } catch (...) {
-        // `text` keeps the literal.
+        formatted = false;
     }
+    const char* text =
+        formatted ? reason.c_str() : "std::terminate (the reason could not be formatted)";
     std::fputs("orrery_app: fatal: ", stderr);
     std::fputs(text, stderr);
     std::fputs("\n", stderr);
