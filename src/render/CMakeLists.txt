@@ -173,4 +173,27 @@ add_custom_command(
     VERBATIM)
 target_sources(orrery_render PRIVATE ${ORRERY_RENDER_AERO_SHADER_HEADER})
 
+# Phase 9b: the entry view (docs/entry-workspace.md): planet with graticule,
+# atmosphere shell, trajectory ribbon, ground track and markers. Its shaders
+# (shaders/entry/*.glsl) are embedded into a header of their own.
+target_sources(orrery_render PRIVATE
+    entry_geometry.cpp
+    entry_view.cpp
+    include/orrery/render/entry_geometry.h
+    include/orrery/render/entry_view.h)
+file(GLOB ORRERY_RENDER_ENTRY_SHADERS CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/entry/*.glsl)
+set(ORRERY_RENDER_ENTRY_SHADER_HEADER ${ORRERY_RENDER_GENERATED_DIR}/orrery/render/embedded_entry_shaders.h)
+add_custom_command(
+    OUTPUT ${ORRERY_RENDER_ENTRY_SHADER_HEADER}
+    COMMAND ${CMAKE_COMMAND}
+        -DOUTPUT=${ORRERY_RENDER_ENTRY_SHADER_HEADER}
+        -DNAMESPACE=orrery::render::entry_shaders
+        "-DSHADERS=${ORRERY_RENDER_ENTRY_SHADERS}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shaders.cmake
+    DEPENDS ${ORRERY_RENDER_ENTRY_SHADERS} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shaders.cmake
+    COMMENT "Embedding entry view shaders"
+    VERBATIM)
+target_sources(orrery_render PRIVATE ${ORRERY_RENDER_ENTRY_SHADER_HEADER})
+
 orrery_configure_target(orrery_render)
