@@ -191,6 +191,12 @@ next step takes no step and keeps the request).
 
 Detected on every step from the altitude before and after it; the crossing
 instant and every series column are interpolated linearly within the step.
+A long step can pass through a level and back (a periapsis below the
+interface or the ground, an apoapsis above the interface) with both ends on
+the same side: when the osculating two-body orbits at both ends agree that the
+extremum inside the step lies beyond the level, the step is redone in halves
+(down to 1 ms) until an end shows the crossing, so such a pass is reported
+(the halves add rows to the series there).
 
 | Event | Condition | Effect |
 |---|---|---|

@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <limits>
 #include <numbers>
 #include <utility>
 
@@ -88,7 +89,63 @@ double apoapsis_altitude(const Planet& planet, const core::Vec3<core::si::Length
     return a * (1.0 + e) - planet.radius.value();
 }
 
+// Periapsis and apoapsis radii of the osculating two-body orbit (apoapsis
+// +infinity when unbound; a radial orbit has periapsis 0).
+struct Apsides {
+    double periapsis_m = 0.0;
+    double apoapsis_m = 0.0;
+};
+
+Apsides apsides(double mu, const core::Vec3<core::si::Length>& r,
+                const core::Vec3<core::si::Velocity>& v) {
+    const double radius = core::norm(r).value();
+    const double speed = core::norm(v).value();
+    const double energy = 0.5 * speed * speed - mu / radius;
+    const double h = core::norm(core::cross(r, v)).value();
+    const double e = std::sqrt(std::max(0.0, 1.0 + 2.0 * energy * h * h / (mu * mu)));
+    Apsides a;
+    a.periapsis_m = h * h / mu / (1.0 + e);
+    a.apoapsis_m =
+        energy < 0.0 ? -mu / energy - a.periapsis_m : std::numeric_limits<double>::infinity();
+    return a;
+}
+
+// Probe position and velocity relative to the planet, SI.
+std::pair<core::Vec3<core::si::Length>, core::Vec3<core::si::Velocity>>
+relative_state(const core::SimState& s) {
+    const core::BodyStore& b = s.bodies();
+    return {detail::to_si_vec(b.position(kProbeIndex) - b.position(kPlanetIndex)),
+            detail::to_si_vec(b.velocity(kProbeIndex) - b.velocity(kPlanetIndex))};
+}
+
 } // namespace
+
+bool EntryExperiment::Impl::crossed_unseen(const core::SimState& before) const {
+    const double mu = config.planet.gm.value();
+    const auto [r0, v0] = relative_state(before);
+    const auto [r1, v1] = relative_state(state);
+    const double radius0 = core::norm(r0).value();
+    const double radius1 = core::norm(r1).value();
+    const double interface =
+        config.planet.radius.value() + config.planet.entry_interface_altitude.value();
+    // Both osculating orbits must agree, so that drag inside the step (which
+    // the orbits ignore) does not suggest a crossing that did not happen.
+    if (core::dot(r0, v0).value() < 0.0 && core::dot(r1, v1).value() > 0.0) {
+        // A periapsis inside the step, below the level the run watches for
+        // next, while both ends are above it.
+        const double level = inside_interface ? config.planet.radius.value() : interface;
+        const double low =
+            std::max(apsides(mu, r0, v0).periapsis_m, apsides(mu, r1, v1).periapsis_m);
+        return radius0 > level && radius1 > level && low < level;
+    }
+    if (inside_interface && core::dot(r0, v0).value() > 0.0 && core::dot(r1, v1).value() < 0.0) {
+        // An apoapsis inside the step above the interface.
+        const double high =
+            std::min(apsides(mu, r0, v0).apoapsis_m, apsides(mu, r1, v1).apoapsis_m);
+        return radius0 < interface && radius1 < interface && high > interface;
+    }
+    return false;
+}
 
 void EntryExperiment::Impl::start() {
     append(measure());

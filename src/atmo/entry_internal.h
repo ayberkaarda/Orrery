@@ -18,6 +18,9 @@ namespace orrery::atmo {
 // Index of the planet and of the probe in the entry's BodyStore.
 inline constexpr std::size_t kPlanetIndex = 0;
 inline constexpr std::size_t kProbeIndex = 1;
+// Steps longer than this (s) are halved when an event level was crossed
+// and recrossed inside them (Impl::crossed_unseen).
+inline constexpr double kMinEventStep = 1.0e-3;
 
 // One row of the series before it is appended, plus the drag power used by
 // the work quadrature.
@@ -104,6 +107,12 @@ struct EntryExperiment::Impl {
     void replace_last(const EntryRow& row);
     [[nodiscard]] EntryRow last_row() const;
     void detect_events(const EntryRow& before, const EntryRow& after);
+    // True when the step from `before` to the current state passed an
+    // extremum of the altitude beyond an event level while both ends lie on
+    // the same side of it: a periapsis below the interface (outside it) or
+    // below the ground, or an apoapsis above the interface (inside it), as
+    // both osculating two-body orbits (at the start and at the end) agree.
+    [[nodiscard]] bool crossed_unseen(const core::SimState& before) const;
     void update_summary(const EntryRow& before, const EntryRow& after);
 };
 

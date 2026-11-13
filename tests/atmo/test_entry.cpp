@@ -29,6 +29,44 @@ void run_to_end(EntryExperiment& run) {
 
 constexpr double kDegree = std::numbers::pi / 180.0;
 
+// A hyperbolic pass at 12 km/s from 400 km with its periapsis at
+// `periapsis_m` through a negligible atmosphere (1e-12 kg/m^3 at the
+// ground), integrated in steps of twice the time to periapsis: the first
+// step ends where it started, 400 km up, on the way out.
+struct Flyby {
+    EntryConfig config;
+    double periapsis_time_s = 0.0;
+};
+
+Flyby flyby(double periapsis_m) {
+    Flyby f;
+    EntryConfig& c = f.config;
+    c = orrery::atmo::apollo_like_entry();
+    orrery::atmo::ExponentialAtmosphereParameters params;
+    params.surface_density = si::Density(1.0e-12);
+    auto atmosphere = orrery::atmo::ExponentialAtmosphere::create(params);
+    REQUIRE(atmosphere);
+    c.planet.atmosphere =
+        std::make_shared<const orrery::atmo::ExponentialAtmosphere>(atmosphere.value());
+    const double mu = c.planet.gm.value();
+    const double r = c.planet.radius.value() + 400'000.0;
+    const double rp = c.planet.radius.value() + periapsis_m;
+    const double v = 12'000.0;
+    const double vp = std::sqrt(v * v + 2.0 * mu * (1.0 / rp - 1.0 / r));
+    c.initial.altitude = si::Length(400'000.0);
+    c.initial.speed = si::Velocity(v);
+    c.initial.flight_path_angle = Angle::from_radians(-std::acos(rp * vp / (r * v)));
+    // Hyperbolic Kepler time from r to periapsis.
+    const double a = mu / (v * v - 2.0 * mu / r); // |a|
+    const double e = 1.0 + rp / a;
+    const double h0 = std::acosh((1.0 + r / a) / e);
+    f.periapsis_time_s = (e * std::sinh(h0) - h0) / std::sqrt(mu / (a * a * a));
+    c.time_step = si::Time(2.0 * f.periapsis_time_s);
+    c.max_coast_step = c.time_step;
+    c.max_duration = si::Time(8.0 * f.periapsis_time_s);
+    return f;
+}
+
 } // namespace
 
 TEST_CASE("Apollo-like ballistic entry: peak deceleration 6 to 8 g", "[atmo][entry]") {
@@ -313,6 +351,39 @@ TEST_CASE("Advance never runs past the requested time", "[atmo][entry]") {
     }
     // Small requests change neither the steps nor the result.
     CHECK(coast.series() == whole.series());
+}
+
+TEST_CASE("A pass through the atmosphere inside one long step is still detected", "[atmo][entry]") {
+    // Periapsis at 115 km, below the 121.92 km interface; both ends of the
+    // first step are 400 km up.
+    const Flyby pass = flyby(115'000.0);
+    EntryExperiment run = make(pass.config);
+    run_to_end(run);
+    INFO("periapsis at " << pass.periapsis_time_s << " s, step " << pass.config.time_step.value()
+                         << " s");
+    CHECK(run.summary().min_altitude_m < 121'920.0);
+    const auto events = run.events();
+    REQUIRE(events.size() == 2);
+    REQUIRE(std::holds_alternative<orrery::atmo::AtmosphericEntryEvent>(events[0]));
+    REQUIRE(std::holds_alternative<orrery::atmo::SkipOutEvent>(events[1]));
+    const auto& entry = std::get<orrery::atmo::AtmosphericEntryEvent>(events[0]);
+    const auto& skip = std::get<orrery::atmo::SkipOutEvent>(events[1]);
+    CHECK(entry.time_s < pass.periapsis_time_s);
+    CHECK(skip.time_s > pass.periapsis_time_s);
+    CHECK_FALSE(skip.bound);
+    CHECK(run.outcome() == EntryOutcome::skip_out);
+
+    // Periapsis 30 km below the ground: the pass ends in an impact.
+    const Flyby dive = flyby(-30'000.0);
+    EntryExperiment crash = make(dive.config);
+    run_to_end(crash);
+    CHECK(crash.outcome() == EntryOutcome::impact);
+    const auto crash_events = crash.events();
+    REQUIRE(crash_events.size() == 2);
+    CHECK(std::holds_alternative<orrery::atmo::AtmosphericEntryEvent>(crash_events[0]));
+    REQUIRE(std::holds_alternative<orrery::atmo::ImpactEvent>(crash_events[1]));
+    CHECK(std::get<orrery::atmo::ImpactEvent>(crash_events[1]).time_s < dive.periapsis_time_s);
+    CHECK(crash.series().altitude_m.back() == 0.0);
 }
 
 TEST_CASE("A step-bounded advance takes at most the given number of steps", "[atmo][entry]") {

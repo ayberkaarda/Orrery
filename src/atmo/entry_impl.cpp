@@ -208,6 +208,21 @@ std::optional<AtmoError> EntryExperiment::Impl::step(double dt_s, double new_tim
         summary.outcome = EntryOutcome::failed;
         return failed;
     }
+    if (dt_s > kMinEventStep && crossed_unseen(backup)) {
+        // An entry, skip-out or impact happened inside the step although
+        // both of its ends lie on the same side of the level: redo the step
+        // in halves until an end shows the crossing.
+        state = backup;
+        drag_work_j = work_before;
+        const double middle = time_s + 0.5 * dt_s;
+        if (std::optional<AtmoError> failed = step(middle - time_s, middle)) {
+            return failed;
+        }
+        if (summary.outcome != EntryOutcome::running) {
+            return std::nullopt;
+        }
+        return step(new_time_s - time_s, new_time_s);
+    }
     time_s = new_time_s;
     append(measure());
     detect_events(before, last_row());
