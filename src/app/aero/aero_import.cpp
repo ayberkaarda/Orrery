@@ -62,6 +62,10 @@ std::string fetch_title(geom::net::FetchErrorKind kind) {
         case Kind::cache_failure:
         case Kind::io_failure:
             return "Cannot store the download";
+        case Kind::cancelled:
+            return "Cancelled";
+        case Kind::digest_mismatch:
+            return "The model changed at its source";
     }
     return "Download failed";
 }

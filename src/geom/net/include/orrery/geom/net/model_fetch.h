@@ -8,6 +8,7 @@
 #include <chrono>
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <string>
 #include <string_view>
 
@@ -51,6 +52,20 @@ struct FetchOptions {
     // verifies servers against the system store. Peer and host name
     // verification are never disabled.
     std::filesystem::path ca_bundle_override;
+    // Polled while the fetch runs: before any request, on every block of
+    // the body and from libcurl's progress callback (at least about once a
+    // second, also while a server sends nothing). Returning true ends the
+    // fetch with FetchErrorKind::cancelled within about a second and removes
+    // its partial download; nothing is cached. Empty: never cancelled. Called
+    // on the thread that runs fetch_model; it must not throw.
+    std::function<bool()> cancel_requested;
+    // Lower-case hex SHA-256 the downloaded bytes must have (for a zip, the
+    // archive's), e.g. the digest an experiment recorded. Checked as soon as
+    // the download is complete, before the content is sniffed or extracted:
+    // a mismatch fails with FetchErrorKind::digest_mismatch and the download
+    // is discarded. A cached entry under another digest is not served. Empty
+    // accepts any content.
+    std::string expected_sha256;
 };
 
 struct FetchedModel {

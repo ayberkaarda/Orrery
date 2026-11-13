@@ -9,6 +9,7 @@
 #include <array>
 #include <chrono>
 #include <fstream>
+#include <functional>
 #include <memory>
 #include <span>
 #include <utility>
@@ -41,7 +42,7 @@ bool is_redirect_status(long status) noexcept {
     return status == 301 || status == 302 || status == 303 || status == 307 || status == 308;
 }
 
-enum class Abort : std::uint8_t { none, too_large, status, mime, io };
+enum class Abort : std::uint8_t { none, too_large, status, mime, io, cancelled };
 
 // State of one request (one redirect hop).
 struct Transfer {
@@ -53,8 +54,19 @@ struct Transfer {
     std::uint64_t bytes = 0;
     long status = 0;
     std::string content_type;
+    // FetchOptions::cancel_requested; null or empty: never cancelled.
+    const std::function<bool()>* cancel = nullptr;
     bool started = false;
     Abort abort = Abort::none;
+
+    // True (and the abort recorded) when the caller asked the fetch to stop.
+    bool cancel_requested() {
+        if (cancel != nullptr && *cancel && (*cancel)()) {
+            abort = Abort::cancelled;
+            return true;
+        }
+        return false;
+    }
 
     // Called once the response headers are known (first body bytes or end of
     // an empty body). Returns false if the response is rejected.
@@ -84,6 +96,9 @@ struct Transfer {
     }
 
     std::size_t accept(std::span<const std::byte> data) {
+        if (cancel_requested()) {
+            return 0;
+        }
         if (!started && !begin()) {
             return 0;
         }
@@ -117,6 +132,25 @@ std::size_t on_body(char* data, std::size_t size, std::size_t count, void* user)
     }
 }
 
+// libcurl's progress callback: called often while data arrives and about
+// once a second while a server sends nothing, so a cancellation also ends a
+// stalled transfer. Non-zero aborts with CURLE_ABORTED_BY_CALLBACK.
+int on_progress(void* user, curl_off_t /*download_total*/, curl_off_t /*downloaded*/,
+                curl_off_t /*upload_total*/, curl_off_t /*uploaded*/) {
+    auto* transfer = static_cast<Transfer*>(user);
+    try {
+        return transfer->cancel_requested() ? 1 : 0;
+    } catch (...) {
+        // A callback that throws cannot say "go on": stop the transfer.
+        transfer->abort = Abort::cancelled;
+        return 1;
+    }
+}
+
+FetchError cancelled_error() {
+    return error(FetchErrorKind::cancelled, "the download was cancelled");
+}
+
 FetchError abort_error(const Transfer& transfer, const FetchOptions& options) {
     switch (transfer.abort) {
         case Abort::too_large:
@@ -129,6 +163,8 @@ FetchError abort_error(const Transfer& transfer, const FetchOptions& options) {
         case Abort::mime:
             return error(FetchErrorKind::mime_rejected,
                          "Content-Type '" + transfer.content_type + "' is not a model type");
+        case Abort::cancelled:
+            return cancelled_error();
         case Abort::io:
         case Abort::none:
             break;
@@ -138,7 +174,8 @@ FetchError abort_error(const Transfer& transfer, const FetchOptions& options) {
 
 FetchError curl_error(CURLcode code, const Transfer& transfer, const FetchOptions& options,
                       const char* detail) {
-    if (code == CURLE_WRITE_ERROR && transfer.abort != Abort::none) {
+    if ((code == CURLE_WRITE_ERROR || code == CURLE_ABORTED_BY_CALLBACK) &&
+        transfer.abort != Abort::none) {
         return abort_error(transfer, options);
     }
     std::string message = curl_easy_strerror(code);
@@ -204,6 +241,10 @@ bool configure(CURL* handle, const FetchOptions& options, char* error_buffer) {
                              limits.low_speed_window.count(), 1, 0x7FFFFFFF))));
     set(curl_easy_setopt(handle, CURLOPT_USERAGENT, "Orrery model loader"));
     set(curl_easy_setopt(handle, CURLOPT_WRITEFUNCTION, on_body));
+    if (options.cancel_requested) {
+        set(curl_easy_setopt(handle, CURLOPT_XFERINFOFUNCTION, on_progress));
+        set(curl_easy_setopt(handle, CURLOPT_NOPROGRESS, 0L));
+    }
     if (!options.use_environment_proxy) {
         set(curl_easy_setopt(handle, CURLOPT_PROXY, ""));
     }
@@ -253,9 +294,14 @@ core::Result<Download, FetchError> download_https(std::string_view url,
         transfer.handle = handle.get();
         transfer.destination = &destination;
         transfer.limit = options.limits.max_download_bytes;
+        transfer.cancel = &options.cancel_requested;
+        if (transfer.cancel_requested()) {
+            return failure(cancelled_error());
+        }
         error_buffer[0] = '\0';
         bool ok = curl_easy_setopt(handle.get(), CURLOPT_URL, current.c_str()) == CURLE_OK;
         ok = ok && curl_easy_setopt(handle.get(), CURLOPT_WRITEDATA, &transfer) == CURLE_OK;
+        ok = ok && curl_easy_setopt(handle.get(), CURLOPT_XFERINFODATA, &transfer) == CURLE_OK;
         ok = ok &&
              curl_easy_setopt(handle.get(), CURLOPT_TIMEOUT_MS, clamp_ms(remaining)) == CURLE_OK;
         ok = ok && curl_easy_setopt(
