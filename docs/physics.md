@@ -103,7 +103,7 @@ Located in `tests/aero_validation/`. Each case cites its literature reference in
 |---|---|---|---|
 | Circular cylinder, Re 100 to 200 | LBM 2D | Strouhal number, drag coefficient | St 0.16 to 0.20; Cd 1.2 to 1.5 |
 | Sphere, Re 10 to 1000 | LBM 3D | Cd versus Re follows Schiller-Naumann | within 15 percent |
-| NACA 0012, angle of attack 0 to 8 degrees | Panel | Lift slope near 2 pi per radian; embedded XFOIL reference table | within 10 percent |
+| NACA 0012, angle of attack 0 to 8 degrees | Panel | Lift slope near 2 pi per radian; embedded reference table from thin-airfoil and thick-section (Joukowski) theory, no XFOIL data | within 10 percent |
 | Flat plate normal to flow | LBM | Cd about 1.28 | within 15 percent |
 | Apollo-type capsule, Mach 20 | Newtonian | Cd about 1.3 (published capsule data) | within 10 percent |
 | User-supplied model | any | No validation | UI shows an "unvalidated geometry" badge |
@@ -111,6 +111,131 @@ Located in `tests/aero_validation/`. Each case cites its literature reference in
 Related project-level criteria: sphere Cd at Re 100 between 1.0 and 1.2; cylinder Strouhal number at Re 150 between 0.16 and 0.20; NACA 0012 lift slope 2 pi per radian within 10 percent.
 
 Core validation (analytic): two-body analytic orbits, energy drift, Barnes-Hut versus direct, IAS15 figure-eight orbit, ISCO stability, determinism hash, Kepler element round trip.
+
+## Lattice Boltzmann 2D (orrery_aero, Phase 7b)
+
+Method, not model: the D2Q9 BGK lattice Boltzmann scheme recovers the
+incompressible Navier-Stokes equations in the low Mach number limit. Full
+reference in `lbm.md`; decisions ADR-008, ADR-006 and ADR-019; sources
+`src/aero/lbm` and `src/render/shaders/lbm`; tests `tests/aero/lbm` and
+`tests/aero_validation/lbm2d`.
+
+### Formulas
+- Lattice units dx = dt = 1, rho_0 = 1, c_s^2 = 1/3; D2Q9 weights 4/9, 1/9,
+  1/36 (Qian, d'Humieres and Lallemand 1992).
+- f_eq,i = w_i rho (1 + 3 c_i.u + 9/2 (c_i.u)^2 - 3/2 u.u); BGK
+  f*_i = f_i - (f_i - f_eq,i) / tau; nu = (tau - 1/2) / 3 (Kruger et al.,
+  *The Lattice Boltzmann Method*, 2017).
+- Guo forcing (Guo, Zheng and Shi 2002): u = (sum c f + F/2) / rho,
+  F_i = (1 - 1/(2 tau)) w_i [3 (c_i - u).F + 9 (c_i.u)(c_i.F)].
+- Smagorinsky (Hou et al. 1996): tau_eff = (tau + sqrt(tau^2 + 18 sqrt(2)
+  C^2 |Pi_neq| / rho)) / 2.
+- Halfway bounce-back f_i(x) = f*_opp(i)(x); moving wall adds
+  6 w_i rho_w c_i.u_w; free slip by specular reflection.
+- Zou-He velocity inlet (Zou and He 1997), regularized (Latt et al. 2008):
+  f_i = f_eq,i + w_i / (2 c_s^4) (c_i c_i - c_s^2 I) : Pi_neq.
+- Convective outlet (Yang 2013): f(t+1) = (f(t) + U f_upstream(t+1)) /
+  (1 + U); or zero-gradient extrapolation.
+- Momentum exchange (Ladd 1994): F = sum over fluid-solid links of
+  2 c_o f*_o, o pointing into the wall; Cd = F_x / (rho U^2 L / 2).
+- Units: dx = L / N, dt = u_lat dx / U, nu_lat = nu dt / dx^2,
+  tau = 3 nu_lat + 1/2; Re identical in both systems; lattice Mach
+  u_lat sqrt(3) < 0.1 enforced (A3).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise; GPU AMD Radeon RX 9060 XT)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| Cylinder Re 100, CPU | D 20, 26000 steps (lbm.md section 8) | St 0.1674, mean Cd 1.468 | St 0.16 to 0.20, Cd 1.2 to 1.5 |
+| Cylinder Re 100, GPU | same | St 0.1674, mean Cd 1.468 | same |
+| GPU vs CPU | Poiseuille, Couette, Taylor-Green, cylinder with and without LES | velocity L2 at most 6.1e-5, drag 5.3e-5 | 1e-4 |
+| GPU vs CPU, shedding onset | 400 x 200 cylinder, no start perturbation | velocity L2 up to 7.1e-4 at steps 10000 to 18000, 9e-5 after lock-in | not met during the transient (lbm.md, "GPU precision") |
+| Poiseuille | tau = 1/2 + sqrt(3/16) / 0.8 / 0.6, H 32 | 5e-13 / 7e-4 / 1.3e-3 relative L2 | 1e-9 / 2e-3 / 2e-3 |
+| Couette | moving wall, H 16 | 3e-13 | 1e-9 |
+| Taylor-Green decay | 64 x 64, tau 0.65 | rate within 0.08 percent of 4 nu k^2 | 1 percent |
+| Mass conservation | periodic, slip, moving no-slip, 1500 steps | below 1e-12 relative | 1e-12 |
+| Momentum exchange | channel with a solid row, body force | equals the total body force to 1e-6 | 1e-6 |
+| GPU throughput | 2048 x 1024, BGK / with Smagorinsky | 1117 / 1113 steps/s | 200 steps/s |
+| CPU throughput | 600 x 400, 12 threads | 108 million updates/s | none |
+
+### Approximations (LBM 2D)
+A2 (Smagorinsky), A3 (weak compressibility) and A4 (staircase walls) in
+section 5 apply.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| L1 | Zou-He inlet node regularized (higher-order non-equilibrium dropped) | `zou_he_west`, `lbm_zou_he_west` | Smooth inflow; keeps rho, u and Pi_neq of the Zou-He set | Strong gradients at the inlet are smoothed; keep the body 5 or more lengths downstream |
+| L2 | Convective outlet with the inlet speed as convection speed | `Outlet::convective` | Wakes convected at about the free-stream speed | Recirculation at the outlet; the mean density drifts slowly (0.1 percent over 100000 steps at D 40) |
+| L3 | Moving no-slip wall: momentum correction scaled by the density of the fluid node next to the wall | `resolve_source` (wall) | Wall-parallel motion, smooth density near the wall | Strong density jumps across the wall-adjacent layer (compressibility error of order Ma^2) |
+| L4 | Smagorinsky Pi_neq taken without the forcing correction | `collide`, `lbm_collide` | Weak body forces | Strongly forced LES runs |
+| L5 | GPU populations in binary32, shifted by the weights | `lbm2d_gpu.cpp`, `src/render/shaders/lbm` | Agreement with the CPU within 1e-4 on laminar and locked-in periodic flow | Instability transients amplify rounding (up to 7e-4 measured) |
+| L6 | Momentum exchange for stationary bodies, force applied at the link midpoints | `add_link_force` | Bodies at rest | Moving bodies need the wall-velocity terms |
+| L7 | Wall pressure Cp from the node next to the wall against the mean density of the column next to the inlet; one sample per node with area dx | `LbmAeroSolver2D::update_result` | Qualitative Cp distribution | First-order in the resolution, like A4 |
+| L8 | 2D solver ignores sideslip; velocity field reported only at zero angle of attack | `LbmAeroSolver2D` | Plane sections | `lbm.sideslip` warning; field absent when the lattice is wind-aligned |
+
+## Lattice Boltzmann 3D (orrery_aero, Phase 7c)
+
+Method, not model: the D3Q19 BGK scheme recovers the incompressible
+Navier-Stokes equations in the low Mach number limit. Full reference in
+`lbm.md` (sections 10 to 15); decisions ADR-008, ADR-019 and ADR-020;
+sources `src/aero/lbm3d` and `src/render/shaders/lbm/lbm_d3q19_*`; tests
+`tests/aero/lbm3d` and `tests/aero_validation/lbm3d`.
+
+### Formulas
+- D3Q19 (Qian, d'Humieres and Lallemand 1992): rest, 6 axis and 12 face
+  diagonal directions, weights 1/3, 1/18, 1/36, c_s^2 = 1/3; equilibrium,
+  BGK, Guo forcing, Smagorinsky relaxation time and lattice units as in
+  "Lattice Boltzmann 2D" (|Pi_neq| over six components).
+- Velocity inlet: rho = (sum_{c_x=0} f + 2 sum_{c_x=-1} f) / (1 - u_x) (Zou
+  and He 1997), unknowns f_i = f_opp(i) + 6 w_i rho c_i.u, then regularized
+  (Latt et al. 2008).
+- Interpolated bounce-back (Bouzidi, Firdaouss and Lallemand 2001), wall
+  fraction q = d(x) / (d(x) - d(x - c_j)) from the signed distance:
+  q < 1/2: f_j = 2q f*_o(x) + (1 - 2q) f*_o(x + c_j);
+  q >= 1/2: f_j = f*_o(x) / (2q) + (2q - 1)/(2q) f*_j(x).
+- Momentum exchange F = sum over links of c_o (f*_o(x) + f_j(x, t+1))
+  (Ladd 1994; Mei, Yu, Shyy and Luo 2002), moment at x - q c_j; a lattice
+  force unit is rho_ref dx^4 / dt^2.
+- Absorbing layer (Xu and Sagaut 2013): f* <- f* - sigma (f* - f_eq(1,
+  u_in)), sigma = s ((T - d) / T)^2.
+- Gradual start: u_in(t) = U (1 - cos(pi t / T)) / 2 for t < T.
+- Sphere reference: Cd = 24 / Re (1 + 0.15 Re^0.687) (Schiller and Naumann
+  1933).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise; GPU AMD Radeon RX 9060 XT)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| Sphere Re 10, GPU | D 12, channel 10 D wide (lbm.md section 14) | Cd 4.415 (correlation 4.151, ratio 1.064) | within 15 percent |
+| Sphere Re 100, CPU | D 12, 121 x 61 x 61, 6000 steps | Cd 1.186 (1.092, ratio 1.086), steady, 27 s | within 15 percent |
+| Sphere Re 100, GPU | D 16 | Cd 1.140 (ratio 1.044), steady | within 15 percent |
+| Sphere Re 300, GPU | D 16 | Cd 0.693 (0.684, ratio 1.013) | within 15 percent |
+| Sphere Re 1000, GPU | D 48 | Cd 0.482 (0.438, ratio 1.099) | within 15 percent |
+| Square plate normal to the flow, Re 1000, GPU | 24 cells per side | Cd 1.158 (ratio 0.905 to 1.28) | within 15 percent of 1.28 |
+| GPU vs CPU | Poiseuille, duct, Couette, sphere with BGK, Smagorinsky, interpolated wall, extrapolation outlet | velocity L2 at most 1.6e-5, drag at most 1.3e-5 | 1e-4 |
+| Poiseuille | tau = 1/2 + sqrt(3/16) / 0.8, H 24 | 7.3e-13 / 1.2e-3 relative L2 | 1e-9 / 2e-3 |
+| Square duct | 20 x 20, series solution | 5.5e-4 relative L2 | 1e-3 |
+| Couette | moving wall, H 16 | 1.0e-13 | 1e-9 |
+| Mass conservation | periodic, slip, moving no-slip, sphere, 1500 steps | 1.4e-13 relative | 1e-12 |
+| Momentum exchange | solid layer, body force | equals the total body force to 1e-6 | 1e-6 |
+| GPU throughput | 128^3 sphere channel, BGK / with Smagorinsky | 652 / 648 steps/s | 60 steps/s (GTX 1660 class, not measured) |
+| CPU throughput | 121 x 61 x 61, 12 threads | about 100 million updates/s | none |
+
+### Approximations (LBM 3D)
+A2 (Smagorinsky), A3 (weak compressibility) and A4 (staircase walls, for
+`SolidWall::halfway` and for the node classification) in section 5 apply,
+and L2, L4 and L5 of "Lattice Boltzmann 2D" hold unchanged in 3D.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| D1 | Inlet node regularized; no tangential Zou-He corrections (Hecht and Harting 2010) | `velocity_inlet_west`, `lbm3_inlet_west` | Smooth inflow; density and velocity are exact after regularization | Strong gradients at the inlet are smoothed; keep the body 2 or more lengths downstream |
+| D2 | Interpolated wall from the linear interpolation of the signed distance along each link; q < 1/2 without a second fluid node falls back to halfway; not exactly mass conserving | `link_fraction`, `reflected`, `lbm3_reflected` | Walls resolved by a few cells (the distance is exact within three cells) | Thin gaps and sharp corners revert to the staircase; mass drifts slowly at walls |
+| D3 | Absorbing layer relaxing to the free-stream equilibrium before the outlet (2 lengths, strength 0.1) | `Sponge`, `sponge_sigma`, `lbm3_sponge` | Wake and pressure waves leaving through the outlet; fixes the pressure level | Bodies close to the layer feel it; keep 3 or more lengths between them |
+| D4 | Gradual start from rest over 3 convective times | `LbmSolver3DOptions::start_ramp` | Steady or statistically stationary results | The start-up transient differs from an impulsive start |
+| D5 | Momentum exchange for stationary bodies | `add_link_force` | Bodies at rest | Moving bodies need the wall-velocity terms |
+| D6 | Channel with free-slip or periodic sides of finite width | `LbmAeroSolver3D` | Blockage below 5 percent (`lbm.blockage`) | Confinement raises the drag (sphere Re 10 in a 6 D channel: 9.6 percent above the correlation) |
+| D7 | Wall samples: one per fluid node next to the body, an equal share of the mesh area, Cp against the plane next to the inlet | `LbmAeroSolver3D::update_result` | Qualitative Cp distribution | First order in the resolution |
+| D8 | Velocity field reported only at zero angle of attack and sideslip | `LbmAeroSolver3D` | Wind-aligned lattice equal to body axes | Field absent when the lattice is rotated |
 
 ## Scenario format
 
@@ -472,3 +597,94 @@ for the centre of mass) applies to `reference_quantities`.
 | G5 | Winding number far field truncated at first order (dipole), beta = 2 | `MeshTree::winding_number` | Error a few percent at worst, far below the 1/2 decision threshold | Values near 1/2 (open or self-overlapping meshes) may be misclassified where the exact sum is within a few percent of the threshold |
 | G6 | Silhouette area by cell-centre raster coverage (1024 cells along the larger side) | `projected_area` | Error below perimeter x cell size (about 0.4 percent for a sphere) | Thin features below a cell are lost; use the bound for convex bodies |
 | G7 | Imported coordinates and node transforms parsed in single precision (the vcpkg assimp port has no `ASSIMP_DOUBLE_PRECISION` build), widened to double afterwards | `import_mesh_file`, `import_mesh_memory` | Detail above about 1e-7 of the model extent (float resolution 6e-8 relative); every later stage is double | Coordinates closer than float resolution (`1.0` and `1.000000001`) collapse to one vertex; a double-precision assimp build is needed for such models |
+
+## Aerodynamic solvers (orrery_aero, Phase 7a)
+
+Sources: `orrery/aero/aero_solver.h` (interface), `flow_conditions.h`,
+`aero_result.h`, `regime.h`, `panel_method.h`, `newtonian.h`; overview and
+validity envelopes in `aero.md`; decision ADR-009; tests in `tests/aero`
+and `tests/aero_validation`.
+
+### Flow conditions and coefficients
+- Speed of sound a = sqrt(gamma R T), Mach = V / a, Re = rho V L / mu,
+  q = rho V^2 / 2; air defaults gamma = 1.4, R = 287.05 J/(kg K), sea-level
+  rho, T and mu of the US Standard Atmosphere 1976.
+- Body axes x downstream, y span, z up. Free-stream (drag) direction
+  (cos a cos b, sin b, sin a cos b), lift direction normalize(drag x y) =
+  (-sin a, 0, cos a) at b = 0, side direction lift x drag.
+- Cd, Cl, Cy = force . direction / (q S); Cm = M_y / (q S l) about the
+  moment centre, nose up positive.
+
+### Panel method (Hess and Smith 1967; Katz and Plotkin, *Low-Speed Aerodynamics*, 2001)
+- 2D: constant source sigma_j on each panel and one vorticity gamma on all
+  panels. In panel coordinates (xi along the panel, eta normal) a unit source
+  induces u = ln(r1/r2) / (2 pi), v = beta / (2 pi) and a unit vortex
+  u = -beta / (2 pi), v = ln(r1/r2) / (2 pi), beta the angle the panel
+  subtends. Unknowns from zero normal velocity at the panel midpoints plus the
+  Kutta condition V_t,1 + V_t,N = 0 at the trailing edge; Cp = 1 - (V_t/V)^2.
+  Circulation Gamma = -gamma * perimeter * V gives the Kutta-Joukowski lift
+  rho V Gamma, which the tests compare with the pressure integral.
+- 3D: on each triangle a constant source sigma = -n . V and an unknown
+  constant doublet mu; the perturbation potential inside the body is zero
+  (Dirichlet condition, Katz and Plotkin eq. 12.12):
+  sum_j mu_j C_ij + sum_w mu_w C_iw + sum_j sigma_j B_ij = 0, C_ii = -1/2.
+  Doublet influence -Omega / (4 pi) from the solid angle (van Oosterom and
+  Strackee 1983); source influence -(1 / 4 pi) [sum_k d_k ln((r_k + r_k+1 +
+  l_k) / (r_k + r_k+1 - l_k)) - |h| |Omega|] (edge-logarithm form), both
+  checked against brute-force quadrature. mu is the surface perturbation
+  potential, so the surface velocity is V_tangential + grad mu, with grad mu
+  from weighted least squares over two rings of neighbours that do not
+  cross the trailing edge.
+- Kutta condition: mu_w = mu_upper - mu_lower at the trailing edge (upper
+  and lower values: mean of the panels at each trailing-edge vertex,
+  extrapolated to the vertex with their gradients).
+- Trefftz plane: wake trace with point vortices -mu, +mu at each segment's
+  ends; CL_T = 2 sum mu_k ds_k / S and CDi = -sum mu_k w_k ds_k / S (w the
+  normal velocity at the segment midpoints, per unit free-stream speed).
+- Linear solve: dense partial-pivot LU up to 4000 unknowns, restarted GMRES
+  (Eigen) above; the relative residual is reported.
+- Flat-plate friction (Schlichting, *Boundary-Layer Theory*): Cf = 1.328 /
+  sqrt(Re) for Re <= 5e5, else 0.455 / (log10 Re)^2.58 - 1700 / Re;
+  Cd_friction = Cf S_wetted / S_ref, reported separately from Cd.
+
+### Modified Newtonian theory (Lees 1955; Anderson, *Hypersonic and High-Temperature Gas Dynamics*)
+- Cp = Cp_max sin^2(theta), sin theta = -n . V_hat on windward faces, 0 in the
+  shadow; force -sum Cp q A n.
+- Cp_max = 2 / (gamma M^2) (p02/p1 - 1) with the Rayleigh pitot formula
+  p02/p1 = [(g+1)^2 M^2 / (4 g M^2 - 2 (g-1))]^(g/(g-1)) (1 - g + 2 g M^2) / (g+1)
+  for M >= 1 (isentropic stagnation below); 1.839 for gamma = 1.4 as M -> inf.
+- Sutton-Graves (NASA TR R-376, 1971): q_s = k sqrt(rho / R_n) V^3,
+  k = 1.7415e-4 kg^0.5/m for Earth air (configurable).
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise)
+
+| Criterion | Setup | Measured | Bound |
+|---|---|---|---|
+| NACA 0012 lift slope, 2D Hess-Smith | 200 panels, alpha 0, 2, 4, 6, 8 degrees, least-squares slope through the origin | 6.897 per rad = 1.098 x 2 pi; 1.005 x the Joukowski thick-section slope 2 pi (1 + 0.77 t/c) | 2 pi within 10 percent (acceptance); thick-section slope within 2 percent |
+| NACA 0012 Cl table | as above, against the embedded thin-airfoil and thick-section values | Cl 0.2413, 0.4823, 0.7227, 0.9622 at 2, 4, 6, 8 degrees; at most 0.7 percent from the thick-section values; inviscid pressure Cd 1.4e-4 to 2.1e-4 (discretisation error) | 3 percent |
+| Symmetric section at zero incidence | NACA 0012, 160 panels | Cl 1e-16, Cm 5e-17; Cl at 4 degrees equals Kutta-Joukowski rho V Gamma within 1 percent | 1e-10 |
+| Circular cylinder, 2D | 128 panels | worst error of Cp against 1 - 4 sin^2(theta) 1.1e-14 at the panel midpoints | 1e-10 |
+| Sphere, 3D | 480 and 1984 triangles | Cp against 1 - 9/4 sin^2(theta): rms 0.052 and 0.026 (first order), worst 0.066; Cd, Cl below 0.01 | rms 0.03, worst 0.08 |
+| Rectangular NACA 0012 wing, AR 6, 5 degrees | 16 stations, 24 strips, 1596 panels | CL 0.3915 (Helmbold with the 2D slope 0.421, 7 percent lower); Trefftz CL 0.3920; CDi 0.00823, e = 0.988; at 0 degrees CL 6e-6, CDi 2.5e-4 (P3) | CL within 10 percent, Trefftz within 2 percent, e 0.85 to 1.05 |
+| GMRES against dense LU | sphere, 480 panels, 3 degrees | doublet strengths agree to 3.8e-12 | 1e-8 |
+| Triangle influence against quadrature | 5 points around a triangle, 16384-cell centroid rule | below 1e-4 relative (quadrature error) | 1e-4 |
+| 3D panel solve time | sphere, 2048 panels, dense LU | 0.69 s (hidden `[benchmark]`) | 3 s (project criterion) |
+| Newtonian sphere | 40k triangles, Mach 10 | Cd 0.915775 against Cp_max / 2 = 0.915835 (6.6e-5 relative) | 2e-3 |
+| Newtonian flat plate | Mach 8, alpha 10, 30, 90 degrees | Cd, Cl equal Cp_max sin^2(a) (sin a, cos a) to 1e-8 | 1e-8 |
+| Apollo command module, Mach 20 | capsule primitive (`CapsuleShape::apollo`), 128 x 0.01 rad, heat shield forward | Cd 1.600, 1.539, 1.367, 1.250 at 0, 10, 20, 25 degrees; at the 20 degree trim attitude Cd 1.367 (5 percent above 1.3) and L/D -0.303; Sutton-Graves q_s 35 W/cm^2 at 60 km | Cd 1.3 within 10 percent (acceptance); abs(L/D) 0.3 within 0.05 |
+| Newtonian time | sphere, 100352 triangles | 3.4 ms (hidden `[benchmark]`) | 100 ms (project criterion) |
+| Validity warnings | panel 2D at Mach 0.59, 14 degrees, sideslip 2 degrees; Newtonian at Mach 3; selector override to Newtonian at Mach 0.15 | `panel.mach`, `panel.angle_of_attack`, `panel.sideslip_ignored`; `newtonian.mach`; `newtonian.mach` with the result still computed | every warning fires, nothing blocks |
+
+### Approximations (aero solvers)
+Every item is marked `// APPROXIMATION:` in the code. A5 (potential flow,
+fixed wake), A6 (flat-plate friction), A7 (Newtonian impact) and A8
+(Sutton-Graves heating) in section 5 apply.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| P1 | Panels beyond 10 diameters act as a point source and point doublet | `PanelSolver3D::step` | Neglected terms of relative order 1e-2 of influences that are themselves 1e-2 of the near field | Not used closer than 10 diameters |
+| P2 | Wake strips flat and straight along the free stream, 50 reference lengths long | `PanelSolver3D::setup` (A5) | Small angle of attack, wake roll-up negligible for the loads | High lift or close wake-body interaction |
+| P3 | Kutta jump from the mean of the panels at each trailing-edge vertex, extrapolated linearly | `kutta_jumps` | Triangulations symmetric between upper and lower surface give the exact discrete jump; the diagonal split of `naca_wing` leaves CDi = 2.5e-4 at zero incidence (AR 6, 16 stations) | Very thin trailing-edge panels on an unsymmetric triangulation: spurious antisymmetric circulation at the tips (CDi = 2e-3 at 48 stations) |
+| P4 | Surface velocity from a least-squares doublet gradient over two rings of neighbours, sharp edges (normals over 45 degrees apart) used only as a fallback | `gradient_weights` | Smooth surfaces; first-order accurate | Cp next to sharp edges (wing tips, capsule shoulders) is smeared over one panel |
+| P5 | 2D panel method ignores sideslip | `PanelSolver2D::step` | Sections in a plane flow | Swept or yawed flow; a `panel.sideslip_ignored` warning is attached |
+| P6 | Regime boundaries Mach 0.3 (incompressible), Mach 5 (hypersonic), Re 1e5 (thin attached boundary layer), 10 degrees (attached flow) | `validity_envelope`, `select_solver` | Engineering rules of thumb, not sharp limits | Results near a boundary deserve the same caution as those just outside |

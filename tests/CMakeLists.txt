@@ -38,6 +38,13 @@ target_compile_definitions(orrery_test_geom PRIVATE
     ORRERY_GEOM_FIXTURE_DIR="${CMAKE_CURRENT_SOURCE_DIR}/geom/fixtures"
     ORRERY_GEOM_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/geom_output")
 
+# Phase 7a: aero solver interface, regime selection and analytic solver tests.
+target_sources(orrery_test_aero PRIVATE
+    aero/test_regime.cpp
+    aero/test_panel.cpp
+    aero/test_newtonian.cpp)
+add_subdirectory(aero_validation)
+
 # Phase 4a: render foundation. Unit tests (camera, PNG, SSIM, tone map,
 # shader embedding) always run. Tests tagged [gl] need an OpenGL 4.6 core
 # context and are reported as skipped when none can be created (set
@@ -317,3 +324,98 @@ if(ORRERY_SANITIZE AND NOT MSVC)
         app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
         "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
 endif()
+
+# Phase 7b: compute backend and the D2Q9 lattice Boltzmann solver.
+# orrery_test_aero_lbm links only orrery_aero (graphics-free): Null backend,
+# lattice, unit conversion, solid masks and the analytic flows (Poiseuille,
+# Couette, Taylor-Green, mass conservation) on the CPU solver.
+# orrery_test_aero_lbm_gl runs the OpenGL compute backend: tests tagged [gl]
+# need an OpenGL 4.6 context and skip without one (ORRERY_REQUIRE_GL=1 makes
+# that a failure); the 2048x1024 throughput benchmark is hidden
+# (orrery_test_aero_lbm_gl "[benchmark]").
+add_executable(orrery_test_aero_lbm
+    aero/lbm/lbm_test_support.h
+    aero/lbm/test_compute_backend.cpp
+    aero/lbm/test_d2q9.cpp
+    aero/lbm/test_lattice_units.cpp
+    aero/lbm/test_solid_mask.cpp
+    aero/lbm/test_force_history.cpp
+    aero/lbm/test_lbm2d_flows.cpp
+    aero/lbm/test_lbm2d_gpu_driver.cpp
+    aero/lbm/test_lbm_aero_solver.cpp)
+target_link_libraries(orrery_test_aero_lbm PRIVATE orrery_aero Catch2::Catch2WithMain)
+orrery_configure_target(orrery_test_aero_lbm)
+catch_discover_tests(orrery_test_aero_lbm DISCOVERY_MODE PRE_TEST)
+
+add_executable(orrery_test_aero_lbm_gl
+    aero/lbm/lbm_test_support.h
+    aero/lbm/lbm_gl_support.h
+    aero/lbm/test_lbm_gpu.cpp)
+target_link_libraries(orrery_test_aero_lbm_gl PRIVATE orrery_render Catch2::Catch2WithMain)
+target_include_directories(orrery_test_aero_lbm_gl PRIVATE ${PROJECT_BINARY_DIR}/src/render/generated)
+target_compile_definitions(orrery_test_aero_lbm_gl PRIVATE
+    ORRERY_RENDER_LBM_SHADER_DIR="${PROJECT_SOURCE_DIR}/src/render/shaders/lbm")
+orrery_configure_target(orrery_test_aero_lbm_gl)
+set(lbm_gl_discover_props)
+if(ORRERY_SANITIZE AND NOT MSVC)
+    set(lbm_gl_discover_props PROPERTIES ENVIRONMENT
+        "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+endif()
+catch_discover_tests(orrery_test_aero_lbm_gl DISCOVERY_MODE PRE_TEST ${lbm_gl_discover_props})
+
+# Phase 7b validation (tests/aero_validation/lbm2d): circular cylinder at
+# Re 100, Strouhal number and mean drag against the literature, on the CPU
+# solver and, when an OpenGL 4.6 context exists, on the GPU solver. The run
+# needs an optimised build; unoptimised (Debug, sanitizer) builds skip it.
+add_executable(orrery_test_lbm2d_validation
+    aero/lbm/lbm_test_support.h
+    aero/lbm/lbm_gl_support.h
+    aero_validation/lbm2d/cylinder_case.h
+    aero_validation/lbm2d/test_cylinder.cpp)
+target_link_libraries(orrery_test_lbm2d_validation PRIVATE orrery_render Catch2::Catch2WithMain)
+orrery_configure_target(orrery_test_lbm2d_validation)
+catch_discover_tests(orrery_test_lbm2d_validation DISCOVERY_MODE PRE_TEST
+    ${lbm_gl_discover_props})
+
+# Phase 7c: the D3Q19 lattice Boltzmann solver. orrery_test_aero_lbm3d links
+# only orrery_aero (graphics-free): lattice, masks, analytic flows, the GPU
+# driver on the Null backend and the IAeroSolver adapter on the CPU.
+# orrery_test_aero_lbm3d_gl runs the OpenGL kernels against the CPU solver
+# ([gl], skipped without an OpenGL 4.6 context; the 128^3 throughput
+# benchmark is hidden: orrery_test_aero_lbm3d_gl "[benchmark]").
+add_executable(orrery_test_aero_lbm3d
+    aero/lbm/lbm_test_support.h
+    aero/lbm3d/lbm3d_test_support.h
+    aero/lbm3d/test_d3q19.cpp
+    aero/lbm3d/test_solid_mask3d.cpp
+    aero/lbm3d/test_lbm3d_flows.cpp
+    aero/lbm3d/test_lbm3d_gpu_driver.cpp
+    aero/lbm3d/test_lbm_aero_solver3d.cpp)
+target_link_libraries(orrery_test_aero_lbm3d PRIVATE orrery_aero Catch2::Catch2WithMain)
+orrery_configure_target(orrery_test_aero_lbm3d)
+catch_discover_tests(orrery_test_aero_lbm3d DISCOVERY_MODE PRE_TEST)
+
+add_executable(orrery_test_aero_lbm3d_gl
+    aero/lbm/lbm_test_support.h
+    aero/lbm/lbm_gl_support.h
+    aero/lbm3d/lbm3d_test_support.h
+    aero/lbm3d/test_lbm3d_gpu.cpp)
+target_link_libraries(orrery_test_aero_lbm3d_gl PRIVATE orrery_render Catch2::Catch2WithMain)
+target_include_directories(orrery_test_aero_lbm3d_gl PRIVATE ${PROJECT_BINARY_DIR}/src/render/generated)
+orrery_configure_target(orrery_test_aero_lbm3d_gl)
+catch_discover_tests(orrery_test_aero_lbm3d_gl DISCOVERY_MODE PRE_TEST ${lbm_gl_discover_props})
+
+# Phase 7c validation (tests/aero_validation/lbm3d): sphere drag against the
+# Schiller-Naumann curve and a square plate normal to the flow, through the
+# IAeroSolver adapter. The CPU case needs an optimised build (unoptimised
+# Debug and sanitizer builds skip it); the GPU cases need an OpenGL 4.6
+# context; the larger runs are hidden ("[.study]").
+add_executable(orrery_test_lbm3d_validation
+    aero/lbm/lbm_gl_support.h
+    aero_validation/lbm3d/body_case.h
+    aero_validation/lbm3d/test_plate.cpp
+    aero_validation/lbm3d/test_sphere.cpp)
+target_link_libraries(orrery_test_lbm3d_validation PRIVATE orrery_render Catch2::Catch2WithMain)
+orrery_configure_target(orrery_test_lbm3d_validation)
+catch_discover_tests(orrery_test_lbm3d_validation DISCOVERY_MODE PRE_TEST
+    ${lbm_gl_discover_props})

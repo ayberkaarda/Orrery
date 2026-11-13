@@ -111,4 +111,26 @@ add_custom_command(
 target_sources(orrery_render PRIVATE ${ORRERY_RENDER_SHADER_HEADER})
 target_include_directories(orrery_render PRIVATE ${ORRERY_RENDER_GENERATED_DIR})
 
+# Phase 7b: OpenGL 4.6 implementation of orrery_aero's IComputeBackend. Its
+# kernels (shaders/lbm/*.glsl, GLSL 460 compute) are embedded into a header
+# of their own and run by name; snippets without ".comp" are composed into
+# every kernel.
+file(GLOB ORRERY_RENDER_LBM_SHADERS CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/shaders/lbm/*.glsl)
+set(ORRERY_RENDER_LBM_SHADER_HEADER ${ORRERY_RENDER_GENERATED_DIR}/orrery/render/embedded_lbm_shaders.h)
+add_custom_command(
+    OUTPUT ${ORRERY_RENDER_LBM_SHADER_HEADER}
+    COMMAND ${CMAKE_COMMAND}
+        -DOUTPUT=${ORRERY_RENDER_LBM_SHADER_HEADER}
+        -DNAMESPACE=orrery::render::lbm_shaders
+        "-DSHADERS=${ORRERY_RENDER_LBM_SHADERS}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shaders.cmake
+    DEPENDS ${ORRERY_RENDER_LBM_SHADERS} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shaders.cmake
+    COMMENT "Embedding LBM compute shaders"
+    VERBATIM)
+target_sources(orrery_render PRIVATE
+    compute/gl_compute_backend.cpp
+    compute/include/orrery/render/gl_compute_backend.h
+    ${ORRERY_RENDER_LBM_SHADER_HEADER})
+target_include_directories(orrery_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/compute/include)
+
 orrery_configure_target(orrery_render)

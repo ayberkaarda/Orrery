@@ -101,6 +101,11 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
     # PLY and FBX models; private, graphics-free, single precision only
     # behind its API (converted to double on read).
     "orrery_geom": {"assimp::assimp"},
+    # orrery_aero (Phase 7a): Eigen (MPL-2.0, header-only) solves the panel
+    # method's linear systems (dense LU, GMRES); private, graphics-free, used
+    # in double precision only. Phase 7b adds oneTBB, which runs the CPU lattice
+    # Boltzmann step over rows (private, as in orrery_core).
+    "orrery_aero": {"Eigen3::Eigen", "TBB::tbb"},
     "orrery_sim": {"TBB::tbb"},
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
@@ -114,8 +119,10 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
 # names are matched exactly so any other artifact-less import still fails.
 UNVERIFIABLE_IMPORTED_OK = frozenset({"ZLIB::ZLIB", "OpenSSL::SSL", "OpenSSL::Crypto"})
 
+# orrery_aero (Phase 7b) reaches the GPU only through IComputeBackend; the
+# OpenGL implementation lives in orrery_render.
 GRAPHICS_FREE_TARGETS = ("orrery_core", "orrery_geom", "orrery_atmo", "orrery_sim",
-                         "orrery_geom_net")
+                         "orrery_geom_net", "orrery_aero")
 PHYSICS_TARGETS = ("orrery_core", "orrery_geom", "orrery_aero", "orrery_atmo")
 
 # Graphics libraries, matched against each link name after the linker-flag
@@ -151,7 +158,9 @@ GNU_FP_CONTRACT = re.compile(r"(?<![\w-])-ffp-contract=([\w-]+)")
 PRECISION_CHECKED_DIRS = ("core", "geom", "aero", "atmo")
 # Files allowed to use single precision (GPU upload boundary). Paths are
 # relative to the repository root, forward slashes.
-FLOAT_ALLOWLIST: frozenset[str] = frozenset()
+# src/aero/compute/float32_pack.cpp (Phase 7b): binary32 packing of host
+# doubles for device buffers of IComputeBackend, the GPU upload boundary.
+FLOAT_ALLOWLIST: frozenset[str] = frozenset({"src/aero/compute/float32_pack.cpp"})
 # Every file in a scanned directory is treated as source except these
 # (documentation, build scripts, data and binary formats).
 NON_SOURCE_SUFFIXES = {

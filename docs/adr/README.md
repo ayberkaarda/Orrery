@@ -20,5 +20,7 @@
 | [016](016-app-loop-timing.md) | Integral time accumulator with a dropping step budget | Accepted |
 | [017](017-black-hole-render-strategy.md) | Half-resolution geodesic trace with full-resolution sky lookup | Accepted |
 | [018](018-geometry-kernels.md) | Geometry kernels in orrery_geom, assimp behind a validation gate | Accepted |
+| [019](019-compute-backend.md) | Compute backend with byte buffers, named kernels and binary32 at the boundary | Accepted; amended by 020 |
+| [020](020-compute-kernel-families-and-memory.md) | Kernel families and device memory in the compute backend | Accepted |
 
 Each record has Context, Decision, Consequences (including rejected alternatives) and Status sections.
