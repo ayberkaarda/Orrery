@@ -347,15 +347,19 @@ struct EntryView::State {
         glDrawArraysInstanced(GL_TRIANGLES, 0, 6, segments.segments);
     }
 
-    std::size_t draw_markers(const DrawContext& c, const EntryViewOptions& options) const {
+    // Markers with a non-finite place or radius are skipped; a failed upload is
+    // reported.
+    core::Result<std::size_t, std::string> draw_markers(const DrawContext& c,
+                                                        const EntryViewOptions& options) const {
         if (options.markers.empty()) {
-            return 0;
+            return std::size_t{0};
         }
         std::vector<glm::vec4> centers;
         std::vector<glm::vec3> colors;
         for (const EntryMarker& m : options.markers) {
             if (!std::isfinite(m.latitude_deg) || !std::isfinite(m.longitude_deg) ||
-                !std::isfinite(m.altitude_m) || !(m.radius_px > 0.0)) {
+                !std::isfinite(m.altitude_m) || !(m.radius_px > 0.0) ||
+                !std::isfinite(m.radius_px)) {
                 continue;
             }
             const glm::dvec3 v =
@@ -364,12 +368,15 @@ struct EntryView::State {
             colors.push_back(c.display(m.color));
         }
         if (centers.empty()) {
-            return 0;
+            return std::size_t{0};
         }
         auto center_buffer = Buffer::from(std::span<const glm::vec4>(centers));
         auto color_buffer = Buffer::from(std::span<const glm::vec3>(colors));
-        if (!center_buffer || !color_buffer) {
-            return 0;
+        if (!center_buffer) {
+            return core::failure("markers: " + center_buffer.error());
+        }
+        if (!color_buffer) {
+            return core::failure("markers: " + color_buffer.error());
         }
         const VertexArray vao = VertexArray::create();
         vao.set_vertex_buffer(0, center_buffer.value(), 0, sizeof(glm::vec4));
@@ -517,10 +524,14 @@ EntryView::draw(const Camera& camera, const FrameInfo& frame, const EntryViewOpt
         s.draw_segments(c, *s.ribbon, half, std::nullopt, options.range, 1.0F);
         stats.ribbon_segments = static_cast<std::size_t>(s.ribbon->segments);
     }
-    stats.markers = s.draw_markers(c, options);
+    auto markers = s.draw_markers(c, options);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
     glBindVertexArray(0);
+    if (!markers) {
+        return core::failure("entry view: " + markers.error());
+    }
+    stats.markers = markers.value();
     return stats;
 }
 

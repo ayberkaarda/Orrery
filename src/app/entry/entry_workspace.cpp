@@ -4,6 +4,7 @@
 #include <cmath>
 #include <fstream>
 #include <limits>
+#include <numbers>
 #include <system_error>
 #include <utility>
 
@@ -103,7 +104,7 @@ EntryWorkspace::Impl::Impl(EntryWorkspaceOptions o) : options(std::move(o)) {
     }
     w::set_buffer(name_buffer, setup.name);
     render::CameraLens lens;
-    lens.vertical_fov = 32.0 * 3.141592653589793 / 180.0;
+    lens.vertical_fov = 32.0 * std::numbers::pi / 180.0;
     lens.near_plane = 100.0;
     lens.log_depth_far = 1.0e10;
     (void)camera.set_lens(lens);
@@ -157,7 +158,10 @@ std::uint64_t EntryWorkspace::Impl::view_key() const {
     std::uint64_t key = 0xcbf29ce484222325ULL;
     key = mix(key, reinterpret_cast<std::uintptr_t>(trace.get()));
     key = mix(key, static_cast<std::uint64_t>(setup.planet));
-    key = mix(key, static_cast<std::uint64_t>(std::llround(layers.altitude_scale * 100.0)));
+    // The exaggeration is clamped to the slider's range before the cast.
+    const double scale =
+        std::isfinite(layers.altitude_scale) ? std::clamp(layers.altitude_scale, 1.0, 1000.0) : 1.0;
+    key = mix(key, static_cast<std::uint64_t>(std::llround(scale * 100.0)));
     return key;
 }
 

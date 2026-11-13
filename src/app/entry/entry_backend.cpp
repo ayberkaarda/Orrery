@@ -376,8 +376,10 @@ core::Result<CdSamples, std::string> sample_cd_table(const CdSampling& sampling)
     for (const atmo::CdSamplingPoint& point : sampled.value().points) {
         samples.table.push_back({point.mach, point.cd});
         for (const std::string& warning : point.warnings) {
-            samples.warnings.push_back("Mach " + format_significant(point.mach, 3) + ": " +
-                                       warning);
+            std::string line = "Mach " + format_significant(point.mach, 3);
+            line += ": ";
+            line += warning;
+            samples.warnings.push_back(std::move(line));
         }
     }
     return samples;

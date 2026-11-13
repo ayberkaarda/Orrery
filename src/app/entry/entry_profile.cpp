@@ -93,7 +93,10 @@ std::string heat_text(double w_m2) {
 }
 
 std::string duration_text(double seconds) {
-    if (seconds >= 120.0) {
+    if (!std::isfinite(seconds)) {
+        return "-";
+    }
+    if (seconds >= 120.0 && seconds < 1.0e9) {
         const auto minutes = static_cast<int>(seconds / 60.0);
         return std::to_string(minutes) + " min " + w::fixed(seconds - 60.0 * minutes, 0) + " s";
     }
@@ -289,9 +292,9 @@ void EntryWorkspace::Impl::draw_plots(const sim::EntryTrace* trace) {
                 continue;
             }
             overlays = true;
-            const std::string name =
-                (e.setup.name.empty() ? e.path.stem().string() : e.setup.name) + "##o" +
-                std::to_string(i);
+            std::string name = e.setup.name.empty() ? e.path.stem().string() : e.setup.name;
+            name += "##o";
+            name += std::to_string(i);
             plot_series(name.c_str(), e.result->series, plot,
                         kOverlayColors[i % kOverlayColors.size()], 1.2F);
         }
