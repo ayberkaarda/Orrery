@@ -15,6 +15,21 @@ import sys
 from pathlib import Path
 
 STATUS = {"pass": "pass", "fail": "**MISS**", "info": "-", "skipped": "not measured"}
+# Rows in the order of the spec section 8 table; ids not listed follow.
+ORDER = (
+    "core.force.barnes_hut.n10k", "core.force.barnes_hut.n100k",
+    "aero.lbm3d.gpu.128", "aero.lbm2d.gpu.2048x1024",
+    "aero.panel3d.n2000", "aero.newtonian.n100k",
+    "app.render.space_1080p", "app.render.black_hole_1080p",
+    "geom.import.glb500k", "geom.import_repair.glb500k",
+    "core.determinism.leapfrog_kdk", "core.determinism.yoshida4", "core.determinism.rk4",
+    "app.size", "app.memory.solar_system", "app.cold_start",
+)
+
+
+def ordered(results: list[dict]) -> list[dict]:
+    rank = {id_: i for i, id_ in enumerate(ORDER)}
+    return sorted(results, key=lambda r: rank.get(r.get("id"), len(ORDER)))
 
 
 def significant(value: float) -> str:
@@ -91,9 +106,9 @@ def table(results: list[dict], with_target: bool) -> list[str]:
 
 def report(doc: dict) -> str:
     results = doc.get("results", [])
-    targeted = [r for r in results if r.get("goal") in ("below", "at_least")
-                or (r.get("status") == "skipped")]
-    context = [r for r in results if r.get("goal") == "info"]
+    targeted = ordered([r for r in results if r.get("goal") in ("below", "at_least")
+                        or (r.get("status") == "skipped")])
+    context = ordered([r for r in results if r.get("goal") == "info"])
     count = {s: sum(1 for r in targeted if r.get("status") == s)
              for s in ("pass", "fail", "skipped")}
     lines = ["## Environment", ""] + environment(doc) + [""]
