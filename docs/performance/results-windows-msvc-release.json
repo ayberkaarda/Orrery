@@ -1,0 +1,505 @@
+{
+  "schema": "orrery-bench-run/1",
+  "date": "2026-11-13",
+  "commit": "c5a7625",
+  "build_dir": "release",
+  "machine": {
+    "os": "Windows 11",
+    "cpu": "AMD Ryzen 5 7600 6-Core Processor",
+    "logical_cpus": 12,
+    "memory_gib": 31.2,
+    "python": "3.14.7"
+  },
+  "suites": {
+    "core": {
+      "exit_code": 0,
+      "seconds": 23.7,
+      "build": {
+        "compiler": "msvc 1944",
+        "hardware_threads": 12,
+        "lto": true,
+        "optimised": true
+      },
+      "devices": []
+    },
+    "geom": {
+      "exit_code": 0,
+      "seconds": 11.6,
+      "build": {
+        "compiler": "msvc 1944",
+        "hardware_threads": 12,
+        "lto": true,
+        "optimised": true
+      },
+      "devices": []
+    },
+    "aero": {
+      "exit_code": 0,
+      "seconds": 4.5,
+      "build": {
+        "compiler": "msvc 1944",
+        "hardware_threads": 12,
+        "lto": true,
+        "optimised": true
+      },
+      "devices": []
+    },
+    "lbm_gpu": {
+      "exit_code": 0,
+      "seconds": 6.5,
+      "build": {
+        "compiler": "msvc 1944",
+        "hardware_threads": 12,
+        "lto": true,
+        "optimised": true
+      },
+      "devices": [
+        "AMD Radeon RX 9060 XT"
+      ]
+    }
+  },
+  "results": [
+    {
+      "context": {
+        "golden": "0x08ca0a8c4993debe",
+        "hash": "0x08ca0a8c4993debe",
+        "run_ms": "9.906700"
+      },
+      "goal": "at_least",
+      "id": "core.determinism.leapfrog_kdk",
+      "notes": "two runs against the golden hash",
+      "status": "pass",
+      "target": 1.0,
+      "title": "Determinism, 10k steps (leapfrog_kdk)",
+      "unit": "bit-identical",
+      "value": 1.0,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "golden": "0xd0c645137b27a3cd",
+        "hash": "0xd0c645137b27a3cd",
+        "run_ms": "17.161500"
+      },
+      "goal": "at_least",
+      "id": "core.determinism.yoshida4",
+      "notes": "two runs against the golden hash",
+      "status": "pass",
+      "target": 1.0,
+      "title": "Determinism, 10k steps (yoshida4)",
+      "unit": "bit-identical",
+      "value": 1.0,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "golden": "0xab3b17d03159374d",
+        "hash": "0xab3b17d03159374d",
+        "run_ms": "18.195600"
+      },
+      "goal": "at_least",
+      "id": "core.determinism.rk4",
+      "notes": "two runs against the golden hash",
+      "status": "pass",
+      "target": 1.0,
+      "title": "Determinism, 10k steps (rk4)",
+      "unit": "bit-identical",
+      "value": 1.0,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "13.619400",
+        "repeats": "21"
+      },
+      "goal": "below",
+      "id": "core.force.barnes_hut.n10k",
+      "notes": "theta 0.5, softening 1e-3 AU, leaf 8, Plummer cluster, all threads",
+      "status": "fail",
+      "target": 8.0,
+      "title": "Force N = 10k (Barnes-Hut)",
+      "unit": "ms",
+      "value": 16.7642,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "222.774900",
+        "repeats": "7"
+      },
+      "goal": "below",
+      "id": "core.force.barnes_hut.n100k",
+      "notes": "theta 0.5, softening 1e-3 AU, leaf 8, Plummer cluster, all threads",
+      "status": "fail",
+      "target": 120.0,
+      "title": "Force N = 100k (Barnes-Hut)",
+      "unit": "ms",
+      "value": 244.7465,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "0.059400",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.barnes_hut.single_thread.n100",
+      "notes": "theta 0.5, leaf 8, one thread",
+      "status": "info",
+      "title": "Force N = 100 (Barnes-Hut, one thread)",
+      "unit": "ms",
+      "value": 0.0642,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "0.033500",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.direct.n100",
+      "notes": "pairwise, softening 1e-3 AU, one thread",
+      "status": "info",
+      "title": "Force N = 100 (direct summation)",
+      "unit": "ms",
+      "value": 0.0343,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "3.000900",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.barnes_hut.single_thread.n1k",
+      "notes": "theta 0.5, leaf 8, one thread",
+      "status": "info",
+      "title": "Force N = 1k (Barnes-Hut, one thread)",
+      "unit": "ms",
+      "value": 3.4949,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "2.318800",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.direct.n1k",
+      "notes": "pairwise, softening 1e-3 AU, one thread",
+      "status": "info",
+      "title": "Force N = 1k (direct summation)",
+      "unit": "ms",
+      "value": 3.4928,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "74.792600",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.barnes_hut.single_thread.n10k",
+      "notes": "theta 0.5, leaf 8, one thread",
+      "status": "info",
+      "title": "Force N = 10k (Barnes-Hut, one thread)",
+      "unit": "ms",
+      "value": 82.341,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "230.670100",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.direct.n10k",
+      "notes": "pairwise, softening 1e-3 AU, one thread",
+      "status": "info",
+      "title": "Force N = 10k (direct summation)",
+      "unit": "ms",
+      "value": 241.0331,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "1316.388800",
+        "repeats": "7"
+      },
+      "goal": "info",
+      "id": "core.force.barnes_hut.single_thread.n100k",
+      "notes": "theta 0.5, leaf 8, one thread",
+      "status": "info",
+      "title": "Force N = 100k (Barnes-Hut, one thread)",
+      "unit": "ms",
+      "value": 1370.2393,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "12.490000",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.barnes_hut.leaf16.n10k",
+      "notes": "theta 0.5, all threads",
+      "status": "info",
+      "title": "Force N = 10k (Barnes-Hut, leaf 16)",
+      "unit": "ms",
+      "value": 13.9558,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "hardware_threads": "12",
+        "min_ms": "13.908500",
+        "repeats": "21"
+      },
+      "goal": "info",
+      "id": "core.force.barnes_hut.leaf32.n10k",
+      "notes": "theta 0.5, all threads",
+      "status": "info",
+      "title": "Force N = 10k (Barnes-Hut, leaf 32)",
+      "unit": "ms",
+      "value": 15.3656,
+      "suite": "core"
+    },
+    {
+      "context": {
+        "file_bytes": "9150304",
+        "triangles": "508320"
+      },
+      "goal": "below",
+      "id": "geom.import.glb500k",
+      "notes": "assimp import, validation and analyze_mesh; file in the OS cache",
+      "status": "pass",
+      "target": 5.0,
+      "title": "Model import, 500k triangles glb (with report)",
+      "unit": "s",
+      "value": 1.0614943000000001,
+      "suite": "geom"
+    },
+    {
+      "context": {
+        "file_bytes": "9150304",
+        "triangles": "508320"
+      },
+      "goal": "below",
+      "id": "geom.import_repair.glb500k",
+      "notes": "import followed by repair_mesh (weld, orientation, holes, reports before and after)",
+      "status": "pass",
+      "target": 5.0,
+      "title": "Model import, 500k triangles glb (with repair)",
+      "unit": "s",
+      "value": 1.8213293000000002,
+      "suite": "geom"
+    },
+    {
+      "context": {
+        "mlups": "165.775035",
+        "threads": "12 hardware threads"
+      },
+      "goal": "info",
+      "id": "aero.lbm2d.cpu.2048x1024",
+      "notes": "cylinder D 64, Re 1000, BGK, double precision; the section 8 target is a GPU target",
+      "status": "info",
+      "title": "LBM D2Q9 2048 x 1024 (CPU)",
+      "unit": "steps/s",
+      "value": 79.04769658964523,
+      "suite": "aero"
+    },
+    {
+      "context": {
+        "triangles": "100352"
+      },
+      "goal": "below",
+      "id": "aero.newtonian.n100k",
+      "notes": "sphere, Mach 10, modified Newtonian",
+      "status": "pass",
+      "target": 100.0,
+      "title": "Newtonian, 100k triangles",
+      "unit": "ms",
+      "value": 2.0791,
+      "suite": "aero"
+    },
+    {
+      "context": {
+        "mlups": "67.045584",
+        "threads": "12 hardware threads"
+      },
+      "goal": "info",
+      "id": "aero.lbm3d.cpu.128",
+      "notes": "sphere channel D 24, Re 300, BGK, double precision; the section 8 target is a GPU target",
+      "status": "info",
+      "title": "LBM D3Q19 128^3 (CPU)",
+      "unit": "steps/s",
+      "value": 31.969825599805876,
+      "suite": "aero"
+    },
+    {
+      "context": {
+        "panels": "2048",
+        "threads": "12 hardware threads"
+      },
+      "goal": "below",
+      "id": "aero.panel3d.n2000",
+      "notes": "sphere, dense LU, influence matrix assembly included",
+      "status": "pass",
+      "target": 3.0,
+      "title": "Panel 3D, N = 2000 (setup and solve)",
+      "unit": "s",
+      "value": 0.6760557,
+      "suite": "aero"
+    },
+    {
+      "context": {
+        "device": "AMD Radeon RX 9060 XT",
+        "mlups": "3169.689745"
+      },
+      "goal": "at_least",
+      "id": "aero.lbm2d.gpu.2048x1024",
+      "notes": "cylinder D 64, Re 1000, binary32 populations",
+      "status": "pass",
+      "target": 200.0,
+      "title": "LBM D2Q9 2048 x 1024 (GPU)",
+      "unit": "steps/s",
+      "value": 1511.4258504302047,
+      "suite": "lbm_gpu"
+    },
+    {
+      "context": {
+        "device": "AMD Radeon RX 9060 XT",
+        "mlups": "3202.776822"
+      },
+      "goal": "info",
+      "id": "aero.lbm2d.gpu.2048x1024.les",
+      "notes": "cylinder D 64, Re 1000, binary32 populations",
+      "status": "info",
+      "title": "LBM D2Q9 2048 x 1024 (GPU, Smagorinsky)",
+      "unit": "steps/s",
+      "value": 1527.202997960573,
+      "suite": "lbm_gpu"
+    },
+    {
+      "context": {
+        "device": "AMD Radeon RX 9060 XT",
+        "mlups": "1406.719931"
+      },
+      "goal": "at_least",
+      "id": "aero.lbm3d.gpu.128",
+      "notes": "sphere channel D 24, Re 300, binary32 populations; target set for a GTX 1660-class GPU",
+      "status": "pass",
+      "target": 60.0,
+      "title": "LBM D3Q19 128^3 (GPU)",
+      "unit": "steps/s",
+      "value": 670.7763343938084,
+      "suite": "lbm_gpu"
+    },
+    {
+      "context": {
+        "device": "AMD Radeon RX 9060 XT",
+        "mlups": "1427.043682"
+      },
+      "goal": "info",
+      "id": "aero.lbm3d.gpu.128.les",
+      "notes": "sphere channel D 24, Re 300, binary32 populations; target set for a GTX 1660-class GPU",
+      "status": "info",
+      "title": "LBM D3Q19 128^3 (GPU, Smagorinsky)",
+      "unit": "steps/s",
+      "value": 680.4674539221463,
+      "suite": "lbm_gpu"
+    },
+    {
+      "id": "app.cold_start",
+      "title": "Cold start to first frame",
+      "value": 0.5901692000043113,
+      "unit": "s",
+      "goal": "below",
+      "status": "pass",
+      "notes": "headless solar system at 1920x1080: process start to PNG written and exit (upper bound of the first frame); first run after the build",
+      "context": {
+        "runs": 5,
+        "median_later_runs_s": 0.59
+      },
+      "suite": "app",
+      "target": 3.0
+    },
+    {
+      "id": "app.render.space_1080p",
+      "title": "Render Space 1080p",
+      "value": 396.641,
+      "unit": "fps",
+      "goal": "at_least",
+      "status": "pass",
+      "notes": "solar system with trails, 1920x1080, wall time per frame including the GPU",
+      "context": {
+        "frames": 600,
+        "mean_ms": 2.52117,
+        "gpu_median_ms": 2.33048,
+        "gpu_p95_ms": 2.396,
+        "device": "AMD Radeon RX 9060 XT"
+      },
+      "suite": "app",
+      "target": 60.0
+    },
+    {
+      "id": "app.render.black_hole_1080p",
+      "title": "Render black hole 1080p (half-resolution trace)",
+      "value": 814.827,
+      "unit": "fps",
+      "goal": "at_least",
+      "status": "pass",
+      "notes": "black_hole experiment at 1920x1080, lensing traced at half resolution",
+      "context": {
+        "frames": 300,
+        "mean_ms": 1.22725,
+        "gpu_median_ms": 1.10768,
+        "gpu_p95_ms": 1.159,
+        "device": "AMD Radeon RX 9060 XT"
+      },
+      "suite": "app",
+      "target": 30.0
+    },
+    {
+      "id": "app.memory.solar_system",
+      "title": "Idle RAM (solar system)",
+      "value": 172.376064,
+      "unit": "MB",
+      "goal": "below",
+      "status": "pass",
+      "notes": "peak of the headless solar-system process (load, 600 frames at 1920x1080); the window adds the UI",
+      "context": {
+        "measure": "peak working set",
+        "peak_private_mb": 428.8
+      },
+      "suite": "app",
+      "target": 400.0
+    },
+    {
+      "id": "app.size",
+      "title": "Binary + assets",
+      "value": 17.449638,
+      "unit": "MB",
+      "goal": "below",
+      "status": "pass",
+      "notes": "orrery_app, the shared libraries next to it (vcpkg app-local copies) and assets/; MB = 10^6 bytes, uncompressed",
+      "context": {
+        "binary_mb": 3.52,
+        "shared_libraries_mb": 13.91,
+        "assets_mb": 0.02
+      },
+      "suite": "app",
+      "target": 80.0
+    }
+  ]
+}
