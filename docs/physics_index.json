@@ -1,0 +1,1072 @@
+{
+  "version": 1,
+  "description": "Machine-readable index of the formulas and models implemented in src/. Each entry has exactly one row in docs/physics.md, section 'Formula index'. tools/check_docs.py checks that every file exists, contains its symbols and is named in the row, and that every file with an APPROXIMATION marker belongs to an entry.",
+  "entries": [
+    {
+      "id": "core.units",
+      "implementation": {
+        "src/core/include/orrery/core/units.h": [
+          "to_si",
+          "to_space",
+          "space_to_si_factor"
+        ],
+        "src/core/include/orrery/core/quantity.h": [
+          "Quantity"
+        ]
+      },
+      "tests": [
+        "tests/core/test_units.cpp",
+        "tests/core/test_quantity.cpp"
+      ]
+    },
+    {
+      "id": "core.kepler",
+      "implementation": {
+        "src/core/kepler.cpp": [
+          "to_cartesian",
+          "to_elements",
+          "eccentric_anomaly_from_mean",
+          "hyperbolic_anomaly_from_mean"
+        ]
+      },
+      "tests": [
+        "tests/core/test_kepler.cpp"
+      ]
+    },
+    {
+      "id": "core.gravity.newton",
+      "implementation": {
+        "src/core/newtonian_gravity.cpp": [
+          "NewtonianGravity"
+        ],
+        "src/core/include/orrery/core/force_model.h": [
+          "IForceModel",
+          "NewtonianGravity"
+        ],
+        "src/core/include/orrery/core/body.h": [
+          "Probe"
+        ]
+      },
+      "tests": [
+        "tests/core/test_gravity.cpp"
+      ]
+    },
+    {
+      "id": "core.integrators.fixed",
+      "implementation": {
+        "src/core/integrator.cpp": [
+          "LeapfrogKdk",
+          "Yoshida4",
+          "Rk4"
+        ],
+        "src/core/include/orrery/core/integrator.h": [
+          "IIntegrator",
+          "make_integrator"
+        ]
+      },
+      "tests": [
+        "tests/core/test_integrators.cpp"
+      ]
+    },
+    {
+      "id": "core.integrators.ias15",
+      "implementation": {
+        "src/core/ias15.cpp": [
+          "IAS15"
+        ],
+        "src/core/include/orrery/core/ias15.h": [
+          "IAS15"
+        ]
+      },
+      "tests": [
+        "tests/core/test_ias15.cpp"
+      ]
+    },
+    {
+      "id": "core.barnes_hut",
+      "implementation": {
+        "src/core/barnes_hut.cpp": [
+          "BarnesHutGravity"
+        ],
+        "src/core/octree.cpp": [
+          "Octree"
+        ],
+        "src/core/include/orrery/core/barnes_hut.h": [
+          "BarnesHutOptions"
+        ]
+      },
+      "tests": [
+        "tests/core/test_barnes_hut.cpp"
+      ]
+    },
+    {
+      "id": "core.conservation",
+      "implementation": {
+        "src/core/conservation.cpp": [
+          "ConservationDiagnostics"
+        ],
+        "src/core/state_hash.cpp": [
+          "state_hash"
+        ]
+      },
+      "tests": [
+        "tests/core/test_conservation.cpp",
+        "tests/core/test_determinism.cpp"
+      ]
+    },
+    {
+      "id": "core.black_hole.radii",
+      "implementation": {
+        "src/core/include/orrery/core/black_hole.h": [
+          "schwarzschild_radius",
+          "photon_sphere_radius",
+          "isco_radius"
+        ],
+        "src/core/black_hole.cpp": [
+          "schwarzschild_radius"
+        ]
+      },
+      "tests": [
+        "tests/core/test_black_hole.cpp"
+      ]
+    },
+    {
+      "id": "core.paczynski_wiita",
+      "implementation": {
+        "src/core/paczynski_wiita_gravity.cpp": [
+          "PaczynskiWiitaGravity"
+        ],
+        "src/core/include/orrery/core/paczynski_wiita_gravity.h": [
+          "PaczynskiWiitaGravity"
+        ],
+        "src/core/black_hole.cpp": [
+          "pw_circular_speed",
+          "pw_circular_period"
+        ]
+      },
+      "tests": [
+        "tests/core/test_black_hole.cpp"
+      ]
+    },
+    {
+      "id": "core.tidal",
+      "implementation": {
+        "src/core/tidal.cpp": [
+          "detect_tidal_disruptions"
+        ],
+        "src/core/include/orrery/core/black_hole.h": [
+          "tidal_radius"
+        ]
+      },
+      "tests": [
+        "tests/core/test_events.cpp"
+      ]
+    },
+    {
+      "id": "core.horizon",
+      "implementation": {
+        "src/core/horizon.cpp": [
+          "absorb_horizon_crossings"
+        ],
+        "src/core/include/orrery/core/horizon.h": [
+          "absorb_horizon_crossings"
+        ]
+      },
+      "tests": [
+        "tests/core/test_black_hole.cpp",
+        "tests/core/test_events.cpp"
+      ]
+    },
+    {
+      "id": "core.collision",
+      "implementation": {
+        "src/core/collision.cpp": [
+          "resolve_collisions",
+          "swept_contact_fraction",
+          "merge_bodies"
+        ],
+        "src/core/include/orrery/core/collision.h": [
+          "resolve_collisions"
+        ],
+        "src/core/event_step.cpp": [
+          "EventStepper"
+        ]
+      },
+      "tests": [
+        "tests/core/test_collisions.cpp",
+        "tests/core/test_events.cpp"
+      ]
+    },
+    {
+      "id": "core.geodesic",
+      "implementation": {
+        "src/core/schwarzschild_geodesic.cpp": [
+          "trace_ray",
+          "weak_field_deflection",
+          "impact_parameter"
+        ]
+      },
+      "tests": [
+        "tests/core/test_schwarzschild_geodesic.cpp"
+      ]
+    },
+    {
+      "id": "core.thin_disk",
+      "implementation": {
+        "src/core/schwarzschild_geodesic.cpp": [
+          "thin_disk_temperature",
+          "disk_redshift_factor",
+          "thin_disk_peak_radius"
+        ]
+      },
+      "tests": [
+        "tests/core/test_schwarzschild_geodesic.cpp",
+        "tests/render/test_black_hole.cpp"
+      ]
+    },
+    {
+      "id": "core.scenarios",
+      "implementation": {
+        "assets/scenarios/solar_system_j2000.json": [
+          "Horizons"
+        ],
+        "assets/scenarios/figure_eight.json": [
+          "Chenciner"
+        ],
+        "assets/scenarios/sgr_a_s2.json": [
+          "GRAVITY"
+        ]
+      },
+      "tests": [
+        "tests/core/test_scenarios_phase3a.cpp"
+      ]
+    },
+    {
+      "id": "atmo.us76",
+      "implementation": {
+        "src/atmo/us76.cpp": [
+          "molecular_weight_ratio",
+          "from_upper_nodes"
+        ],
+        "src/atmo/layers.h": [
+          "fill_base_pressures"
+        ],
+        "src/atmo/include/orrery/atmo/atmosphere.h": [
+          "UsStandardAtmosphere1976",
+          "geopotential_altitude"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_atmosphere.cpp"
+      ]
+    },
+    {
+      "id": "atmo.mars",
+      "implementation": {
+        "src/atmo/atmosphere.cpp": [
+          "MarsAtmosphere"
+        ],
+        "src/atmo/include/orrery/atmo/atmosphere.h": [
+          "MarsAtmosphere"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_atmosphere.cpp"
+      ]
+    },
+    {
+      "id": "atmo.exponential",
+      "implementation": {
+        "src/atmo/atmosphere.cpp": [
+          "ExponentialAtmosphere",
+          "mach_number"
+        ],
+        "src/atmo/include/orrery/atmo/atmosphere.h": [
+          "ExponentialAtmosphere"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_atmosphere.cpp"
+      ]
+    },
+    {
+      "id": "atmo.planet",
+      "implementation": {
+        "src/atmo/planet.cpp": [
+          "earth",
+          "mars",
+          "rotation_rate"
+        ],
+        "src/atmo/include/orrery/atmo/planet.h": [
+          "Planet"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_drag.cpp",
+        "tests/atmo/test_entry.cpp"
+      ]
+    },
+    {
+      "id": "atmo.cd_table",
+      "implementation": {
+        "src/atmo/aero_table.cpp": [
+          "AeroCoefficientTable"
+        ],
+        "src/atmo/cd_sampling.cpp": [
+          "sample_cd_table"
+        ],
+        "src/atmo/include/orrery/atmo/aero_table.h": [
+          "lookup"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_aero_table.cpp"
+      ]
+    },
+    {
+      "id": "atmo.drag",
+      "implementation": {
+        "src/atmo/drag.cpp": [
+          "drag_force",
+          "air_relative_velocity",
+          "AtmosphericDrag"
+        ],
+        "src/atmo/include/orrery/atmo/drag.h": [
+          "AtmosphereFrame",
+          "DragForce"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_drag.cpp"
+      ]
+    },
+    {
+      "id": "atmo.entry_split",
+      "implementation": {
+        "src/atmo/entry_impl.cpp": [
+          "kick"
+        ],
+        "src/atmo/include/orrery/atmo/entry.h": [
+          "EntryExperiment"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_entry.cpp"
+      ]
+    },
+    {
+      "id": "atmo.entry_diagnostics",
+      "implementation": {
+        "src/atmo/entry_record.cpp": [
+          "heat_flux",
+          "energy_balance",
+          "detect_events",
+          "crossed_unseen",
+          "g_load"
+        ],
+        "src/atmo/entry.cpp": [
+          "energy_balance"
+        ]
+      },
+      "tests": [
+        "tests/atmo/test_entry.cpp"
+      ]
+    },
+    {
+      "id": "aero.flow_conditions",
+      "implementation": {
+        "src/aero/flow_conditions.cpp": [
+          "speed_of_sound",
+          "reynolds",
+          "dynamic_pressure",
+          "lift_direction"
+        ],
+        "src/aero/aero_result.cpp": [
+          "set_coefficients"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_regime.cpp",
+        "tests/aero/test_newtonian.cpp"
+      ]
+    },
+    {
+      "id": "aero.regime",
+      "implementation": {
+        "src/aero/regime.cpp": [
+          "validity_envelope",
+          "select_solver",
+          "check_validity"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_regime.cpp"
+      ]
+    },
+    {
+      "id": "aero.panel2d",
+      "implementation": {
+        "src/aero/panel2d.cpp": [
+          "PanelSolver2D",
+          "naca_section_geometry"
+        ],
+        "src/aero/include/orrery/aero/panel_method.h": [
+          "PanelSolver2D"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_panel.cpp",
+        "tests/aero_validation/test_naca0012.cpp"
+      ]
+    },
+    {
+      "id": "aero.panel3d",
+      "implementation": {
+        "src/aero/panel3d.cpp": [
+          "PanelSolver3D",
+          "kutta_jumps",
+          "gradient_weights"
+        ],
+        "src/aero/panel_influence.cpp": [
+          "triangle_influence"
+        ],
+        "src/aero/linear_solve.cpp": [
+          "solve_lu",
+          "solve_gmres"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_panel.cpp",
+        "tests/aero_validation/test_wing.cpp"
+      ]
+    },
+    {
+      "id": "aero.skin_friction",
+      "implementation": {
+        "src/aero/panel2d.cpp": [
+          "flat_plate_skin_friction"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_panel.cpp"
+      ]
+    },
+    {
+      "id": "aero.newtonian",
+      "implementation": {
+        "src/aero/newtonian.cpp": [
+          "newtonian_cp_max",
+          "NewtonianSolver"
+        ],
+        "src/aero/include/orrery/aero/newtonian.h": [
+          "NewtonianSolver"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_newtonian.cpp",
+        "tests/aero_validation/test_apollo.cpp"
+      ]
+    },
+    {
+      "id": "aero.sutton_graves",
+      "implementation": {
+        "src/aero/newtonian.cpp": [
+          "sutton_graves_heat_flux"
+        ]
+      },
+      "tests": [
+        "tests/aero/test_newtonian.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.units",
+      "implementation": {
+        "src/aero/lbm/lattice_units.cpp": [
+          "LatticeUnits"
+        ],
+        "src/aero/lbm/include/orrery/aero/lbm/lattice_units.h": [
+          "lattice_mach",
+          "tau"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm/test_lattice_units.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.d2q9",
+      "implementation": {
+        "src/aero/lbm/include/orrery/aero/lbm/d2q9.h": [
+          "equilibrium"
+        ],
+        "src/aero/lbm/include/orrery/aero/lbm/lbm2d.h": [
+          "Smagorinsky"
+        ],
+        "src/aero/lbm/lbm2d_cpu.cpp": [
+          "collide"
+        ],
+        "src/aero/lbm/lbm2d_common.cpp": [
+          "validate"
+        ],
+        "src/aero/lbm/lbm2d_gpu.cpp": [
+          "make_gpu_solver"
+        ],
+        "src/aero/compute/float32_pack.cpp": [
+          "pack_float32"
+        ],
+        "src/render/shaders/lbm/lbm_d2q9_common.glsl": [
+          "lbm_collide",
+          "lbm_source"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm/test_d2q9.cpp",
+        "tests/aero/lbm/test_lbm2d_flows.cpp",
+        "tests/aero/lbm/test_lbm_gpu.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.d2q9_boundaries",
+      "implementation": {
+        "src/aero/lbm/lbm2d_internal.h": [
+          "zou_he_west"
+        ],
+        "src/aero/lbm/include/orrery/aero/lbm/lbm2d.h": [
+          "Outlet",
+          "WallKind"
+        ],
+        "src/render/shaders/lbm/lbm_d2q9_common.glsl": [
+          "lbm_zou_he_west"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm/test_lbm2d_flows.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.forces2d",
+      "implementation": {
+        "src/aero/lbm/lbm_aero_solver.cpp": [
+          "update_result"
+        ],
+        "src/aero/lbm/include/orrery/aero/lbm/lbm_aero_solver.h": [
+          "LbmAeroSolver2D",
+          "LesMode"
+        ],
+        "src/aero/lbm/force_history.cpp": [
+          "dominant_oscillation"
+        ],
+        "src/aero/lbm/lbm2d_cpu.cpp": [
+          "add_link_force"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm/test_lbm_aero_solver.cpp",
+        "tests/aero/lbm/test_force_history.cpp",
+        "tests/aero_validation/lbm2d/test_cylinder.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.solid_mask",
+      "implementation": {
+        "src/aero/lbm/solid_mask.cpp": [
+          "circle_mask",
+          "naca_mask",
+          "mask_from_sdf"
+        ],
+        "src/aero/lbm/include/orrery/aero/lbm/solid_mask.h": [
+          "SolidMask2D"
+        ],
+        "src/aero/lbm3d/solid_mask3d.cpp": [
+          "sphere_mask",
+          "mask_from_sdf_3d"
+        ],
+        "src/aero/lbm3d/include/orrery/aero/lbm3d/solid_mask3d.h": [
+          "SolidMask3D"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm/test_solid_mask.cpp",
+        "tests/aero/lbm3d/test_solid_mask3d.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.d3q19",
+      "implementation": {
+        "src/aero/lbm3d/include/orrery/aero/lbm3d/d3q19.h": [
+          "equilibrium"
+        ],
+        "src/aero/lbm3d/include/orrery/aero/lbm3d/lbm3d.h": [
+          "Lbm3DConfig",
+          "Sponge"
+        ],
+        "src/aero/lbm3d/lbm3d_cpu.cpp": [
+          "collide"
+        ],
+        "src/aero/lbm3d/lbm3d_common.cpp": [
+          "validate"
+        ],
+        "src/aero/lbm3d/lbm3d_gpu.cpp": [
+          "make_gpu_solver"
+        ],
+        "src/render/shaders/lbm/lbm_d3q19_common.glsl": [
+          "lbm3_collide"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm3d/test_d3q19.cpp",
+        "tests/aero/lbm3d/test_lbm3d_flows.cpp",
+        "tests/aero/lbm3d/test_lbm3d_gpu.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.d3q19_boundaries",
+      "implementation": {
+        "src/aero/lbm3d/lbm3d_internal.h": [
+          "velocity_inlet_west",
+          "link_fraction",
+          "sponge_sigma"
+        ],
+        "src/render/shaders/lbm/lbm_d3q19_common.glsl": [
+          "lbm3_inlet_west",
+          "lbm3_reflected",
+          "lbm3_sponge"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm3d/test_lbm3d_flows.cpp",
+        "tests/aero/lbm3d/test_lbm3d_gpu.cpp"
+      ]
+    },
+    {
+      "id": "aero.lbm.forces3d",
+      "implementation": {
+        "src/aero/lbm3d/lbm_aero_solver3d.cpp": [
+          "update_result",
+          "blockage"
+        ],
+        "src/aero/lbm3d/include/orrery/aero/lbm3d/lbm_aero_solver3d.h": [
+          "LbmAeroSolver3D",
+          "LbmSolver3DOptions"
+        ]
+      },
+      "tests": [
+        "tests/aero/lbm3d/test_lbm_aero_solver3d.cpp",
+        "tests/aero_validation/lbm3d/test_sphere.cpp",
+        "tests/aero_validation/lbm3d/test_plate.cpp"
+      ]
+    },
+    {
+      "id": "geom.primitives",
+      "implementation": {
+        "src/geom/primitives.cpp": [
+          "carlson_rg",
+          "polyhedral_volume",
+          "polyhedral_area"
+        ],
+        "src/geom/include/orrery/geom/primitives.h": [
+          "CapsuleShape",
+          "Ellipsoid"
+        ],
+        "src/geom/triangle_mesh.cpp": [
+          "signed_volume",
+          "volume_centroid"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_primitives.cpp"
+      ]
+    },
+    {
+      "id": "geom.naca",
+      "implementation": {
+        "src/geom/naca.cpp": [
+          "half_thickness",
+          "camber",
+          "section_area"
+        ],
+        "src/geom/include/orrery/geom/naca.h": [
+          "Naca4"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_naca.cpp"
+      ]
+    },
+    {
+      "id": "geom.import",
+      "implementation": {
+        "src/geom/mesh_import.cpp": [
+          "estimate_unit",
+          "import_mesh_file"
+        ],
+        "src/geom/include/orrery/geom/mesh_import.h": [
+          "UnitEstimate"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_import.cpp"
+      ]
+    },
+    {
+      "id": "geom.repair",
+      "implementation": {
+        "src/geom/mesh_repair.cpp": [
+          "repair_mesh",
+          "analyze_mesh"
+        ],
+        "src/geom/include/orrery/geom/mesh_repair.h": [
+          "WatertightReport"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_repair.cpp"
+      ]
+    },
+    {
+      "id": "geom.winding_number",
+      "implementation": {
+        "src/geom/winding_number.cpp": [
+          "solid_angle",
+          "winding_number"
+        ],
+        "src/geom/include/orrery/geom/winding_number.h": [
+          "MeshTree"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_voxel.cpp"
+      ]
+    },
+    {
+      "id": "geom.voxel_sdf",
+      "implementation": {
+        "src/geom/voxel_grid.cpp": [
+          "voxelize",
+          "signed_distance_band"
+        ],
+        "src/geom/include/orrery/geom/voxel_grid.h": [
+          "VoxelGrid"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_voxel.cpp"
+      ]
+    },
+    {
+      "id": "geom.panel_mesh",
+      "implementation": {
+        "src/geom/panel_mesh.cpp": [
+          "build_panels",
+          "add_wake",
+          "detect_trailing_edge"
+        ],
+        "src/geom/include/orrery/geom/panel_mesh.h": [
+          "WakeOptions"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_panel.cpp"
+      ]
+    },
+    {
+      "id": "geom.reference",
+      "implementation": {
+        "src/geom/reference_quantities.cpp": [
+          "projected_area",
+          "reference_quantities"
+        ],
+        "src/geom/include/orrery/geom/reference_quantities.h": [
+          "ReferenceAreaKind"
+        ]
+      },
+      "tests": [
+        "tests/geom/test_reference.cpp"
+      ]
+    },
+    {
+      "id": "render.bh_trace",
+      "implementation": {
+        "src/render/shaders/black_hole_trace.comp.glsl": [
+          "rk4_step",
+          "orbit_rhs",
+          "disk_opacity",
+          "bound_radiance"
+        ],
+        "src/render/black_hole_pass.cpp": [
+          "BlackHolePass"
+        ]
+      },
+      "tests": [
+        "tests/render/test_black_hole_render.cpp"
+      ]
+    },
+    {
+      "id": "render.bh_emission",
+      "implementation": {
+        "src/render/black_hole.cpp": [
+          "lensing_disk"
+        ],
+        "src/render/blackbody_spectrum.cpp": [
+          "planck_spectral_radiance",
+          "cie_colour_matching",
+          "blackbody_radiance_srgb"
+        ],
+        "src/render/include/orrery/render/blackbody_spectrum.h": [
+          "make_blackbody_table"
+        ]
+      },
+      "tests": [
+        "tests/render/test_black_hole.cpp"
+      ]
+    },
+    {
+      "id": "render.bh_composite",
+      "implementation": {
+        "src/render/shaders/black_hole_composite.frag.glsl": [
+          "in_shadow",
+          "ray_direction"
+        ],
+        "src/render/shaders/sky_cube_stars.vert.glsl": [
+          "u_reference_pixel_angle"
+        ],
+        "src/render/black_hole.cpp": [
+          "select_lensed_black_hole"
+        ]
+      },
+      "tests": [
+        "tests/render/test_black_hole_render.cpp"
+      ]
+    },
+    {
+      "id": "render.tone_map",
+      "implementation": {
+        "src/render/tone_map.cpp": [
+          "tone_map_aces",
+          "srgb_encode"
+        ],
+        "src/render/include/orrery/render/tone_map.h": [
+          "tone_map_aces"
+        ],
+        "src/render/shaders/tonemap.frag.glsl": [
+          "rrt_and_odt_fit",
+          "aces_fitted"
+        ]
+      },
+      "tests": [
+        "tests/render/test_tone_map.cpp"
+      ]
+    },
+    {
+      "id": "render.body_visuals",
+      "implementation": {
+        "src/render/body_visuals.cpp": [
+          "star_appearance",
+          "blackbody_linear_srgb",
+          "relative_irradiance",
+          "visual_radius"
+        ],
+        "src/render/space_renderer.cpp": [
+          "SpaceRenderer"
+        ]
+      },
+      "tests": [
+        "tests/render/test_body_visuals.cpp"
+      ]
+    },
+    {
+      "id": "render.body_shading",
+      "implementation": {
+        "src/render/shaders/body.frag.glsl": [
+          "body_frame",
+          "u_ambient"
+        ],
+        "src/render/shaders/test_shape.frag.glsl": [
+          "shade"
+        ]
+      },
+      "tests": [
+        "tests/render/test_space_render.cpp",
+        "tests/render/test_space_golden.cpp"
+      ]
+    },
+    {
+      "id": "render.sky",
+      "implementation": {
+        "src/render/starfield.cpp": [
+          "generate_starfield",
+          "ecliptic_to_galactic"
+        ],
+        "src/render/shaders/glow.frag.glsl": [
+          "veil",
+          "wings"
+        ],
+        "src/render/shaders/milky_way.frag.glsl": [
+          "u_ecliptic_to_galactic"
+        ]
+      },
+      "tests": [
+        "tests/render/test_starfield.cpp",
+        "tests/render/test_space_golden.cpp"
+      ]
+    },
+    {
+      "id": "render.entry_view",
+      "implementation": {
+        "src/render/shaders/entry/entry_atmosphere.frag.glsl": [
+          "half_chord"
+        ],
+        "src/render/shaders/entry/entry_planet.frag.glsl": [
+          "grid_line"
+        ],
+        "src/render/include/orrery/render/entry_view.h": [
+          "EntryPlanetStyle"
+        ]
+      },
+      "tests": [
+        "tests/render/entry/test_entry_view.cpp"
+      ]
+    },
+    {
+      "id": "render.camera",
+      "implementation": {
+        "src/render/camera.cpp": [
+          "Camera"
+        ]
+      },
+      "tests": [
+        "tests/render/test_camera.cpp"
+      ]
+    },
+    {
+      "id": "render.aero_field",
+      "implementation": {
+        "src/render/aero/aero_field.cpp": [
+          "vorticity",
+          "q_criterion",
+          "sample_section",
+          "flow_field_from"
+        ]
+      },
+      "tests": [
+        "tests/render/aero/test_aero_field.cpp"
+      ]
+    },
+    {
+      "id": "render.aero_streamlines",
+      "implementation": {
+        "src/render/aero/aero_streamlines.cpp": [
+          "trace_streamlines",
+          "advect_particle"
+        ],
+        "src/render/shaders/aero/compute/aero_vis_flow_streamlines.comp.glsl": [
+          "direction"
+        ],
+        "src/render/shaders/aero/compute/aero_vis_flow_particles.comp.glsl": [
+          "advect"
+        ]
+      },
+      "tests": [
+        "tests/render/aero/test_streamlines.cpp"
+      ]
+    },
+    {
+      "id": "render.aero_isosurface",
+      "implementation": {
+        "src/render/aero/aero_isosurface.cpp": [
+          "marching_cubes",
+          "vertex_normal"
+        ],
+        "src/render/shaders/aero/compute/aero_vis_marching_cubes.comp.glsl": [
+          "edge_of"
+        ]
+      },
+      "tests": [
+        "tests/render/aero/test_marching_cubes.cpp"
+      ]
+    },
+    {
+      "id": "render.aero_surface",
+      "implementation": {
+        "src/render/aero/aero_surface.cpp": [
+          "vertex_values"
+        ],
+        "src/render/shaders/aero/aero_surface.frag.glsl": [
+          "u_key_direction"
+        ]
+      },
+      "tests": [
+        "tests/render/aero/test_aero_view.cpp"
+      ]
+    },
+    {
+      "id": "render.aero_colormap",
+      "implementation": {
+        "src/render/aero/aero_colormap.cpp": [
+          "colormap_linear",
+          "oklab_from_linear_srgb",
+          "scene_linear_for_display"
+        ]
+      },
+      "tests": [
+        "tests/render/aero/test_aero_colormap.cpp"
+      ]
+    },
+    {
+      "id": "app.soi_primary",
+      "implementation": {
+        "src/render/ui_panels.cpp": [
+          "r_soi",
+          "make_body_inspector_data"
+        ]
+      },
+      "tests": [
+        "tests/render/test_ui.cpp"
+      ]
+    },
+    {
+      "id": "app.framing",
+      "implementation": {
+        "src/app/space_view.cpp": [
+          "framing_orbit",
+          "framing_camera"
+        ],
+        "src/app/include/orrery/app/space_view.h": [
+          "framing_orbit"
+        ]
+      },
+      "tests": [
+        "tests/app/test_headless.cpp"
+      ]
+    },
+    {
+      "id": "app.entry_summary",
+      "implementation": {
+        "src/app/entry/entry_backend.cpp": [
+          "central_angle"
+        ],
+        "src/app/entry/entry_model.cpp": [
+          "ballistic_coefficient"
+        ]
+      },
+      "tests": [
+        "tests/app/test_entry_model.cpp"
+      ]
+    },
+    {
+      "id": "app.step_budget",
+      "implementation": {
+        "src/app/sim/simulation.cpp": [
+          "advance"
+        ],
+        "src/app/sim/warp_governor.cpp": [
+          "WarpGovernor"
+        ]
+      },
+      "tests": [
+        "tests/app/test_simulation.cpp",
+        "tests/app/test_warp_governor.cpp"
+      ]
+    }
+  ]
+}
