@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "domain": "aero",
+  "inputs": {
+    "name": "NACA 2412 wing at 5 deg, panel method",
+    "geometry": "primitive",
+    "shape": "naca_wing",
+    "naca": "2412",
+    "chord_m": 1,
+    "span_m": 6
+  },
+  "conditions": {
+    "speed_m_s": 50,
+    "density_kg_m3": 1.225,
+    "viscosity_pa_s": 1.789e-05,
+    "temperature_k": 288.15,
+    "angle_of_attack_deg": 5,
+    "sideslip_deg": 0
+  },
+  "solver": {
+    "name": "auto",
+    "version": "1",
+    "settings": { "reference_area": "planform" }
+  },
+  "result": {}
+}
