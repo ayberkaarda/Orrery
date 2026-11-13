@@ -55,7 +55,8 @@
       "hidden": true,
       "inherits": "base",
       "cacheVariables": {
-        "CMAKE_BUILD_TYPE": "Release"
+        "CMAKE_BUILD_TYPE": "Release",
+        "ORRERY_LTO": "ON"
       }
     },
     {
@@ -85,7 +86,7 @@
     },
     {
       "name": "release",
-      "displayName": "Release (MSVC)",
+      "displayName": "Release with LTO (MSVC)",
       "inherits": [ "cfg-release", "windows-msvc" ]
     },
     {
@@ -100,7 +101,7 @@
     },
     {
       "name": "linux-release",
-      "displayName": "Release (Linux)",
+      "displayName": "Release with LTO (Linux)",
       "inherits": [ "cfg-release", "linux" ]
     },
     {

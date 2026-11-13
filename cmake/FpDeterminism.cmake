@@ -47,6 +47,10 @@ function(orrery_target_fp_determinism target)
         target_compile_options(${target} PRIVATE /fp:precise)
     elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(${target} PRIVATE -fno-fast-math -ffp-contract=off)
+        # With link-time optimisation (Lto.cmake) the link step runs the
+        # optimiser again; it gets the same floating-point options.
+        target_link_options(${target} PRIVATE
+            "$<$<BOOL:$<TARGET_PROPERTY:INTERPROCEDURAL_OPTIMIZATION>>:-fno-fast-math;-ffp-contract=off>")
     else()
         message(WARNING
             "Floating-point determinism flags are unknown for ${CMAKE_CXX_COMPILER_ID}")
