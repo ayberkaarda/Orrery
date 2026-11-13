@@ -34,10 +34,14 @@ std::string grouped(std::uint64_t value) {
     const std::size_t first = digits.size() % 3 == 0 ? 3 : digits.size() % 3;
     out += digits.substr(0, first);
     for (std::size_t i = first; i < digits.size(); i += 3) {
-        out += "\xE2\x80\x89"; // thin space (U+2009)
+        out += ' '; // the UI font has neither a thin nor a no-break space
         out += digits.substr(i, 3);
     }
     return out;
+}
+
+std::string change(std::size_t before, std::size_t after) {
+    return std::to_string(before) + " -> " + std::to_string(after);
 }
 
 void text(const std::string& value) {

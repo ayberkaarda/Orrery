@@ -301,5 +301,6 @@ TEST_CASE("Numbers and changes in the Aero panels use glyphs the UI font has", "
         CHECK(missing(app::widgets::grouped(value)).empty());
     }
     CHECK(app::widgets::grouped(32000) != "32000");
+    CHECK(missing(app::widgets::change(12, 0)).empty());
     ui.end_frame();
 }

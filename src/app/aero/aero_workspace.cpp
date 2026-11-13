@@ -958,7 +958,7 @@ void AeroWorkspace::Impl::draw_geometry_report() {
         if (g.repair) {
             const sim::RepairSummary& r = *g.repair;
             const auto change = [](std::size_t before, std::size_t after) {
-                return std::to_string(before) + " \xE2\x86\x92 " + std::to_string(after);
+                return w::change(before, after);
             };
             w::property("Boundary edges", change(r.before.boundary_edges, r.after.boundary_edges));
             w::property("Non-manifold",

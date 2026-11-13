@@ -24,8 +24,11 @@ namespace orrery::app::widgets {
 [[nodiscard]] std::string fixed(double value, int precision);
 // `digits` significant digits, scientific outside [1e-3, 1e6).
 [[nodiscard]] std::string significant(double value, int digits = 4);
-// Thousands separated with thin spaces: "36 000".
+// Thousands separated with spaces ("36 000"; the UI font has neither a thin
+// nor a no-break space, which it would draw as "?").
 [[nodiscard]] std::string grouped(std::uint64_t value);
+// A count before and after a change: "12 -> 0".
+[[nodiscard]] std::string change(std::size_t before, std::size_t after);
 
 void text(const std::string& value);
 void muted(const std::string& value);
