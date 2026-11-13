@@ -73,6 +73,10 @@ glm::dvec3 blend(const glm::dvec3& c0, const glm::dvec3& g0, const glm::dvec3& g
     return b.e * c0 + b.k * g0 + b.w * (g1 - g0);
 }
 
+glm::dvec2 blend(const glm::dvec2& c0, const glm::dvec2& g0, const glm::dvec2& g1, const Blend& b) {
+    return b.e * c0 + b.k * g0 + b.w * (g1 - g0);
+}
+
 // Distances are smoothed in log space so that zooming feels uniform across
 // orders of magnitude (and constant zoom input is a linear ramp there).
 double log_blend(double c0, double g0, double g1, const Blend& b) {
@@ -312,6 +316,7 @@ OrbitMode smooth(const OrbitMode& c, const OrbitMode& g0, const OrbitMode& g1, c
     result.distance = log_blend(c.distance, g0.distance, g1.distance, b);
     result.yaw = blend(c.yaw, g0.yaw, g1.yaw, b);
     result.pitch = blend(c.pitch, g0.pitch, g1.pitch, b);
+    result.view_shift = blend(c.view_shift, g0.view_shift, g1.view_shift, b);
     return result;
 }
 
@@ -468,6 +473,11 @@ bool Camera::update(double dt, const CameraInput& input, const BodyFrameLookup& 
                 const glm::dvec3 direction = spherical(mode.yaw, mode.pitch);
                 eye_offset_ = direction * mode.distance;
                 orientation_ = look_rotation(-direction, glm::dvec3(0.0, 0.0, kWorldUpZ));
+                // The camera slides in its view plane, opposite to where the
+                // target is to appear (half view heights at its distance).
+                const double half_height = mode.distance * std::tan(0.5 * lens_.vertical_fov);
+                anchor_ -= orientation_ * glm::dvec3(mode.view_shift.x, mode.view_shift.y, 0.0) *
+                           half_height;
             } else if constexpr (std::is_same_v<T, TurntableMode>) {
                 anchor_ = mode.focus;
                 const glm::dvec3 direction = spherical(mode.yaw, mode.pitch);

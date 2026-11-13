@@ -102,6 +102,19 @@ struct Series {
     }
 };
 
+// Where the centre of the scene area sits in the window, in half window
+// heights right and up of the window's centre (render::OrbitMode::view_shift).
+glm::dvec2 scene_view_shift(const render::UiRect& scene, int window_width, int window_height) {
+    const double height = static_cast<double>(window_height);
+    return {2.0 * (scene.x + 0.5 * scene.width - 0.5 * static_cast<double>(window_width)) / height,
+            2.0 * (0.5 * height - (scene.y + 0.5 * scene.height)) / height};
+}
+
+bool same_area(const render::UiRect& a, const render::UiRect& b) {
+    return std::abs(a.x - b.x) <= 0.5 && std::abs(a.y - b.y) <= 0.5 &&
+           std::abs(a.width - b.width) <= 0.5 && std::abs(a.height - b.height) <= 0.5;
+}
+
 double focus_distance(const core::SimSnapshot& snapshot, std::size_t index) {
     const render::BodyAppearance appearance = render::appearance_for(
         snapshot.names()[index], snapshot.kinds()[index], snapshot.masses()[index]);
@@ -155,6 +168,10 @@ private:
     ShortcutTargets shortcut_targets();
     void draw_space_experiment();
     void reframe(const render::UiRect& scene, int window_width, int window_height);
+    // A new scene area (window resized, panels docked anew): framed again
+    // while the user has not moved the camera since the last framing,
+    // otherwise only centred on the new area.
+    void follow_scene_area(const render::UiRect& scene, int window_width, int window_height);
     void build_ui(double dt, int width, int height);
     void draw_space_bar(double fps);
     void build_space_ui(const render::SceneInput& input, double dt, int width, int height);
@@ -197,6 +214,10 @@ private:
     // The view is framed again (scenario loaded or reset, F/Home) once the
     // scene area of the dock space is known in the next UI frame.
     bool reframe_pending_ = true;
+    // The scene area the view was last framed or centred for, and whether
+    // the user moved the camera since the last framing.
+    std::optional<render::UiRect> framed_scene_;
+    bool camera_moved_ = false;
     // Phase 10: the help overlay of the keyboard shortcuts is shown.
     bool help_open_ = false;
     render::CameraInput camera_input_;
@@ -256,22 +277,44 @@ void WindowApp::take(const sim::PublishedFrame& frame) {
 }
 
 // Frames the system in the scene area left free by the panels: the framing
-// is computed for that area's aspect and moved back so that the area's
-// height (not the window's) spans the field of view.
-void WindowApp::reframe(const render::UiRect& scene, int /*window_width*/, int window_height) {
+// is computed for that area's aspect, moved back so that the area's height
+// (not the window's) spans the field of view, and shifted so that the system
+// sits at the area's centre instead of the window's.
+void WindowApp::reframe(const render::UiRect& scene, int window_width, int window_height) {
     if (!snapshot_) {
         return;
     }
     render::CameraLens lens;
     lens.vertical_fov = kSpaceFovDegrees * 3.141592653589793 / 180.0;
     (void)camera_.set_lens(lens);
-    const bool usable = scene.width > 1.0 && scene.height > 1.0;
+    const bool usable = scene.width > 1.0 && scene.height > 1.0 && window_height > 0;
     render::OrbitMode orbit = framing_orbit(*snapshot_, usable ? scene.width / scene.height : 1.0);
     if (usable) {
         orbit.distance *= std::max(1.0, static_cast<double>(window_height) / scene.height);
+        orbit.view_shift = scene_view_shift(scene, window_width, window_height);
     }
     camera_.set_mode(orbit);
     camera_.update(0.0, render::CameraInput{}, body_frames(snapshot_));
+    framed_scene_ = scene;
+    camera_moved_ = false;
+}
+
+void WindowApp::follow_scene_area(const render::UiRect& scene, int window_width,
+                                  int window_height) {
+    if (!framed_scene_ || same_area(scene, *framed_scene_) || reframe_pending_) {
+        return;
+    }
+    const auto* orbit = std::get_if<render::OrbitMode>(&camera_.goal());
+    if (!camera_moved_ || orbit == nullptr) {
+        reframe_pending_ = true;
+        return;
+    }
+    if (scene.width > 1.0 && scene.height > 1.0 && window_height > 0) {
+        render::OrbitMode centred = *orbit;
+        centred.view_shift = scene_view_shift(scene, window_width, window_height);
+        camera_.set_mode(centred);
+    }
+    framed_scene_ = scene;
 }
 
 void WindowApp::handle_scene_input(const render::SceneInput& input, double dt) {
@@ -280,6 +323,8 @@ void WindowApp::handle_scene_input(const render::SceneInput& input, double dt) {
         reframe_pending_ = true;
     }
     camera_input_ = render::CameraInput{};
+    camera_moved_ =
+        camera_moved_ || input.drag_x != 0.0 || input.drag_y != 0.0 || input.wheel != 0.0;
     if (dt > 0.0) {
         camera_input_.yaw = -input.drag_x * kDragRadiansPerPixel / dt;
         camera_input_.pitch = input.drag_y * kDragRadiansPerPixel / dt;
@@ -390,6 +435,7 @@ void WindowApp::draw_space_bar(double fps) {
 
 void WindowApp::build_space_ui(const render::SceneInput& input, double dt, int width, int height) {
     const render::UiRect scene = ui_.dockspace();
+    follow_scene_area(scene, width, height);
     if (reframe_pending_) {
         reframe_pending_ = false;
         reframe(scene, width, height);
@@ -411,6 +457,7 @@ void WindowApp::build_space_ui(const render::SceneInput& input, double dt, int w
                 orbit.target = *selected_;
                 orbit.distance = focus_distance(*snapshot_, *index);
                 camera_.set_mode(orbit);
+                camera_moved_ = true;
             }
         }
     }
