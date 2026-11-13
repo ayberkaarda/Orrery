@@ -199,7 +199,7 @@ std::optional<std::string> environment_variable(const char* name) {
 }
 
 std::string display_path(const std::filesystem::path& path) {
-    const std::string text = path.string();
+    std::string text = path.string();
     const std::string home = home_dir().string();
     if (home.empty() || text.size() < home.size()) {
         return text;

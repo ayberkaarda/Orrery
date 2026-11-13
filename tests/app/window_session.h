@@ -303,7 +303,7 @@ struct Probe {
 // Scans `area_of(frame)` row by row (rows `step` pixels apart, `columns`
 // probes per row across its width) until `hit` holds for the frame drawn
 // with the pointer at a probe.
-inline Step locate(std::string name, std::shared_ptr<Probe> probe,
+inline Step locate(std::string name, const std::shared_ptr<Probe>& probe,
                    std::function<std::optional<ImRect>()> area_of, std::function<bool()> hit,
                    int columns = 1) {
     Step step;
@@ -343,7 +343,7 @@ inline Step locate(std::string name, std::shared_ptr<Probe> probe,
 }
 
 // The pointer at the probe's position (once it is found).
-inline Input mouse_at(std::shared_ptr<const Probe> probe) {
+inline Input mouse_at(const std::shared_ptr<const Probe>& probe) {
     return [probe](WindowControl&) { ImGui::GetIO().AddMousePosEvent(probe->at.x, probe->at.y); };
 }
 

@@ -105,7 +105,7 @@ struct Series {
 // Where the centre of the scene area sits in the window, in half window
 // heights right and up of the window's centre (render::OrbitMode::view_shift).
 glm::dvec2 scene_view_shift(const render::UiRect& scene, int window_width, int window_height) {
-    const double height = static_cast<double>(window_height);
+    const auto height = static_cast<double>(window_height);
     return {2.0 * (scene.x + 0.5 * scene.width - 0.5 * static_cast<double>(window_width)) / height,
             2.0 * (0.5 * height - (scene.y + 0.5 * scene.height)) / height};
 }
@@ -181,7 +181,7 @@ private:
     // One drawn frame into `pipeline` (recreated for a new size); false when
     // the pipeline cannot be created.
     bool draw_frame(int width, int height, double dt, std::ostream& err);
-    void draw_space_scene(const render::FrameInfo& frame, double dt);
+    void draw_space_scene(render::HdrPipeline& pipeline, const render::FrameInfo& frame, double dt);
     // Scripted sessions: the driver's requests before a frame, and its view
     // of the frame afterwards.
     WindowControl drive_before_frame();
@@ -211,12 +211,12 @@ private:
     std::optional<std::size_t> requested_scenario_;
     double frame_seconds_ = 1.0 / 60.0; // smoothed frame time
     double warp_limited_hold_ = 0.0;
+    // The scene area the view was last framed or centred for, and whether
+    // the user moved the camera since the last framing (camera_moved_).
+    std::optional<render::UiRect> framed_scene_;
     // The view is framed again (scenario loaded or reset, F/Home) once the
     // scene area of the dock space is known in the next UI frame.
     bool reframe_pending_ = true;
-    // The scene area the view was last framed or centred for, and whether
-    // the user moved the camera since the last framing.
-    std::optional<render::UiRect> framed_scene_;
     bool camera_moved_ = false;
     // Phase 10: the help overlay of the keyboard shortcuts is shown.
     bool help_open_ = false;
@@ -557,7 +557,8 @@ void WindowApp::draw_entry_scene(const render::FrameInfo& frame, std::ostream& e
     entry_.set_view_problem(std::move(problem));
 }
 
-void WindowApp::draw_space_scene(const render::FrameInfo& frame, double dt) {
+void WindowApp::draw_space_scene(render::HdrPipeline& pipeline, const render::FrameInfo& frame,
+                                 double dt) {
     camera_.update(dt, camera_input_, body_frames(snapshot_));
     if (snapshot_) {
         const render::PreparedBodies prepared =
@@ -566,14 +567,14 @@ void WindowApp::draw_space_scene(const render::FrameInfo& frame, double dt) {
             render::make_scene_labels(*snapshot_, prepared.screen, selected_);
         render::draw_scene_labels(labels);
     }
-    pipeline_->set_exposure(settings_.exposure);
-    pipeline_->begin_scene();
+    pipeline.set_exposure(settings_.exposure);
+    pipeline.begin_scene();
     if (snapshot_) {
         const render::SpaceView view{snapshot_.get(), &trails_, &camera_, settings_};
         (void)space_.draw(view, frame);
     }
-    pipeline_->resolve();
-    pipeline_->begin_overlay();
+    pipeline.resolve();
+    pipeline.begin_overlay();
 }
 
 bool WindowApp::draw_frame(int width, int height, double dt, std::ostream& err) {
@@ -613,7 +614,7 @@ bool WindowApp::draw_frame(int width, int height, double dt, std::ostream& err) 
         pipeline_->resolve();
         pipeline_->begin_overlay();
     } else {
-        draw_space_scene(frame, dt);
+        draw_space_scene(*pipeline_, frame, dt);
     }
     ui_.end_frame();
     pipeline_->present(width, height);

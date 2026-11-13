@@ -343,7 +343,7 @@ TEST_CASE("The window's framebuffer holds the frame with its panels", "[app][win
         // The panels' background, the scene's black and the bar's text: the
         // frame is far from uniform.
         std::set<std::uint32_t> colours;
-        for (std::size_t i = 0; i < image.pixels.size(); i += 4 * 97) {
+        for (std::size_t i = 0; i < image.pixels.size(); i += std::size_t{4} * 97U) {
             colours.insert(static_cast<std::uint32_t>(image.pixels[i]) << 16U |
                            static_cast<std::uint32_t>(image.pixels[i + 1]) << 8U |
                            image.pixels[i + 2]);
