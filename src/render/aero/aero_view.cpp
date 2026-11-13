@@ -37,6 +37,8 @@ constexpr double kAmbient = 0.42;
 constexpr double kSpecular = 0.35;
 constexpr double kRim = 0.05;
 constexpr double kContourStrength = 0.16;
+// Depth pull of lines towards the camera (aero_line.frag.glsl).
+constexpr double kLineDepthBias = 2.0e-5;
 // Key light in camera axes (x right, y up, z towards the viewer).
 constexpr glm::dvec3 kKeyLightView{-0.42, 0.55, 0.72};
 
@@ -332,9 +334,101 @@ glm::dvec3 display_linear(const UiColor& c) {
     return {decode(c.r), decode(c.g), decode(c.b)};
 }
 
+// Per-frame values shared by the layers of AeroView::draw.
+struct DrawContext {
+    const Camera* camera = nullptr;
+    glm::mat4 view_projection{1.0F};
+    glm::dvec3 offset{0.0}; // world origin in render space
+    glm::mat4 model{1.0F};  // world -> render space
+    float depth_scale = 0.0F;
+    glm::vec3 key{0.0F, 0.0F, 1.0F};
+    glm::vec2 viewport{1.0F};
+    float near_w = 0.0F;
+    double exposure = 1.0;
+
+    [[nodiscard]] glm::vec3 precompensate(const glm::dvec3& display) const {
+        return to_vec3(scene_linear_for_display(display, exposure));
+    }
+};
+
+using DrawStatus = core::Result<std::monostate, std::string>;
+
+// Arrow mesh of one force component; empty when it is too short to draw.
+core::Result<std::optional<MeshGpu>, std::string> arrow_mesh(const ForceComponent& c,
+                                                             const glm::dvec3& origin,
+                                                             double length_per_coefficient,
+                                                             double radius) {
+    const double length = c.coefficient * length_per_coefficient;
+    if (!(std::abs(length) > 4.0 * radius) || glm::length(c.direction) == 0.0) {
+        return std::optional<MeshGpu>{};
+    }
+    std::vector<SurfaceVertex> vertices;
+    append_arrow(vertices, origin, c.direction * (length < 0.0 ? -1.0 : 1.0), std::abs(length),
+                 radius);
+    auto mesh = upload_mesh(vertices, {});
+    if (!mesh) {
+        return core::failure(std::string(mesh.error()));
+    }
+    return std::optional<MeshGpu>(std::move(mesh).value());
+}
+
+// One streamline segment (aero_line.vert.glsl instance).
+struct LineSegment {
+    glm::vec4 p0{0.0F};
+    glm::vec4 p1{0.0F};
+    glm::vec2 alpha{0.0F};
+};
+
+// Segments of traced lines, tapered over the first and last few segments.
+std::vector<LineSegment> line_segments(const std::vector<Streamline>& lines, std::size_t& count,
+                                       std::size_t& points) {
+    std::vector<LineSegment> segments;
+    count = 0;
+    points = 0;
+    for (const Streamline& line : lines) {
+        const std::size_t n = line.points.size();
+        if (n < 2) {
+            continue;
+        }
+        ++count;
+        points += n;
+        const auto taper = [n](std::size_t k) {
+            const auto d = static_cast<double>(std::min(k, n - 1 - k));
+            return detail::to_float(std::min(1.0, 0.25 + d / 6.0));
+        };
+        segments.reserve(segments.size() + n - 1);
+        for (std::size_t i = 0; i + 1 < n; ++i) {
+            segments.push_back(
+                {glm::vec4(to_vec3(line.points[i]), detail::to_float(line.speed[i])),
+                 glm::vec4(to_vec3(line.points[i + 1]), detail::to_float(line.speed[i + 1])),
+                 glm::vec2(taper(i), taper(i + 1))});
+        }
+    }
+    return segments;
+}
+
+// Grid step of the floor: 1, 2 or 5 times a power of ten, about size / 12.
+double floor_step(double size) {
+    const double raw = size / 12.0;
+    const double magnitude = std::pow(10.0, std::floor(std::log10(raw)));
+    if (raw / magnitude < 2.0) {
+        return magnitude;
+    }
+    return raw / magnitude < 5.0 ? 2.0 * magnitude : 5.0 * magnitude;
+}
+
 } // namespace
 
 struct AeroView::State {
+    State(std::unique_ptr<GlComputeBackend> backend, Program surface_shader, Program section_shader,
+          Program floor_shader, Program line_shader, Program particle_shader,
+          Program overlay_shader, Program backdrop_shader)
+        : compute(std::move(backend)), surface_program(std::move(surface_shader)),
+          section_program(std::move(section_shader)), floor_program(std::move(floor_shader)),
+          line_program(std::move(line_shader)), particle_program(std::move(particle_shader)),
+          overlay_program(std::move(overlay_shader)), backdrop_program(std::move(backdrop_shader)),
+          empty_vao(VertexArray::create()) {}
+
     std::unique_ptr<GlComputeBackend> compute;
     Program surface_program;
     Program section_program;
@@ -448,6 +542,417 @@ struct AeroView::State {
         field_buffer_version = flow_version;
         return std::monostate{};
     }
+
+    [[nodiscard]] const Texture& lut(Colormap map) const {
+        switch (map) {
+            case Colormap::diverging:
+                return *lut_diverging;
+            case Colormap::diverging_dark:
+                return *lut_diverging_dark;
+            case Colormap::sequential:
+                break;
+        }
+        return *lut_sequential;
+    }
+
+    DrawStatus ensure_luts(double exposure) {
+        if (lut_exposure == exposure && lut_diverging && lut_diverging_dark && lut_sequential) {
+            return std::monostate{};
+        }
+        auto diverging = make_lut(Colormap::diverging, exposure);
+        auto dark = make_lut(Colormap::diverging_dark, exposure);
+        auto sequential = make_lut(Colormap::sequential, exposure);
+        for (const auto* made : {&diverging, &dark, &sequential}) {
+            if (!*made) {
+                return core::failure("aero view: " + made->error());
+            }
+        }
+        lut_diverging = std::move(diverging).value();
+        lut_diverging_dark = std::move(dark).value();
+        lut_sequential = std::move(sequential).value();
+        lut_exposure = exposure;
+        return std::monostate{};
+    }
+
+    void draw_mesh(const DrawContext& c, const MeshGpu& mesh, const glm::vec3& neutral,
+                   const ScalarRange& range, Colormap map, float opacity,
+                   const glm::vec2& contours) const {
+        surface_program.set("u_model", c.model);
+        surface_program.set("u_view_projection", c.view_projection);
+        surface_program.set("u_log_depth_scale", c.depth_scale);
+        surface_program.set("u_range",
+                            glm::vec2(detail::to_float(range.min), detail::to_float(range.max)));
+        surface_program.set("u_neutral", neutral);
+        surface_program.set("u_key_direction", c.key);
+        surface_program.set("u_ambient", detail::to_float(kAmbient));
+        surface_program.set("u_specular", detail::to_float(kSpecular));
+        surface_program.set("u_rim", detail::to_float(kRim));
+        surface_program.set("u_opacity", opacity);
+        surface_program.set("u_contours", contours);
+        surface_program.set("u_contour_strength", detail::to_float(kContourStrength));
+        lut(map).bind(0);
+        surface_program.use();
+        mesh.vao.bind();
+        if (mesh.indices) {
+            glDrawElements(GL_TRIANGLES, mesh.count, GL_UNSIGNED_INT, nullptr);
+        } else {
+            glDrawArrays(GL_TRIANGLES, 0, mesh.count);
+        }
+    }
+
+    void draw_backdrop(const AeroViewOptions& options) const {
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glDisable(GL_BLEND);
+        backdrop_program.set("u_horizon", to_vec3(options.backdrop_bottom));
+        backdrop_program.set("u_zenith", to_vec3(options.backdrop_top));
+        backdrop_program.use();
+        empty_vao.bind();
+        glDrawArrays(GL_TRIANGLES, 0, 3);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glDepthMask(GL_TRUE);
+    }
+
+    void draw_floor(const DrawContext& c, const geom::Bounds& bounds) const {
+        const glm::dvec3 lo = to_glm(bounds.min);
+        const glm::dvec3 hi = to_glm(bounds.max);
+        const double size = std::max(glm::length(hi - lo), 1.0e-3);
+        const glm::dvec3 centre = 0.5 * (lo + hi);
+        const double half = 1.6 * size;
+        const glm::dvec3 corner(centre.x - half, centre.y - half, lo.z - 0.12 * size);
+        floor_program.set("u_corner", to_vec3(c.camera->to_render_double(corner)));
+        floor_program.set("u_edge_u", glm::vec3(detail::to_float(2.0 * half), 0.0F, 0.0F));
+        floor_program.set("u_edge_v", glm::vec3(0.0F, detail::to_float(2.0 * half), 0.0F));
+        floor_program.set("u_uv_min", glm::vec2(to_vec3(corner)));
+        floor_program.set("u_uv_max", glm::vec2(to_vec3(corner + glm::dvec3(2.0 * half))));
+        floor_program.set("u_view_projection", c.view_projection);
+        floor_program.set("u_log_depth_scale", c.depth_scale);
+        floor_program.set("u_step", detail::to_float(floor_step(size)));
+        floor_program.set("u_color", c.precompensate({0.055, 0.065, 0.085}));
+        floor_program.set("u_opacity", 0.55F);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        floor_program.use();
+        empty_vao.bind();
+        glDrawArrays(GL_TRIANGLES, 0, 6);
+        glDisable(GL_BLEND);
+        glDepthMask(GL_TRUE);
+    }
+
+    DrawStatus draw_body(const DrawContext& c, const SurfaceLayer& layer, AeroDrawStats& stats) {
+        if (!surface || !layer.enabled) {
+            return std::monostate{};
+        }
+        if (!surface_mesh || surface_smooth != layer.smooth) {
+            auto mesh = upload_mesh(surface_vertices(*surface, layer.smooth), {});
+            if (!mesh) {
+                return core::failure("aero view: " + mesh.error());
+            }
+            surface_mesh = std::move(mesh).value();
+            surface_smooth = layer.smooth;
+        }
+        const ScalarRange range = cp_range(layer.scale);
+        const glm::vec2 contours =
+            layer.smooth && surface_has_cp() ? contour_spacing(range) : glm::vec2(0.0F);
+        draw_mesh(c, *surface_mesh, c.precompensate(layer.neutral_albedo), range,
+                  Colormap::diverging, 1.0F, contours);
+        stats.surface_triangles = surface->mesh.triangles.size();
+        return std::monostate{};
+    }
+
+    // Brings the section textures in line with the enabled planes (cached
+    // by plane parameters).
+    DrawStatus update_sections(const std::vector<SectionPlane>& planes) {
+        if (!flow) {
+            sections.clear();
+            return std::monostate{};
+        }
+        const bool flat = flow->velocity.grid.is_2d();
+        std::vector<SectionGpu> kept;
+        for (const SectionPlane& plane : planes) {
+            if (!plane.enabled || (plane.quantity == FieldQuantity::pressure && !flow->pressure) ||
+                (flat && plane.axis != Axis::z)) {
+                continue;
+            }
+            auto cached = std::ranges::find_if(
+                sections, [&](const SectionGpu& g) { return same_plane(g.plane, plane); });
+            if (cached != sections.end()) {
+                cached->plane = plane; // opacity and the other unkeyed fields
+                kept.push_back(std::move(*cached));
+                sections.erase(cached);
+                continue;
+            }
+            SectionImage image = sample_section(derived_grid(plane.quantity, plane.axis),
+                                                flow->solid, plane.axis, plane.position);
+            if (image.values.empty()) {
+                continue;
+            }
+            auto texture =
+                Texture::create_2d(static_cast<int>(image.width), static_cast<int>(image.height),
+                                   TextureFormat::rgba32f);
+            if (!texture) {
+                return core::failure("aero view: section texture: " + texture.error());
+            }
+            std::vector<float> texels;
+            texels.reserve(image.values.size() * 4);
+            for (std::size_t i = 0; i < image.values.size(); ++i) {
+                texels.insert(texels.end(), {detail::to_float(image.values[i]),
+                                             image.solid[i] != 0 ? 1.0F : 0.0F, 0.0F, 0.0F});
+            }
+            glTextureSubImage2D(texture.value().id(), 0, 0, 0, static_cast<GLsizei>(image.width),
+                                static_cast<GLsizei>(image.height), GL_RGBA, GL_FLOAT,
+                                texels.data());
+            image.values.clear();
+            image.solid.clear();
+            const ScalarRange range =
+                field_range(plane.quantity, plane.axis, effective_scale(plane));
+            kept.push_back(
+                SectionGpu{plane, std::move(texture).value(), image, range, plane.quantity});
+        }
+        sections = std::move(kept);
+        return std::monostate{};
+    }
+
+    void draw_sections(const DrawContext& c, const AeroViewOptions& options, bool translucent,
+                       AeroDrawStats& stats) const {
+        const glm::vec3 solid_color = c.precompensate(options.surface.neutral_albedo * 0.85);
+        for (const SectionGpu& g : sections) {
+            const double opacity = std::clamp(g.plane.opacity, 0.0, 1.0);
+            if ((opacity < 0.999) != translucent) {
+                continue;
+            }
+            const glm::dvec3 edge_u = g.image.u_step * static_cast<double>(g.image.width - 1);
+            const glm::dvec3 edge_v = g.image.v_step * static_cast<double>(g.image.height - 1);
+            const glm::vec2 uv_min(0.5F / static_cast<float>(g.image.width),
+                                   0.5F / static_cast<float>(g.image.height));
+            section_program.set("u_corner", to_vec3(c.camera->to_render_double(g.image.corner)));
+            section_program.set("u_edge_u", to_vec3(edge_u));
+            section_program.set("u_edge_v", to_vec3(edge_v));
+            section_program.set("u_uv_min", uv_min);
+            section_program.set("u_uv_max", glm::vec2(1.0F - uv_min.x, 1.0F - uv_min.y));
+            section_program.set("u_view_projection", c.view_projection);
+            section_program.set("u_log_depth_scale", c.depth_scale);
+            section_program.set(
+                "u_range", glm::vec2(detail::to_float(g.range.min), detail::to_float(g.range.max)));
+            section_program.set("u_solid_color", solid_color);
+            section_program.set("u_opacity", detail::to_float(opacity));
+            section_program.set("u_contours", glm::vec2(0.0F));
+            section_program.set("u_contour_strength", 0.0F);
+            lut(colormap_of(g.plane)).bind(0);
+            g.values.bind(1);
+            if (translucent) {
+                glEnable(GL_BLEND);
+                glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                glDepthMask(GL_FALSE);
+            }
+            section_program.use();
+            empty_vao.bind();
+            glDrawArrays(GL_TRIANGLES, 0, 6);
+            glDepthMask(GL_TRUE);
+            glDisable(GL_BLEND);
+            ++stats.section_planes;
+        }
+    }
+
+    DrawStatus draw_arrows(const DrawContext& c, const ForceLayer& layer,
+                           const geom::Bounds& bounds, AeroDrawStats& stats) {
+        if (!forces || !layer.enabled) {
+            return std::monostate{};
+        }
+        std::ostringstream key_text;
+        key_text << layer.length_per_coefficient << layer.drag << layer.lift << layer.side;
+        if (arrow_key != key_text.str()) {
+            const double radius =
+                0.006 * std::max(glm::length(to_glm(bounds.max) - to_glm(bounds.min)), 1.0e-3);
+            const glm::dvec3 origin = forces->application_point;
+            const std::array<std::pair<const ForceComponent*, std::optional<MeshGpu>*>, 3> parts{
+                {{layer.lift ? &forces->lift : nullptr, &lift_arrow},
+                 {layer.drag ? &forces->drag : nullptr, &drag_arrow},
+                 {layer.side ? &forces->side : nullptr, &side_arrow}}};
+            for (const auto& [component, slot] : parts) {
+                slot->reset();
+                if (component == nullptr) {
+                    continue;
+                }
+                auto mesh = arrow_mesh(*component, origin, layer.length_per_coefficient, radius);
+                if (!mesh) {
+                    return core::failure("aero view: " + mesh.error());
+                }
+                *slot = std::move(mesh).value();
+            }
+            arrow_key = key_text.str();
+        }
+        const std::array<std::pair<const std::optional<MeshGpu>*, glm::dvec3>, 3> drawn{
+            {{&lift_arrow, display_linear(lift_ui_color()) * 0.9},
+             {&drag_arrow, display_linear(drag_ui_color()) * 0.9},
+             {&side_arrow, glm::dvec3(0.55, 0.45, 0.75)}}};
+        for (const auto& [mesh, color] : drawn) {
+            if (*mesh) {
+                draw_mesh(c, **mesh, c.precompensate(color), {0.0, 1.0}, Colormap::diverging, 1.0F,
+                          glm::vec2(0.0F));
+                ++stats.force_arrows;
+            }
+        }
+        return std::monostate{};
+    }
+
+    DrawStatus update_iso(const IsoSurfaceLayer& layer) {
+        if (iso && iso->level == layer.level && iso->absolute == layer.absolute) {
+            return std::monostate{};
+        }
+        const ScalarGrid& q = derived_grid(FieldQuantity::q_criterion, Axis::z);
+        double peak = 0.0;
+        for (const double v : q.values) {
+            peak = std::max(peak, v);
+        }
+        const double level = layer.absolute ? layer.level : layer.level * peak;
+        IsoGpu made;
+        made.level = layer.level;
+        made.absolute = layer.absolute;
+        if (peak > 0.0 && level > 0.0) {
+            auto extracted = marching_cubes_gpu(*compute, q, level);
+            if (!extracted) {
+                return core::failure("aero view: " + extracted.error());
+            }
+            const IsoSurface& m = extracted.value();
+            if (!m.indices.empty()) {
+                std::vector<SurfaceVertex> vertices;
+                vertices.reserve(m.positions.size());
+                for (std::size_t v = 0; v < m.positions.size(); ++v) {
+                    vertices.push_back(
+                        {to_vec3(m.positions[v]), to_vec3(m.normals[v]), glm::vec2(0.0F)});
+                }
+                auto mesh = upload_mesh(vertices, m.indices);
+                if (!mesh) {
+                    return core::failure("aero view: " + mesh.error());
+                }
+                made.mesh = std::move(mesh).value();
+                made.triangles = m.triangle_count();
+            }
+        }
+        iso = std::move(made);
+        return std::monostate{};
+    }
+
+    void draw_iso(const DrawContext& c, const IsoSurfaceLayer& layer, AeroDrawStats& stats) const {
+        if (!iso || !iso->mesh) {
+            return;
+        }
+        // Translucent: back faces first, then front faces.
+        const auto opacity = detail::to_float(std::clamp(layer.opacity, 0.0, 1.0));
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_CULL_FACE);
+        for (const bool back_faces : {true, false}) {
+            glCullFace(back_faces ? GL_FRONT : GL_BACK);
+            draw_mesh(c, *iso->mesh, c.precompensate(layer.color), {0.0, 1.0}, Colormap::diverging,
+                      opacity, glm::vec2(0.0F));
+        }
+        glDisable(GL_CULL_FACE);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        stats.iso_triangles = iso->triangles;
+    }
+
+    DrawStatus update_streamlines(const StreamlineLayer& layer) {
+        const std::vector<glm::dvec3> seeds = seeds_for(layer);
+        if (streamlines && streamlines->seeds == seeds &&
+            same_settings(streamlines->settings, layer.settings)) {
+            return std::monostate{};
+        }
+        auto lines =
+            trace_streamlines_gpu(*compute, flow->velocity, flow->solid, seeds, layer.settings);
+        if (!lines) {
+            return core::failure("aero view: " + lines.error());
+        }
+        StreamlinesGpu gpu{seeds, layer.settings, std::nullopt, VertexArray::create(), 0, 0, 0};
+        const std::vector<LineSegment> segments =
+            line_segments(lines.value(), gpu.lines, gpu.points);
+        if (!segments.empty()) {
+            auto buffer = Buffer::from(std::span<const LineSegment>(segments));
+            if (!buffer) {
+                return core::failure("aero view: streamlines: " + buffer.error());
+            }
+            gpu.segments = std::move(buffer).value();
+            gpu.vao.set_vertex_buffer(0, *gpu.segments, 0, sizeof(LineSegment));
+            gpu.vao.set_float_attribute(0, 0, 4, 0);
+            gpu.vao.set_float_attribute(1, 0, 4, 4 * sizeof(float));
+            gpu.vao.set_float_attribute(2, 0, 2, 8 * sizeof(float));
+            gpu.vao.set_binding_divisor(0, 1);
+            gpu.count = static_cast<GLsizei>(segments.size());
+        }
+        streamlines = std::move(gpu);
+        return std::monostate{};
+    }
+
+    void draw_streamlines(const DrawContext& c, const StreamlineLayer& layer,
+                          AeroDrawStats& stats) {
+        if (!streamlines || streamlines->count == 0) {
+            return;
+        }
+        const ScalarRange range = field_range(FieldQuantity::speed, Axis::z, {});
+        line_program.set("u_view_projection", c.view_projection);
+        line_program.set("u_offset", to_vec3(c.offset));
+        line_program.set("u_viewport", c.viewport);
+        line_program.set("u_half_width", detail::to_float(0.5 * layer.width_px));
+        line_program.set("u_near", c.near_w);
+        line_program.set("u_range",
+                         glm::vec2(detail::to_float(range.min), detail::to_float(range.max)));
+        line_program.set("u_use_colormap", layer.color_by_speed ? 1 : 0);
+        line_program.set("u_color", c.precompensate(layer.color));
+        line_program.set("u_log_depth_scale", c.depth_scale);
+        line_program.set("u_depth_bias", detail::to_float(kLineDepthBias));
+        lut(Colormap::sequential).bind(0);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        line_program.use();
+        streamlines->vao.bind();
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 6, streamlines->count);
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        stats.streamlines = streamlines->lines;
+        stats.streamline_points = streamlines->points;
+    }
+
+    // Particles, straight from the kernel's trace buffer.
+    void draw_particles(const DrawContext& c, const ParticleLayer& layer,
+                        AeroDrawStats& stats) const {
+        if (!particles || !flow) {
+            return;
+        }
+        const ParticlesGpu& p = *particles;
+        const GridGeometry& g = flow->velocity.grid;
+        particle_program.set("u_view_projection", c.view_projection);
+        particle_program.set("u_grid_origin", to_vec3(c.camera->to_render_double(g.origin)));
+        particle_program.set("u_spacing", detail::to_float(g.spacing));
+        set_uint(particle_program, "u_trace_points", static_cast<std::uint32_t>(p.trace_points));
+        set_uint(particle_program, "u_head", p.head);
+        particle_program.set("u_viewport", c.viewport);
+        particle_program.set("u_half_width", detail::to_float(0.5 * layer.width_px));
+        particle_program.set("u_near", c.near_w);
+        particle_program.set("u_lifetime", detail::to_float(layer.lifetime));
+        particle_program.set("u_color", c.precompensate(layer.color));
+        particle_program.set("u_opacity", detail::to_float(std::clamp(layer.opacity, 0.0, 1.0)));
+        particle_program.set("u_log_depth_scale", c.depth_scale);
+        particle_program.set("u_depth_bias", detail::to_float(kLineDepthBias));
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, compute->buffer_name(p.traces.id()));
+        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        particle_program.use();
+        empty_vao.bind();
+        glDrawArraysInstanced(GL_TRIANGLES, 0, 6,
+                              static_cast<GLsizei>(p.count * (p.trace_points - 1)));
+        glDepthMask(GL_TRUE);
+        glDisable(GL_BLEND);
+        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
+        stats.particles = p.count;
+    }
 };
 
 HdrSettings aero_hdr_settings() {
@@ -500,10 +1005,10 @@ core::Result<AeroView, std::string> AeroView::create() {
             return core::failure("aero view: " + program->error());
         }
     }
-    auto state = std::make_unique<State>(
-        State{std::move(compute).value(), std::move(surface).value(), std::move(section).value(),
-              std::move(floor).value(), std::move(line).value(), std::move(particle).value(),
-              std::move(overlay).value(), std::move(backdrop).value(), VertexArray::create()});
+    auto state = std::make_unique<State>(std::move(compute).value(), std::move(surface).value(),
+                                         std::move(section).value(), std::move(floor).value(),
+                                         std::move(line).value(), std::move(particle).value(),
+                                         std::move(overlay).value(), std::move(backdrop).value());
     return AeroView(std::move(state));
 }
 
@@ -749,458 +1254,53 @@ core::Result<AeroDrawStats, std::string>
 AeroView::draw(const Camera& camera, const FrameInfo& frame, const AeroViewOptions& options) {
     State& s = *state_;
     AeroDrawStats stats;
-    if (s.lut_exposure != options.exposure || !s.lut_diverging) {
-        auto diverging = make_lut(Colormap::diverging, options.exposure);
-        auto dark = make_lut(Colormap::diverging_dark, options.exposure);
-        auto sequential = make_lut(Colormap::sequential, options.exposure);
-        for (const auto* made : {&diverging, &dark, &sequential}) {
-            if (!*made) {
-                return core::failure("aero view: " + made->error());
-            }
-        }
-        s.lut_diverging = std::move(diverging).value();
-        s.lut_diverging_dark = std::move(dark).value();
-        s.lut_sequential = std::move(sequential).value();
-        s.lut_exposure = options.exposure;
+    if (auto ready = s.ensure_luts(options.exposure); !ready) {
+        return core::failure(std::string(ready.error()));
     }
-    const auto lut = [&s](Colormap map) -> const Texture& {
-        switch (map) {
-            case Colormap::diverging:
-                return *s.lut_diverging;
-            case Colormap::diverging_dark:
-                return *s.lut_diverging_dark;
-            case Colormap::sequential:
-                break;
-        }
-        return *s.lut_sequential;
-    };
-    const auto precompensate = [&](const glm::dvec3& display) {
-        return to_vec3(scene_linear_for_display(display, options.exposure));
-    };
-    const glm::mat4 view_projection = camera.view_projection_matrix(frame.aspect());
-    const glm::dvec3 offset = camera.to_render_double(glm::dvec3(0.0));
-    const glm::mat4 model(glm::translate(glm::dmat4(1.0), offset));
-    const auto depth_scale = detail::to_float(log_depth_scale(camera.lens().log_depth_far));
-    const glm::vec3 key = to_vec3(glm::normalize(camera.orientation() * kKeyLightView));
-    const glm::vec2 viewport(static_cast<float>(frame.width), static_cast<float>(frame.height));
-    const auto near_w = detail::to_float(camera.lens().near_plane);
+    DrawContext c;
+    c.camera = &camera;
+    c.view_projection = camera.view_projection_matrix(frame.aspect());
+    c.offset = camera.to_render_double(glm::dvec3(0.0));
+    c.model = glm::mat4(glm::translate(glm::dmat4(1.0), c.offset));
+    c.depth_scale = detail::to_float(log_depth_scale(camera.lens().log_depth_far));
+    c.key = to_vec3(glm::normalize(camera.orientation() * kKeyLightView));
+    c.viewport = {static_cast<float>(frame.width), static_cast<float>(frame.height)};
+    c.near_w = detail::to_float(camera.lens().near_plane);
+    c.exposure = options.exposure;
 
     glDisable(GL_CULL_FACE);
-    // 1. Backdrop.
-    glDisable(GL_DEPTH_TEST);
-    glDepthMask(GL_FALSE);
-    glDisable(GL_BLEND);
-    s.backdrop_program.set("u_horizon", to_vec3(options.backdrop_bottom));
-    s.backdrop_program.set("u_zenith", to_vec3(options.backdrop_top));
-    s.backdrop_program.use();
-    s.empty_vao.bind();
-    glDrawArrays(GL_TRIANGLES, 0, 3);
-    glEnable(GL_DEPTH_TEST);
-    glDepthFunc(GL_LESS);
-
+    s.draw_backdrop(options);
     const geom::Bounds bounds = scene_bounds();
     const bool flat_flow = s.flow && s.flow->velocity.grid.is_2d();
-
-    // 2. Floor grid under a 3D scene.
     if ((s.surface || s.flow) && !flat_flow) {
-        const glm::dvec3 lo = to_glm(bounds.min);
-        const glm::dvec3 hi = to_glm(bounds.max);
-        const double size = std::max(glm::length(hi - lo), 1.0e-3);
-        const double raw_step = size / 12.0;
-        const double magnitude = std::pow(10.0, std::floor(std::log10(raw_step)));
-        const double step = raw_step / magnitude < 2.0   ? magnitude
-                            : raw_step / magnitude < 5.0 ? 2.0 * magnitude
-                                                         : 5.0 * magnitude;
-        const glm::dvec3 centre = 0.5 * (lo + hi);
-        const double half = 1.6 * size;
-        const double z = lo.z - 0.12 * size;
-        const glm::dvec3 corner(centre.x - half, centre.y - half, z);
-        s.floor_program.set("u_corner", to_vec3(camera.to_render_double(corner)));
-        s.floor_program.set("u_edge_u", glm::vec3(detail::to_float(2.0 * half), 0.0F, 0.0F));
-        s.floor_program.set("u_edge_v", glm::vec3(0.0F, detail::to_float(2.0 * half), 0.0F));
-        s.floor_program.set("u_uv_min", glm::vec2(to_vec3(corner)));
-        s.floor_program.set("u_uv_max", glm::vec2(to_vec3(corner + glm::dvec3(2.0 * half))));
-        s.floor_program.set("u_view_projection", view_projection);
-        s.floor_program.set("u_log_depth_scale", depth_scale);
-        s.floor_program.set("u_step", detail::to_float(step));
-        s.floor_program.set("u_color", precompensate({0.055, 0.065, 0.085}));
-        s.floor_program.set("u_opacity", 0.55F);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        s.floor_program.use();
-        s.empty_vao.bind();
-        glDrawArrays(GL_TRIANGLES, 0, 6);
-        glDisable(GL_BLEND);
+        s.draw_floor(c, bounds);
     }
-    glDepthMask(GL_TRUE);
-
-    const auto draw_surface_mesh = [&](const MeshGpu& mesh, const glm::vec3& neutral,
-                                       const ScalarRange& range, Colormap map, float opacity,
-                                       glm::vec2 contours) {
-        s.surface_program.set("u_model", model);
-        s.surface_program.set("u_view_projection", view_projection);
-        s.surface_program.set("u_log_depth_scale", depth_scale);
-        s.surface_program.set("u_range",
-                              glm::vec2(detail::to_float(range.min), detail::to_float(range.max)));
-        s.surface_program.set("u_neutral", neutral);
-        s.surface_program.set("u_key_direction", key);
-        s.surface_program.set("u_ambient", detail::to_float(kAmbient));
-        s.surface_program.set("u_specular", detail::to_float(kSpecular));
-        s.surface_program.set("u_rim", detail::to_float(kRim));
-        s.surface_program.set("u_opacity", opacity);
-        s.surface_program.set("u_contours", contours);
-        s.surface_program.set("u_contour_strength", detail::to_float(kContourStrength));
-        lut(map).bind(0);
-        s.surface_program.use();
-        mesh.vao.bind();
-        if (mesh.indices) {
-            glDrawElements(GL_TRIANGLES, mesh.count, GL_UNSIGNED_INT, nullptr);
-        } else {
-            glDrawArrays(GL_TRIANGLES, 0, mesh.count);
-        }
-    };
-
-    // 3. Body.
-    if (s.surface && options.surface.enabled) {
-        if (!s.surface_mesh || s.surface_smooth != options.surface.smooth) {
-            auto mesh = upload_mesh(surface_vertices(*s.surface, options.surface.smooth), {});
-            if (!mesh) {
-                return core::failure("aero view: " + mesh.error());
-            }
-            s.surface_mesh = std::move(mesh).value();
-            s.surface_smooth = options.surface.smooth;
-        }
-        const ScalarRange range = s.cp_range(options.surface.scale);
-        const glm::vec2 contours =
-            options.surface.smooth && s.surface_has_cp() ? contour_spacing(range) : glm::vec2(0.0F);
-        draw_surface_mesh(*s.surface_mesh, precompensate(options.surface.neutral_albedo), range,
-                          Colormap::diverging, 1.0F, contours);
-        stats.surface_triangles = s.surface->mesh.triangles.size();
+    // Opaque layers, then the translucent ones.
+    if (auto done = s.draw_body(c, options.surface, stats); !done) {
+        return core::failure(std::string(done.error()));
     }
-
-    // 4. Section planes.
-    if (s.flow) {
-        std::vector<SectionGpu> kept;
-        for (const SectionPlane& plane : options.sections) {
-            if (!plane.enabled ||
-                (plane.quantity == FieldQuantity::pressure && !s.flow->pressure) ||
-                (flat_flow && plane.axis != Axis::z)) {
-                continue;
-            }
-            auto cached = std::ranges::find_if(
-                s.sections, [&](const SectionGpu& g) { return same_plane(g.plane, plane); });
-            if (cached != s.sections.end()) {
-                kept.push_back(std::move(*cached));
-                s.sections.erase(cached);
-                continue;
-            }
-            const ScalarGrid& grid = s.derived_grid(plane.quantity, plane.axis);
-            SectionImage image = sample_section(grid, s.flow->solid, plane.axis, plane.position);
-            if (image.values.empty()) {
-                continue;
-            }
-            auto texture =
-                Texture::create_2d(static_cast<int>(image.width), static_cast<int>(image.height),
-                                   TextureFormat::rgba32f);
-            if (!texture) {
-                return core::failure("aero view: section texture: " + texture.error());
-            }
-            std::vector<float> texels;
-            texels.reserve(image.values.size() * 4);
-            for (std::size_t i = 0; i < image.values.size(); ++i) {
-                texels.insert(texels.end(), {detail::to_float(image.values[i]),
-                                             image.solid[i] != 0 ? 1.0F : 0.0F, 0.0F, 0.0F});
-            }
-            glTextureSubImage2D(texture.value().id(), 0, 0, 0, static_cast<GLsizei>(image.width),
-                                static_cast<GLsizei>(image.height), GL_RGBA, GL_FLOAT,
-                                texels.data());
-            image.values.clear();
-            image.solid.clear();
-            const ScalarRange range =
-                s.field_range(plane.quantity, plane.axis, effective_scale(plane));
-            kept.push_back(
-                SectionGpu{plane, std::move(texture).value(), image, range, plane.quantity});
-        }
-        s.sections = std::move(kept);
-        const glm::vec3 solid_color = precompensate(options.surface.neutral_albedo * 0.85);
-        for (const bool translucent : {false, true}) {
-            for (const SectionGpu& g : s.sections) {
-                const SectionPlane* plane = nullptr;
-                for (const SectionPlane& p : options.sections) {
-                    if (same_plane(p, g.plane)) {
-                        plane = &p;
-                    }
-                }
-                const double opacity =
-                    plane != nullptr ? std::clamp(plane->opacity, 0.0, 1.0) : 1.0;
-                if ((opacity < 0.999) != translucent) {
-                    continue;
-                }
-                const glm::dvec3 corner = g.image.corner;
-                const glm::dvec3 edge_u = g.image.u_step * static_cast<double>(g.image.width - 1);
-                const glm::dvec3 edge_v = g.image.v_step * static_cast<double>(g.image.height - 1);
-                const glm::vec2 uv_min(0.5F / static_cast<float>(g.image.width),
-                                       0.5F / static_cast<float>(g.image.height));
-                const glm::vec2 uv_max(1.0F - uv_min.x, 1.0F - uv_min.y);
-                s.section_program.set("u_corner", to_vec3(camera.to_render_double(corner)));
-                s.section_program.set("u_edge_u", to_vec3(edge_u));
-                s.section_program.set("u_edge_v", to_vec3(edge_v));
-                s.section_program.set("u_uv_min", uv_min);
-                s.section_program.set("u_uv_max", uv_max);
-                s.section_program.set("u_view_projection", view_projection);
-                s.section_program.set("u_log_depth_scale", depth_scale);
-                s.section_program.set("u_range", glm::vec2(detail::to_float(g.range.min),
-                                                           detail::to_float(g.range.max)));
-                s.section_program.set("u_solid_color", solid_color);
-                s.section_program.set("u_opacity", detail::to_float(opacity));
-                s.section_program.set("u_contours", is_signed(g.quantity) ? contour_spacing(g.range)
-                                                                          : glm::vec2(0.0F));
-                s.section_program.set("u_contour_strength", 0.0F);
-                lut(colormap_of(g.plane)).bind(0);
-                g.values.bind(1);
-                if (translucent) {
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                    glDepthMask(GL_FALSE);
-                }
-                s.section_program.use();
-                s.empty_vao.bind();
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-                glDepthMask(GL_TRUE);
-                glDisable(GL_BLEND);
-                ++stats.section_planes;
-            }
-        }
+    if (auto done = s.update_sections(options.sections); !done) {
+        return core::failure(std::string(done.error()));
     }
-
-    // 5. Force arrows.
-    if (s.forces && options.forces.enabled) {
-        std::ostringstream key_text;
-        key_text << options.forces.length_per_coefficient << options.forces.drag
-                 << options.forces.lift << options.forces.side;
-        if (s.arrow_key != key_text.str()) {
-            s.lift_arrow.reset();
-            s.drag_arrow.reset();
-            s.side_arrow.reset();
-            const double radius =
-                0.006 * std::max(glm::length(to_glm(bounds.max) - to_glm(bounds.min)), 1.0e-3);
-            const auto make = [&](const ForceComponent& c,
-                                  std::optional<MeshGpu>& slot) -> core::Result<int, std::string> {
-                const double length = c.coefficient * options.forces.length_per_coefficient;
-                if (!(std::abs(length) > 4.0 * radius) || glm::length(c.direction) == 0.0) {
-                    return 0;
-                }
-                std::vector<SurfaceVertex> vertices;
-                append_arrow(vertices, s.forces->application_point,
-                             c.direction * (length < 0.0 ? -1.0 : 1.0), std::abs(length), radius);
-                auto mesh = upload_mesh(vertices, {});
-                if (!mesh) {
-                    return core::failure(std::string(mesh.error()));
-                }
-                slot = std::move(mesh).value();
-                return 1;
-            };
-            if (options.forces.lift) {
-                if (auto made = make(s.forces->lift, s.lift_arrow); !made) {
-                    return core::failure("aero view: " + made.error());
-                }
-            }
-            if (options.forces.drag) {
-                if (auto made = make(s.forces->drag, s.drag_arrow); !made) {
-                    return core::failure("aero view: " + made.error());
-                }
-            }
-            if (options.forces.side) {
-                if (auto made = make(s.forces->side, s.side_arrow); !made) {
-                    return core::failure("aero view: " + made.error());
-                }
-            }
-            s.arrow_key = key_text.str();
-        }
-        const ScalarRange none{0.0, 1.0};
-        if (s.lift_arrow) {
-            draw_surface_mesh(*s.lift_arrow, precompensate(display_linear(lift_ui_color()) * 0.9),
-                              none, Colormap::diverging, 1.0F, glm::vec2(0.0F));
-            ++stats.force_arrows;
-        }
-        if (s.drag_arrow) {
-            draw_surface_mesh(*s.drag_arrow, precompensate(display_linear(drag_ui_color()) * 0.9),
-                              none, Colormap::diverging, 1.0F, glm::vec2(0.0F));
-            ++stats.force_arrows;
-        }
-        if (s.side_arrow) {
-            draw_surface_mesh(*s.side_arrow, precompensate({0.55, 0.45, 0.75}), none,
-                              Colormap::diverging, 1.0F, glm::vec2(0.0F));
-            ++stats.force_arrows;
-        }
+    s.draw_sections(c, options, false, stats);
+    if (auto done = s.draw_arrows(c, options.forces, bounds, stats); !done) {
+        return core::failure(std::string(done.error()));
     }
-
-    // 6. Q-criterion iso-surface (translucent: back faces, then front faces).
+    s.draw_sections(c, options, true, stats);
     if (s.flow && options.iso.enabled && !flat_flow) {
-        if (!s.iso || s.iso->level != options.iso.level ||
-            s.iso->absolute != options.iso.absolute) {
-            const ScalarGrid& q = s.derived_grid(FieldQuantity::q_criterion, Axis::z);
-            double peak = 0.0;
-            for (const double v : q.values) {
-                peak = std::max(peak, v);
-            }
-            const double level =
-                options.iso.absolute ? options.iso.level : options.iso.level * peak;
-            IsoGpu iso;
-            iso.level = options.iso.level;
-            iso.absolute = options.iso.absolute;
-            if (peak > 0.0 && level > 0.0) {
-                auto surface = marching_cubes_gpu(*s.compute, q, level);
-                if (!surface) {
-                    return core::failure("aero view: " + surface.error());
-                }
-                const IsoSurface& m = surface.value();
-                std::vector<SurfaceVertex> vertices;
-                vertices.reserve(m.positions.size());
-                for (std::size_t v = 0; v < m.positions.size(); ++v) {
-                    vertices.push_back(
-                        {to_vec3(m.positions[v]), to_vec3(m.normals[v]), glm::vec2(0.0F)});
-                }
-                if (!m.indices.empty()) {
-                    auto mesh = upload_mesh(vertices, m.indices);
-                    if (!mesh) {
-                        return core::failure("aero view: " + mesh.error());
-                    }
-                    iso.mesh = std::move(mesh).value();
-                    iso.triangles = m.triangle_count();
-                }
-            }
-            s.iso = std::move(iso);
+        if (auto done = s.update_iso(options.iso); !done) {
+            return core::failure(std::string(done.error()));
         }
-        if (s.iso->mesh) {
-            const auto opacity = detail::to_float(std::clamp(options.iso.opacity, 0.0, 1.0));
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
-            glEnable(GL_CULL_FACE);
-            for (const GLenum cull : {GL_BACK, GL_FRONT}) {
-                glCullFace(cull == GL_BACK ? GL_FRONT : GL_BACK);
-                draw_surface_mesh(*s.iso->mesh, precompensate(options.iso.color), {0.0, 1.0},
-                                  Colormap::diverging, opacity, glm::vec2(0.0F));
-            }
-            glDisable(GL_CULL_FACE);
-            glDepthMask(GL_TRUE);
-            glDisable(GL_BLEND);
-            stats.iso_triangles = s.iso->triangles;
-        }
+        s.draw_iso(c, options.iso, stats);
     }
-
-    // 7. Streamlines.
     if (s.flow && options.streamlines.enabled) {
-        const std::vector<glm::dvec3> seeds = s.seeds_for(options.streamlines);
-        if (!s.streamlines || s.streamlines->seeds != seeds ||
-            !same_settings(s.streamlines->settings, options.streamlines.settings)) {
-            auto lines = trace_streamlines_gpu(*s.compute, s.flow->velocity, s.flow->solid, seeds,
-                                               options.streamlines.settings);
-            if (!lines) {
-                return core::failure("aero view: " + lines.error());
-            }
-            StreamlinesGpu gpu{
-                seeds, options.streamlines.settings, std::nullopt, VertexArray::create(), 0, 0, 0};
-            struct Segment {
-                glm::vec4 p0;
-                glm::vec4 p1;
-                glm::vec2 alpha;
-            };
-            std::vector<Segment> segments;
-            for (const Streamline& line : lines.value()) {
-                if (line.points.size() < 2) {
-                    continue;
-                }
-                ++gpu.lines;
-                gpu.points += line.points.size();
-                const std::size_t n = line.points.size();
-                for (std::size_t i = 0; i + 1 < n; ++i) {
-                    // Ends taper over the first and last few segments.
-                    const auto taper = [n](std::size_t k) {
-                        const double d = static_cast<double>(std::min(k, n - 1 - k));
-                        return detail::to_float(std::min(1.0, 0.25 + d / 6.0));
-                    };
-                    segments.push_back(
-                        {glm::vec4(to_vec3(line.points[i]), detail::to_float(line.speed[i])),
-                         glm::vec4(to_vec3(line.points[i + 1]),
-                                   detail::to_float(line.speed[i + 1])),
-                         glm::vec2(taper(i), taper(i + 1))});
-                }
-            }
-            if (!segments.empty()) {
-                auto buffer = Buffer::from(std::span<const Segment>(segments));
-                if (!buffer) {
-                    return core::failure("aero view: streamlines: " + buffer.error());
-                }
-                gpu.segments = std::move(buffer).value();
-                gpu.vao.set_vertex_buffer(0, *gpu.segments, 0, sizeof(Segment));
-                gpu.vao.set_float_attribute(0, 0, 4, 0);
-                gpu.vao.set_float_attribute(1, 0, 4, 4 * sizeof(float));
-                gpu.vao.set_float_attribute(2, 0, 2, 8 * sizeof(float));
-                gpu.vao.set_binding_divisor(0, 1);
-                gpu.count = static_cast<GLsizei>(segments.size());
-            }
-            s.streamlines = std::move(gpu);
+        if (auto done = s.update_streamlines(options.streamlines); !done) {
+            return core::failure(std::string(done.error()));
         }
-        if (s.streamlines->count > 0) {
-            const ScalarRange range = s.field_range(FieldQuantity::speed, Axis::z, {});
-            const auto half_width = detail::to_float(0.5 * options.streamlines.width_px);
-            s.line_program.set("u_view_projection", view_projection);
-            s.line_program.set("u_offset", to_vec3(offset));
-            s.line_program.set("u_viewport", viewport);
-            s.line_program.set("u_half_width", half_width);
-            s.line_program.set("u_near", near_w);
-            s.line_program.set("u_range",
-                               glm::vec2(detail::to_float(range.min), detail::to_float(range.max)));
-            s.line_program.set("u_use_colormap", options.streamlines.color_by_speed ? 1 : 0);
-            s.line_program.set("u_color", precompensate(options.streamlines.color));
-            s.line_program.set("u_log_depth_scale", depth_scale);
-            lut(Colormap::sequential).bind(0);
-            glEnable(GL_BLEND);
-            glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-            glDepthMask(GL_FALSE);
-            s.line_program.use();
-            s.streamlines->vao.bind();
-            glDrawArraysInstanced(GL_TRIANGLES, 0, 6, s.streamlines->count);
-            glDepthMask(GL_TRUE);
-            glDisable(GL_BLEND);
-            stats.streamlines = s.streamlines->lines;
-            stats.streamline_points = s.streamlines->points;
-        }
+        s.draw_streamlines(c, options.streamlines, stats);
     }
-
-    // 8. Particles, straight from the kernel's trace buffer.
-    if (s.flow && options.particles.enabled && s.particles) {
-        const ParticlesGpu& p = *s.particles;
-        const GridGeometry& g = s.flow->velocity.grid;
-        s.particle_program.set("u_view_projection", view_projection);
-        s.particle_program.set("u_grid_origin", to_vec3(camera.to_render_double(g.origin)));
-        s.particle_program.set("u_spacing", detail::to_float(g.spacing));
-        set_uint(s.particle_program, "u_trace_points", static_cast<std::uint32_t>(p.trace_points));
-        set_uint(s.particle_program, "u_head", p.head);
-        s.particle_program.set("u_viewport", viewport);
-        s.particle_program.set("u_half_width", detail::to_float(0.5 * options.particles.width_px));
-        s.line_program.set("u_half_width", detail::to_float(0.5 * options.particles.width_px));
-        s.particle_program.set("u_near", near_w);
-        s.particle_program.set("u_lifetime", detail::to_float(options.particles.lifetime));
-        s.particle_program.set("u_color", precompensate(options.particles.color));
-        s.particle_program.set("u_opacity",
-                               detail::to_float(std::clamp(options.particles.opacity, 0.0, 1.0)));
-        s.particle_program.set("u_log_depth_scale", depth_scale);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, s.compute->buffer_name(p.traces.id()));
-        glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthMask(GL_FALSE);
-        s.particle_program.use();
-        s.empty_vao.bind();
-        glDrawArraysInstanced(GL_TRIANGLES, 0, 6,
-                              static_cast<GLsizei>(p.count * (p.trace_points - 1)));
-        glDepthMask(GL_TRUE);
-        glDisable(GL_BLEND);
-        glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 0, 0);
-        stats.particles = p.count;
+    if (options.particles.enabled) {
+        s.draw_particles(c, options.particles, stats);
     }
     glBindVertexArray(0);
     return stats;
@@ -1287,7 +1387,7 @@ void AeroView::draw_overlay(const FrameInfo& frame, const AeroViewOptions& optio
         const int height = static_cast<int>(std::ceil(total_h)) + 2;
         detail::Canvas canvas(width, height);
         const detail::OverlayStyle style = detail::overlay_style();
-        const double radius = default_theme().window_rounding * scale;
+        const double radius = static_cast<double>(default_theme().window_rounding) * scale;
         double x = 1.0;
         // Read-out first (left), then the legends.
         if (!readout.empty()) {
