@@ -145,6 +145,30 @@ TEST_CASE("Particles follow the circular flow with second-order accuracy",
     CHECK_FALSE(advect_particle(u, {}, {1.9, 1.9, 0.0}, 0.5).has_value()); // leaves the grid
 }
 
+TEST_CASE("Particle substeps stay in range for extreme and non-finite inputs",
+          "[render][aero][streamlines]") {
+    // The view used to convert ceil(cells / 0.5) to int before clamping it,
+    // which is undefined for these inputs; the count is now checked first.
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    const double huge = std::numeric_limits<double>::max();
+    const double tiny = std::numeric_limits<double>::denorm_min();
+    CHECK(particle_substeps(1.0, 1.0, 1.0) == 2);    // one spacing: two half steps
+    CHECK(particle_substeps(0.25, 1.0, 1.0) == 1);   // under half a spacing
+    CHECK(particle_substeps(0.0, 1.0, 1.0) == 1);    // a frame without time still writes a trace
+    CHECK(particle_substeps(-1.0, 1.0, 1.0) == 2);   // backwards in time
+    CHECK(particle_substeps(1.0, 1.0e9, 1.0) == 64); // capped
+    CHECK(particle_substeps(1.0, huge, tiny) == 64); // the ratio overflows to infinity
+    CHECK(particle_substeps(huge, huge, 1.0) == 64);
+    CHECK(particle_substeps(1.0, nan, 1.0) == 64);
+    CHECK(particle_substeps(1.0, inf, 1.0) == 64);
+    CHECK(particle_substeps(nan, 1.0, 1.0) == 0); // NaN or infinite time scale: no advance
+    CHECK(particle_substeps(inf, 1.0, 1.0) == 0);
+    CHECK(particle_substeps(-inf, 1.0, 1.0) == 0);
+    CHECK(particle_substeps(1.0, 1.0, 0.0) == 0);
+    CHECK(particle_substeps(1.0, 1.0, nan) == 0);
+}
+
 TEST_CASE("Non-finite seeds, steps and velocities stop lines before the solid lookup",
           "[render][aero][streamlines]") {
     // A populated mask makes every position reach the nearest-node lookup;

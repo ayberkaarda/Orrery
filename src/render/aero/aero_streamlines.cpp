@@ -332,6 +332,20 @@ std::vector<glm::dvec3> seed_plane(const GridGeometry& grid, Axis axis, double p
     return seeds;
 }
 
+int particle_substeps(double time, double max_speed, double spacing) noexcept {
+    constexpr int kMaxSubsteps = 64;
+    if (!std::isfinite(time) || !(spacing > 0.0)) {
+        return 0;
+    }
+    // Half-spacing steps needed; NaN (a NaN speed) and anything at or past
+    // the cap take the cap, so the conversion below is always in range.
+    const double needed = std::ceil(std::abs(time * max_speed / spacing) / 0.5);
+    if (!(needed < kMaxSubsteps)) {
+        return kMaxSubsteps;
+    }
+    return std::max(1, static_cast<int>(needed));
+}
+
 // APPROXIMATION (V3): particle advection - explicit midpoint rule (second
 // order) in time on the field of the current frame, sub-stepped to at most
 // half a grid spacing - traces are pathlines only while the field changes

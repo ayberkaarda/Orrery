@@ -74,6 +74,13 @@ trace_streamlines_gpu(aero::compute::IComputeBackend& backend, const VectorGrid&
                                                         std::span<const std::uint8_t> solid,
                                                         const glm::dvec3& position, double dt);
 
+// Midpoint steps that advance particles over `time` seconds by at most half
+// a grid `spacing` each in a field whose largest speed is `max_speed`: 1 to
+// 64 (past 64 the steps grow longer), and 0 - no advance - when `time` is
+// not finite or `spacing` not positive. Every input is checked before the
+// count is converted to an integer.
+[[nodiscard]] int particle_substeps(double time, double max_speed, double spacing) noexcept;
+
 // The same step for many particles in the GPU kernel (binary32), without
 // release or traces; `backend` must provide kernel_particles.
 [[nodiscard]] core::Result<std::vector<std::optional<glm::dvec3>>, std::string>

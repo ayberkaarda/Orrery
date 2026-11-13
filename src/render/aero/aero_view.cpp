@@ -1181,8 +1181,11 @@ core::Result<std::monostate, std::string> AeroView::advance(double dt,
     ParticlesGpu& p = *s.particles;
     const double time = dt * layer.time_scale;
     // Substeps keep each step below half a grid spacing.
-    const double cells = time * static_cast<double>(field_buffers.max_speed) / g.spacing;
-    const int substeps = std::clamp(static_cast<int>(std::ceil(cells / 0.5)), 1, 64);
+    const int substeps =
+        particle_substeps(time, static_cast<double>(field_buffers.max_speed), g.spacing);
+    if (substeps == 0) {
+        return std::monostate{}; // a non-finite time: the particles stay
+    }
     const double step = time / substeps;
     p.head = (p.head + 1) % static_cast<std::uint32_t>(p.trace_points);
     for (int i = 0; i < substeps; ++i) {
