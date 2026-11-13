@@ -241,9 +241,13 @@ struct EdgeVertex {
 // APPROXIMATION (V5): iso-surface normals - minus the gradient of the node
 // values (central differences), interpolated along the edge - smooth
 // shading; first order at the grid boundary.
+// The halves keep b - a finite for any finite a and b (each half is at most
+// half the largest double), and scaling by two is exact, so the fraction is
+// the same as from the plain differences wherever those do not overflow.
 double edge_fraction(double a, double b, double level) noexcept {
-    const double denominator = b - a;
-    return denominator != 0.0 ? std::clamp((level - a) / denominator, 0.0, 1.0) : 0.5;
+    const double denominator = 0.5 * b - 0.5 * a;
+    return denominator != 0.0 ? std::clamp((0.5 * level - 0.5 * a) / denominator, 0.0, 1.0)
+                              : 0.5;
 }
 
 std::size_t node_of_edge(std::uint64_t edge) noexcept {
@@ -306,9 +310,33 @@ IsoSurface assemble(const std::vector<std::array<std::uint64_t, 3>>& triangles,
     return surface;
 }
 
-bool usable(const ScalarGrid& field) {
+// A 3D grid with one finite value per node and a finite level (a NaN or
+// infinite sample would be classified, then interpolated into a NaN vertex).
+bool usable(const ScalarGrid& field, double level) {
     return !validate(field.grid) && !field.grid.is_2d() && field.grid.dims[2] >= 2 &&
-           field.values.size() == field.grid.node_count();
+           field.values.size() == field.grid.node_count() && std::isfinite(level) &&
+           std::ranges::all_of(field.values, [](double v) { return std::isfinite(v); });
+}
+
+// The kernel's values: (v - level) in binary32, scaled down (by a positive
+// factor, which keeps every sign and edge fraction) when the field would
+// overflow binary32 or the kernel's differences. Computed from halves so that
+// no intermediate overflows; for ordinary fields the values are exactly
+// float(v - level).
+std::vector<float> kernel_values(const ScalarGrid& field, double level) {
+    constexpr double kLargestKernelValue = 1.0e30;
+    double largest = 0.0;
+    for (const double v : field.values) {
+        largest = std::max(largest, std::abs(0.5 * v - 0.5 * level));
+    }
+    const double factor =
+        2.0 * largest > kLargestKernelValue ? kLargestKernelValue / largest : 2.0;
+    std::vector<float> values;
+    values.reserve(field.values.size());
+    for (const double v : field.values) {
+        values.push_back(detail::to_float((0.5 * v - 0.5 * level) * factor));
+    }
+    return values;
 }
 
 } // namespace
@@ -326,7 +354,7 @@ const std::vector<std::vector<std::uint8_t>>& marching_cubes_table() {
 }
 
 IsoSurface marching_cubes(const ScalarGrid& field, double level) {
-    if (!usable(field)) {
+    if (!usable(field, level)) {
         return {};
     }
     const GridGeometry& g = field.grid;
@@ -368,7 +396,7 @@ core::Result<IsoSurface, std::string> marching_cubes_gpu(aero::compute::ICompute
     using aero::compute::BufferBinding;
     using aero::compute::DispatchCommand;
     using aero::compute::Uniform;
-    if (!usable(field)) {
+    if (!usable(field, level)) {
         return IsoSurface{};
     }
     if (!backend.has_kernel(kernel_marching_cubes)) {
@@ -382,11 +410,7 @@ core::Result<IsoSurface, std::string> marching_cubes_gpu(aero::compute::ICompute
     // Values relative to the level, in binary32 (the kernel's inside test is
     // value > 0, so the comparison is exact against the double test for every
     // value that rounds away from zero).
-    std::vector<float> values;
-    values.reserve(field.values.size());
-    for (const double v : field.values) {
-        values.push_back(detail::to_float(v - level));
-    }
+    const std::vector<float> values = kernel_values(field, level);
     const auto& table = marching_cubes_table();
     std::vector<std::uint32_t> packed(256U * detail::kMarchingCubesStride, 0U);
     for (std::size_t c = 0; c < 256; ++c) {

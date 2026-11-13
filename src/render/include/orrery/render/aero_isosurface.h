@@ -41,11 +41,15 @@ struct IsoSurface {
     [[nodiscard]] std::size_t triangle_count() const noexcept { return indices.size() / 3; }
 };
 
-// Empty for a 2D grid or one without values.
+// Empty for a 2D grid, one without values, or one with a NaN or infinite
+// value or level (rejected: such a sample would yield NaN vertices). Vertices
+// are interpolated without overflow for any finite values.
 [[nodiscard]] IsoSurface marching_cubes(const ScalarGrid& field, double level);
 
 // The same surface from the GPU kernel: identical vertices (edges) and
-// triangles, positions in binary32. Fails when the triangles exceed
+// triangles, positions in binary32. Values beyond 1e30 from the level are
+// scaled down for binary32 (a positive factor, so signs and edge fractions
+// keep; values that then fall below the binary32 range count as outside). Fails when the triangles exceed
 // max_triangles; `backend` must provide kernel_marching_cubes.
 [[nodiscard]] core::Result<IsoSurface, std::string>
 marching_cubes_gpu(aero::compute::IComputeBackend& backend, const ScalarGrid& field, double level,

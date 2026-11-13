@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <random>
 #include <vector>
@@ -165,6 +166,63 @@ TEST_CASE("Marching cubes: inputs without a surface", "[render][aero][marching_c
     for (const glm::dvec3& p : sheet.positions) {
         CHECK(p.z == Catch::Approx(1.5));
     }
+}
+
+TEST_CASE("Marching cubes rejects non-finite samples and interpolates extreme ones",
+          "[render][aero][marching_cubes]") {
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    const double huge = std::numeric_limits<double>::max();
+    // A NaN or infinite corner next to inside corners: rejected outright
+    // (no NaN vertex can come out).
+    for (const double bad : {nan, inf, -inf}) {
+        ScalarGrid field = sphere_field(6, 2.0, glm::dvec3(2.5));
+        field.values[field.grid.index(3, 2, 2)] = bad;
+        const IsoSurface s = marching_cubes(field, 0.0);
+        CHECK(s.indices.empty());
+        CHECK(s.positions.empty());
+    }
+    CHECK(marching_cubes(sphere_field(6, 2.0, glm::dvec3(2.5)), nan).indices.empty());
+    // Opposite extreme finite values: the level halfway sits at the edge
+    // midpoints (b - a overflows when computed directly).
+    ScalarGrid cube =
+        scalar_grid(2, 2, 2, {0.0, 0.0, 0.0}, 1.0, [](const glm::dvec3&) { return 0.0; });
+    for (std::size_t c = 0; c < cube.values.size(); ++c) {
+        cube.values[c] = c == 0 ? huge : -huge;
+    }
+    const IsoSurface corner = marching_cubes(cube, 0.0);
+    REQUIRE(corner.triangle_count() == 1);
+    for (const glm::dvec3& p : corner.positions) {
+        CHECK(std::isfinite(p.x));
+        CHECK(std::isfinite(p.y));
+        CHECK(std::isfinite(p.z));
+        CHECK(p.x + p.y + p.z == Catch::Approx(0.5)); // one coordinate 0.5, the others 0
+    }
+}
+
+TEST_CASE("Marching cubes on the GPU stays finite for extreme samples",
+          "[render][aero][marching_cubes][gl]") {
+    auto gl = aero_compute_or_skip();
+    const double huge = std::numeric_limits<double>::max();
+    ScalarGrid cube =
+        scalar_grid(2, 2, 2, {0.0, 0.0, 0.0}, 1.0, [](const glm::dvec3&) { return 0.0; });
+    for (std::size_t c = 0; c < cube.values.size(); ++c) {
+        cube.values[c] = c == 0 ? huge : -huge;
+    }
+    auto gpu = marching_cubes_gpu(*gl.backend, cube, 0.0);
+    REQUIRE(gpu.has_value());
+    const IsoSurface& g = gpu.value();
+    const IsoSurface cpu = marching_cubes(cube, 0.0);
+    CHECK(g.edges == cpu.edges);
+    REQUIRE(g.positions.size() == cpu.positions.size());
+    for (std::size_t v = 0; v < g.positions.size(); ++v) {
+        CHECK(glm::length(g.positions[v] - cpu.positions[v]) < 1.0e-6);
+    }
+    ScalarGrid broken = sphere_field(6, 2.0, glm::dvec3(2.5));
+    broken.values[broken.grid.index(3, 2, 2)] = std::numeric_limits<double>::quiet_NaN();
+    auto rejected = marching_cubes_gpu(*gl.backend, broken, 0.0);
+    REQUIRE(rejected.has_value());
+    CHECK(rejected.value().indices.empty());
 }
 
 TEST_CASE("Marching cubes on the GPU matches the CPU reference",

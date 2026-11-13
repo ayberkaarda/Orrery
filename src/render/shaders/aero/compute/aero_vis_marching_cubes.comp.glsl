@@ -82,8 +82,9 @@ void main() {
             uint upper = lower | (1u << axis);
             float a = corner_value[lower];
             float b = corner_value[upper];
-            float denominator = b - a;
-            float f = denominator != 0.0 ? clamp(-a / denominator, 0.0, 1.0) : 0.5;
+            // Halves: b - a stays finite for any finite a and b.
+            float denominator = 0.5 * b - 0.5 * a;
+            float f = denominator != 0.0 ? clamp(-0.5 * a / denominator, 0.0, 1.0) : 0.5;
             uvec3 node = cell + corner_offset(lower);
             vec3 p = vec3(node);
             p[axis] += f;
