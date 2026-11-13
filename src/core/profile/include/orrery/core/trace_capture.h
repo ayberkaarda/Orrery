@@ -56,9 +56,19 @@ void stop_capture() noexcept;
 [[nodiscard]] bool zones_compiled() noexcept;
 [[nodiscard]] bool tracy_enabled() noexcept;
 
-// Records one zone directly (what Zone does on destruction). `name` must
-// outlive the capture. Ignored while no capture is active.
+// Records one zone directly into the current capture. `name` must outlive
+// the capture. Ignored while no capture is active.
 void record_zone(const char* name, std::int64_t start_ns, std::int64_t end_ns) noexcept;
+
+// Generation of the current (or last) capture: every start_capture begins a
+// new one; 0 before the first.
+[[nodiscard]] std::uint64_t capture_generation() noexcept;
+// Records one zone of capture `generation` (what Zone does on destruction):
+// ignored unless that capture is still the current one and active, checked
+// under the sink's lock, so a zone of an earlier capture never lands in a
+// restarted one whatever the interleaving of the threads.
+void record_zone(std::uint64_t generation, const char* name, std::int64_t start_ns,
+                 std::int64_t end_ns) noexcept;
 // Nanoseconds since the current capture started (steady clock).
 [[nodiscard]] std::int64_t now_ns() noexcept;
 

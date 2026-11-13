@@ -76,9 +76,11 @@ requires the same `state_hash`; the core golden-hash tests pass with
 
 **Cost.** Off (the default), a zone is `static_cast<void>(0)`: no object, no
 call, no clock read; `tests/profile/test_profile_off.cpp` checks the
-expansion text. On, an idle zone (no capture) costs one function call and one
-relaxed atomic load; a recording zone two steady-clock reads and a short
-locked append. Measured on the development machine (section 6): about 3 to
+expansion text. On, an idle zone (no capture) costs one function call and two
+atomic loads; a recording zone two steady-clock reads and a short locked
+append. Each zone remembers the generation of the capture it began in, and
+the append checks it under the lock: a zone still open when another thread
+restarts the capture is dropped, never added to the new one. Measured on the development machine (section 6): about 3 to
 4 ns per idle zone and 70 ns per recorded zone, against microseconds to
 milliseconds for the work a zone surrounds.
 

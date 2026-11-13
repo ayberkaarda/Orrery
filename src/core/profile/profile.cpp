@@ -19,12 +19,14 @@ namespace {
 // Initial reservation of a capture's event list (it grows up to the cap).
 constexpr std::size_t kInitialReserve = 4096;
 
-// The process-wide sink. `active` and `origin_ns` are read without the lock
-// by Zone; everything else is guarded by `mutex`.
+// The process-wide sink. `active`, `generation` and `origin_ns` are read
+// without the lock by Zone (and written under it); everything else is
+// guarded by `mutex`.
 struct Sink {
     std::mutex mutex;
     std::atomic<bool> active{false};
-    std::atomic<std::int64_t> origin_ns{0}; // steady clock at capture start
+    std::atomic<std::uint64_t> generation{0}; // incremented by every start
+    std::atomic<std::int64_t> origin_ns{0};   // steady clock at capture start
     std::atomic<std::uint64_t> lost{0};     // events lost to an allocation failure
     std::vector<ZoneEvent> events;
     std::vector<ZoneTotal> totals;
@@ -70,11 +72,28 @@ void add_total(Sink& s, std::string_view name, std::int64_t duration_ns) {
     found->max_ns = std::max(found->max_ns, duration_ns);
 }
 
+// Appends one zone to the capture (lock held, capture active).
+void append_zone(Sink& s, const char* name, std::int64_t start_ns, std::int64_t end_ns) {
+    const std::string_view text(name);
+    const std::int64_t duration = std::max<std::int64_t>(end_ns - start_ns, 0);
+    add_total(s, text, duration);
+    if (s.events.size() >= s.max_events) {
+        ++s.dropped;
+        return;
+    }
+    s.events.push_back(ZoneEvent{text, start_ns, duration, thread_number(s)});
+}
+
 } // namespace
 
 Zone::Zone(const char* name) noexcept {
-    if (sink().active.load(std::memory_order_relaxed)) {
+    Sink& s = sink();
+    // The generation is read before the clock: a restart in between makes
+    // the zone stale (dropped when it closes), never part of the new capture.
+    const std::uint64_t generation = s.generation.load(std::memory_order_acquire);
+    if (s.active.load(std::memory_order_acquire)) {
         name_ = name;
+        generation_ = generation;
         start_ns_ = steady_ns();
     }
 }
@@ -84,10 +103,10 @@ Zone::~Zone() {
         return;
     }
     const std::int64_t end = steady_ns();
+    // A restart after this read is caught by the generation check under the
+    // sink's lock, so a stale origin is never used for a recorded zone.
     const std::int64_t origin = sink().origin_ns.load(std::memory_order_acquire);
-    if (start_ns_ >= origin) { // started in this capture, not in an earlier one
-        record_zone(name_, start_ns_ - origin, end - origin);
-    }
+    record_zone(generation_, name_, start_ns_ - origin, end - origin);
 }
 
 void start_capture(std::size_t max_events) {
@@ -103,6 +122,8 @@ void start_capture(std::size_t max_events) {
     s.dropped = 0;
     s.lost.store(0, std::memory_order_relaxed);
     s.stop_ns = -1;
+    s.generation.store(s.generation.load(std::memory_order_relaxed) + 1U,
+                       std::memory_order_release);
     s.origin_ns.store(steady_ns(), std::memory_order_release);
     s.active.store(true, std::memory_order_release);
 }
@@ -164,14 +185,30 @@ void record_zone(const char* name, std::int64_t start_ns, std::int64_t end_ns) n
         if (!s.active.load(std::memory_order_relaxed)) {
             return; // stopped while this zone was open
         }
-        const std::string_view text(name);
-        const std::int64_t duration = std::max<std::int64_t>(end_ns - start_ns, 0);
-        add_total(s, text, duration);
-        if (s.events.size() >= s.max_events) {
-            ++s.dropped;
+        append_zone(s, name, start_ns, end_ns);
+    } catch (...) {
+        s.lost.fetch_add(1, std::memory_order_relaxed);
+    }
+}
+
+std::uint64_t capture_generation() noexcept {
+    return sink().generation.load(std::memory_order_acquire);
+}
+
+void record_zone(std::uint64_t generation, const char* name, std::int64_t start_ns,
+                 std::int64_t end_ns) noexcept {
+    Sink& s = sink();
+    if (name == nullptr || !s.active.load(std::memory_order_acquire)) {
+        return;
+    }
+    try {
+        const std::scoped_lock lock(s.mutex);
+        // Stopped while the zone was open, or restarted since it began.
+        if (!s.active.load(std::memory_order_relaxed) ||
+            s.generation.load(std::memory_order_relaxed) != generation) {
             return;
         }
-        s.events.push_back(ZoneEvent{text, start_ns, duration, thread_number(s)});
+        append_zone(s, name, start_ns, end_ns);
     } catch (...) {
         s.lost.fetch_add(1, std::memory_order_relaxed);
     }

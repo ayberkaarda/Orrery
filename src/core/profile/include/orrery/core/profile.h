@@ -34,6 +34,7 @@ public:
 private:
     const char* name_ = nullptr; // null when no capture was active
     std::int64_t start_ns_ = 0;
+    std::uint64_t generation_ = 0; // the capture it started in
 };
 
 } // namespace orrery::profile

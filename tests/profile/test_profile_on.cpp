@@ -196,6 +196,49 @@ TEST_CASE("a restart discards the previous capture and zones open across it", "[
     CHECK(capture.dropped == 0);
 }
 
+TEST_CASE("a zone of an earlier capture never lands in a restarted one", "[profile]") {
+    // The interleaving of a zone closing on one thread while another
+    // restarts the capture: the zone has read its capture's identity, the
+    // restart happens, then the zone records.
+    profile::start_capture();
+    const std::uint64_t old_generation = profile::capture_generation();
+    profile::start_capture();
+    const std::uint64_t new_generation = profile::capture_generation();
+    CHECK(new_generation != old_generation);
+    profile::record_zone(old_generation, "test_stale", 0, 10);
+    profile::record_zone(new_generation, "test_fresh", 0, 10);
+    profile::stop_capture();
+    const profile::Capture capture = profile::capture_snapshot();
+    CHECK(events_named(capture, "test_stale").empty());
+    CHECK(total_named(capture, "test_stale") == nullptr);
+    CHECK(events_named(capture, "test_fresh").size() == 1);
+    // A stopped capture takes nothing, not even of its own generation.
+    profile::record_zone(new_generation, "test_after_stop", 0, 10);
+    CHECK(events_named(profile::capture_snapshot(), "test_after_stop").empty());
+}
+
+TEST_CASE("a zone open across a restart on another thread is dropped", "[profile]") {
+    profile::start_capture();
+    std::barrier opened(2);
+    std::barrier restarted(2);
+    std::thread worker([&] {
+        {
+            const profile::Zone zone("test_cross_thread_straddle");
+            opened.arrive_and_wait();
+            restarted.arrive_and_wait();
+        }
+        ORRERY_ZONE("test_cross_thread_after");
+    });
+    opened.arrive_and_wait();
+    profile::start_capture();
+    restarted.arrive_and_wait();
+    worker.join();
+    profile::stop_capture();
+    const profile::Capture capture = profile::capture_snapshot();
+    CHECK(events_named(capture, "test_cross_thread_straddle").empty());
+    CHECK(events_named(capture, "test_cross_thread_after").size() == 1);
+}
+
 TEST_CASE("zones still open when the capture stops are dropped", "[profile]") {
     profile::start_capture();
     {
