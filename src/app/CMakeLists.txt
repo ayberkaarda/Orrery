@@ -84,9 +84,16 @@ add_library(orrery::app_core ALIAS orrery_app_core)
 target_include_directories(orrery_app_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 target_link_libraries(orrery_app_core PUBLIC orrery_sim orrery_render)
 # Bundled experiments and scenarios are found next to the executable
-# (assets/) or, for builds run from the tree, in the source assets directory.
-target_compile_definitions(orrery_app_core PRIVATE
-    ORRERY_SOURCE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
+# (assets/), in an installed tree (../share/orrery/assets) or, for builds run
+# from the tree, in the source assets directory. Package builds turn the last
+# one off so no build machine path is compiled into a shipped binary
+# (docs/packaging.md).
+option(ORRERY_SOURCE_ASSET_FALLBACK
+    "Look for the bundled assets in the source tree when none are installed" ON)
+if(ORRERY_SOURCE_ASSET_FALLBACK)
+    target_compile_definitions(orrery_app_core PRIVATE
+        ORRERY_SOURCE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
+endif()
 orrery_configure_target(orrery_app_core)
 
 # Phase 8b: the Aero workspace's user interface (panels, main bar, workspace
