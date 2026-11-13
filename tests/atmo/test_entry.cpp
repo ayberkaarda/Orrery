@@ -412,6 +412,26 @@ TEST_CASE("An impact leaves the state and the clock at the impact instant", "[at
     CHECK(std::abs(orrery::core::to_si(run.state().time()).value() - impact.time_s) < 1e-6);
 }
 
+TEST_CASE("A start on the interface heading out is an entry and a skip-out", "[atmo][entry]") {
+    for (const bool stop : {true, false}) {
+        EntryConfig c = orrery::atmo::apollo_like_entry(); // starts at 121.92 km
+        c.initial.flight_path_angle = Angle::from_degrees(5.0);
+        c.stop_on_skip_out = stop;
+        c.max_duration = si::Time(600.0);
+        EntryExperiment run = make(c);
+        REQUIRE(run.series().altitude_m.front() ==
+                c.planet.entry_interface_altitude.value()); // exactly on it
+        run_to_end(run);
+        INFO("stop on skip-out " << stop);
+        const auto events = run.events();
+        REQUIRE(events.size() == 2);
+        CHECK(std::holds_alternative<orrery::atmo::AtmosphericEntryEvent>(events[0]));
+        REQUIRE(std::holds_alternative<orrery::atmo::SkipOutEvent>(events[1]));
+        CHECK(std::get<orrery::atmo::SkipOutEvent>(events[1]).time_s < 1.0);
+        CHECK(run.outcome() == (stop ? EntryOutcome::skip_out : EntryOutcome::time_limit));
+    }
+}
+
 TEST_CASE("A step-bounded advance takes at most the given number of steps", "[atmo][entry]") {
     EntryExperiment run = make(orrery::atmo::apollo_like_entry());
     auto outcome = run.advance(si::Time(100.0), 3);

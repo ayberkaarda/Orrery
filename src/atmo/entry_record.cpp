@@ -142,7 +142,7 @@ bool EntryExperiment::Impl::crossed_unseen(const core::SimState& before) const {
         // An apoapsis inside the step above the interface.
         const double high =
             std::min(apsides(mu, r0, v0).apoapsis_m, apsides(mu, r1, v1).apoapsis_m);
-        return radius0 < interface && radius1 < interface && high > interface;
+        return radius0 <= interface && radius1 <= interface && high > interface;
     }
     return false;
 }
@@ -236,7 +236,9 @@ void EntryExperiment::Impl::detect_events(const EntryRow& before, const EntryRow
         summary.outcome = EntryOutcome::impact;
         return;
     }
-    if (inside_interface && before.altitude_m < interface && after.altitude_m >= interface) {
+    // Inside means at or below the interface (as at the start), so a step
+    // that leaves it from exactly on it is a skip-out too.
+    if (inside_interface && before.altitude_m <= interface && after.altitude_m > interface) {
         const EntryRow at = crossing(interface);
         const core::BodyStore& bodies = state.bodies();
         const double energy = at.energy_j / mass_kg;

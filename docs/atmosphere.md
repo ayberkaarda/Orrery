@@ -201,7 +201,7 @@ extremum inside the step lies beyond the level, the step is redone in halves
 | Event | Condition | Effect |
 |---|---|---|
 | `AtmosphericEntryEvent` | altitude crosses the entry interface downwards (or the run starts at or below it, time 0) | none |
-| `SkipOutEvent` | after an entry, altitude crosses the interface upwards; carries the specific energy, whether the orbit is bound and the osculating apoapsis altitude | ends the run (`skip_out`) when `stop_on_skip_out` |
+| `SkipOutEvent` | after an entry, altitude rises from at or below the interface to above it (so a start exactly on it heading out is an entry at time 0 and a skip-out); carries the specific energy, whether the orbit is bound and the osculating apoapsis altitude | ends the run (`skip_out`) when `stop_on_skip_out` |
 | `ImpactEvent` | altitude reaches 0 | the last row is replaced by the interpolated impact row, and the state, `time()` and the drag work are interpolated back to the same instant (on the ground, not below it); ends the run (`impact`) |
 
 The run also ends at `max_duration` (`time_limit`). An integrator failure ends
