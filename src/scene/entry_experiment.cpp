@@ -159,8 +159,8 @@ private:
 
 template <typename Record> struct NumberField {
     std::string_view key;
-    double Record::* member;
-    Rule rule;
+    double Record::* member = nullptr;
+    Rule rule = Rule::finite;
 };
 
 // Reads every field of `fields` into `record`; the first error wins.
@@ -232,7 +232,7 @@ constexpr std::array<NumberField<EntryResultRecord>, 13> kResultNumbers{{
 
 struct OptionalField {
     std::string_view key;
-    std::optional<double> EntryResultRecord::* member;
+    std::optional<double> EntryResultRecord::* member = nullptr;
 };
 
 constexpr std::array<OptionalField, 5> kResultOptionals{{
@@ -245,7 +245,7 @@ constexpr std::array<OptionalField, 5> kResultOptionals{{
 
 struct SeriesColumn {
     std::string_view key;
-    std::vector<double> atmo::EntrySeries::* member;
+    std::vector<double> atmo::EntrySeries::* member = nullptr;
 };
 
 constexpr std::array<SeriesColumn, 15> kSeriesColumns{{
@@ -582,34 +582,106 @@ core::Result<std::optional<EntryResultRecord>, Error> read_result(const Experime
     return std::optional<EntryResultRecord>(std::move(r));
 }
 
-std::optional<Error> check_keys(const Experiment& experiment) {
-    std::vector<std::string_view> inputs{
-        "name", "planet", "atmosphere", "vehicle", "mass_kg", "reference_area_m2", "nose_radius_m"};
-    for (const auto& field : kExponentialNumbers) {
-        inputs.push_back(field.key);
-    }
-    if (auto problem = Reader(experiment.inputs, "inputs").unknown_key(inputs)) {
-        return problem;
-    }
-    std::vector<std::string_view> result{"outcome"};
-    for (const auto& field : kResultNumbers) {
-        result.push_back(field.key);
-    }
-    for (const auto& field : kResultOptionals) {
-        result.push_back(field.key);
-    }
-    if (auto problem = Reader(experiment.result, "result").unknown_key(result)) {
-        return problem;
-    }
-    for (const auto& entry : experiment.series) {
-        const bool table = entry.first == kTableMach || entry.first == kTableCd;
-        const bool column =
-            std::any_of(kSeriesColumns.begin(), kSeriesColumns.end(),
-                        [&](const SeriesColumn& c) { return c.key == entry.first; });
-        if (!table && !(column && !experiment.result.empty())) {
-            return "series." + entry.first + ": unknown key";
+constexpr std::array<std::string_view, 10> kInputKeys{"name",           "planet",
+                                                      "atmosphere",     "vehicle",
+                                                      "mass_kg",        "reference_area_m2",
+                                                      "nose_radius_m",  "surface_density_kg_m3",
+                                                      "scale_height_m", "temperature_k"};
+
+constexpr std::array<std::string_view, 19> kResultKeys{"outcome",
+                                                       "duration_s",
+                                                       "peak_g_load",
+                                                       "peak_g_time_s",
+                                                       "peak_heat_flux_w_m2",
+                                                       "peak_heat_flux_time_s",
+                                                       "peak_dynamic_pressure_pa",
+                                                       "peak_dynamic_pressure_time_s",
+                                                       "heat_load_j_m2",
+                                                       "min_altitude_m",
+                                                       "final_speed_m_s",
+                                                       "drag_work_j",
+                                                       "energy_change_j",
+                                                       "energy_relative_error",
+                                                       "entry_time_s",
+                                                       "skip_out_time_s",
+                                                       "impact_time_s",
+                                                       "impact_latitude_deg",
+                                                       "impact_longitude_deg"};
+
+static_assert(kResultKeys.size() == 1 + kResultNumbers.size() + kResultOptionals.size());
+static_assert(kInputKeys.size() == 4 + kVehicleNumbers.size() + kExponentialNumbers.size());
+
+// True for a result series column name.
+bool is_series_column(std::string_view name) noexcept {
+    for (const SeriesColumn& column : kSeriesColumns) {
+        if (column.key == name) {
+            return true;
         }
     }
+    return false;
+}
+
+// Empty when every series key is a table or, with a result, a column.
+std::optional<Error> unknown_series(const Experiment& experiment) {
+    const bool with_result = !experiment.result.empty();
+    for (const auto& entry : experiment.series) {
+        const std::string_view key = entry.first;
+        if (key == kTableMach || key == kTableCd || (with_result && is_series_column(key))) {
+            continue;
+        }
+        return "series." + entry.first + ": unknown key";
+    }
+    return std::nullopt;
+}
+
+std::optional<Error> check_keys(const Experiment& experiment) {
+    if (auto problem = Reader(experiment.inputs, "inputs").unknown_key(kInputKeys)) {
+        return problem;
+    }
+    if (auto problem = Reader(experiment.result, "result").unknown_key(kResultKeys)) {
+        return problem;
+    }
+    return unknown_series(experiment);
+}
+
+// Name, environment and vehicle into `out`; the first error, if any.
+std::optional<Error> read_inputs(const Experiment& experiment, EntryExperiment& out) {
+    const Reader inputs(experiment.inputs, "inputs");
+    auto name = inputs.text("name", "");
+    if (!name) {
+        return name.error();
+    }
+    out.name = name.value();
+    auto environment = read_environment(inputs);
+    if (!environment) {
+        return environment.error();
+    }
+    out.environment = environment.value();
+    auto vehicle = read_vehicle(inputs, experiment.series);
+    if (!vehicle) {
+        return vehicle.error();
+    }
+    out.vehicle = vehicle.value();
+    return std::nullopt;
+}
+
+// Conditions, solver settings and result into `out`.
+std::optional<Error> read_rest(const Experiment& experiment, EntryExperiment& out) {
+    auto conditions = read_conditions(experiment.conditions);
+    if (!conditions) {
+        return conditions.error();
+    }
+    out.conditions = conditions.value();
+    auto solver = read_solver(experiment.solver);
+    if (!solver) {
+        return solver.error();
+    }
+    out.solver = solver.value();
+    auto result = read_result(experiment);
+    if (!result) {
+        return result.error();
+    }
+    out.result = result.value();
     return std::nullopt;
 }
 
@@ -636,27 +708,12 @@ core::Result<EntryExperiment, std::string> entry_from_experiment(const Experimen
         return core::failure(std::move(*problem));
     }
     EntryExperiment out;
-    const Reader inputs(experiment.inputs, "inputs");
-    auto name = inputs.text("name", "");
-    auto environment = read_environment(inputs);
-    auto vehicle = read_vehicle(inputs, experiment.series);
-    auto conditions = read_conditions(experiment.conditions);
-    auto solver = read_solver(experiment.solver);
-    auto result = read_result(experiment);
-    for (const Error* problem :
-         {name ? nullptr : &name.error(), environment ? nullptr : &environment.error(),
-          vehicle ? nullptr : &vehicle.error(), conditions ? nullptr : &conditions.error(),
-          solver ? nullptr : &solver.error(), result ? nullptr : &result.error()}) {
-        if (problem != nullptr) {
-            return core::failure(*problem);
-        }
+    if (auto problem = read_inputs(experiment, out)) {
+        return core::failure(std::move(*problem));
     }
-    out.name = std::move(name).value();
-    out.environment = std::move(environment).value();
-    out.vehicle = std::move(vehicle).value();
-    out.conditions = std::move(conditions).value();
-    out.solver = std::move(solver).value();
-    out.result = std::move(result).value();
+    if (auto problem = read_rest(experiment, out)) {
+        return core::failure(std::move(*problem));
+    }
     return out;
 }
 
