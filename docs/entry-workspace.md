@@ -65,9 +65,12 @@ inputs and disable Run.
 `sim::EntryRunner` owns the run on its own thread like the aero runner
 (ADR-011): commands (start, pause, pace, stop) through a lock-free queue,
 progress through a triple buffer. The run advances in slices of at most
-2 s of simulated time (`atmo::EntryExperiment::advance`) and polls its
+2 s of simulated time and at most 1000 integration steps
+(`atmo::EntryExperiment::advance` with a step bound, so a record with a tiny
+time step cannot hold the thread for billions of steps) and polls its
 commands between slices, so Pause and Stop act within one slice (tested
-with a stepper that takes 20 ms per slice). **Pace**: 10x to 1000x real
+with a stepper that takes 20 ms per slice, and with the library at a 1e-9 s
+step: Stop and shutdown within a second). **Pace**: 10x to 1000x real
 time, or as fast as possible (batches of 12 ms of wall time). Progress is
 published at most 30 times a second and on every state change: the series
 so far, the summary, and once the run ended or was stopped the library's full

@@ -234,6 +234,11 @@ public:
     // reached). After a failure the outcome is failed and the state is the
     // last good one. Calls after the end change nothing.
     [[nodiscard]] core::Result<EntryOutcome, AtmoError> advance(core::si::Time duration);
+    // Like advance(duration), taking at most `max_steps` steps, so that a
+    // caller that must stay responsive (a solver thread polling Stop) bounds
+    // the work of one call even with a tiny time step.
+    [[nodiscard]] core::Result<EntryOutcome, AtmoError> advance(core::si::Time duration,
+                                                                std::size_t max_steps);
     // Advances until an end condition (at the latest max_duration).
     [[nodiscard]] core::Result<EntryOutcome, AtmoError> run();
 

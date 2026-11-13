@@ -1,6 +1,8 @@
 #include "orrery/atmo/entry.h"
 
 #include <cmath>
+#include <cstddef>
+#include <limits>
 #include <memory>
 #include <numbers>
 #include <utility>
@@ -77,11 +79,17 @@ core::Result<EntryExperiment, AtmoError> EntryExperiment::create(EntryConfig con
 }
 
 core::Result<EntryOutcome, AtmoError> EntryExperiment::advance(core::si::Time duration) {
-    return impl_->advance(duration.value());
+    return impl_->advance(duration.value(), std::numeric_limits<std::size_t>::max());
+}
+
+core::Result<EntryOutcome, AtmoError> EntryExperiment::advance(core::si::Time duration,
+                                                               std::size_t max_steps) {
+    return impl_->advance(duration.value(), max_steps);
 }
 
 core::Result<EntryOutcome, AtmoError> EntryExperiment::run() {
-    return impl_->advance(impl_->config.max_duration.value());
+    return impl_->advance(impl_->config.max_duration.value(),
+                          std::numeric_limits<std::size_t>::max());
 }
 
 bool EntryExperiment::finished() const noexcept {

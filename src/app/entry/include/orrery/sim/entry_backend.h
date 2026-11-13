@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
@@ -28,6 +29,12 @@ struct EntryTrace {
     std::shared_ptr<const scene::EntryResultRecord> record;
 };
 
+// Most integration steps one EntryStepper::advance() of the physics library
+// takes, so that a call stays short (Stop, Pause and shutdown are polled
+// between calls) even when an imported record sets a tiny time step. A run
+// at the default 0.5 s step takes 4 steps per 2 s slice.
+inline constexpr std::size_t kEntryMaxStepsPerCall = 1000;
+
 class EntryStepper {
 public:
     EntryStepper() = default;
@@ -37,8 +44,9 @@ public:
     EntryStepper& operator=(EntryStepper&&) = delete;
     virtual ~EntryStepper() = default;
 
-    // Integrates at most `seconds` of simulated time (a short slice, so that
-    // the caller can poll its commands between calls) and appends the
+    // Integrates at most `seconds` of simulated time and at most
+    // kEntryMaxStepsPerCall steps (a short slice, so that the caller can poll
+    // its commands between calls) and appends the
     // samples recorded in it to `out` (the first call also records the
     // initial state). Returns true once the entry has ended; outcome() says
     // how. Throws std::runtime_error when the integration fails.

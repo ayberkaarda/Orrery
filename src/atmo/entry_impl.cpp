@@ -165,7 +165,8 @@ EntryExperiment::Impl::create(EntryConfig config) {
     return impl;
 }
 
-core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double duration_s) {
+core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double duration_s,
+                                                                     std::size_t max_steps) {
     if (summary.outcome != EntryOutcome::running) {
         return summary.outcome;
     }
@@ -175,7 +176,8 @@ core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double dura
     }
     const double limit = config.max_duration.value();
     const double end = std::min(time_s + duration_s, limit);
-    while (summary.outcome == EntryOutcome::running && time_s < end) {
+    for (std::size_t steps = 0;
+         summary.outcome == EntryOutcome::running && time_s < end && steps < max_steps; ++steps) {
         const double remaining = limit - time_s;
         const double next = next_step();
         const bool last = remaining <= next;

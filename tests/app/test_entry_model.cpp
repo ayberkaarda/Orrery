@@ -3,6 +3,7 @@
 
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -199,6 +200,43 @@ TEST_CASE("Pause and stop act between slices of the entry runner", "[app][entry]
     // The trace up to the stop stays readable.
     REQUIRE(runner.latest().trace != nullptr);
     CHECK_FALSE(runner.latest().trace->series.empty());
+}
+
+TEST_CASE("Stop and shutdown stay prompt with a tiny integration step", "[app][entry]") {
+    // 1e-9 s steps: one 2 s slice would be 2e9 steps if a stepper call were
+    // not bounded.
+    sim::EntrySetup setup;
+    setup.integration.time_step_s = 1.0e-9;
+    auto runner = std::make_unique<sim::EntryRunner>();
+    const auto within = [&](const std::function<bool()>& condition) {
+        const bool reached = app_test::wait_until(condition, std::chrono::seconds(5));
+        if (!reached) {
+            // The solver thread is stuck inside one stepper call: leave it
+            // behind instead of blocking this test in the destructor's join.
+            (void)runner.release();
+        }
+        return reached;
+    };
+    const auto prompt = [&](sim::EntryRunState state) {
+        return within([&] {
+            runner->wake();
+            (void)runner->fetch();
+            return runner->latest().status.state == state;
+        });
+    };
+    runner->send(sim::StartEntryRun{setup});
+    REQUIRE(prompt(sim::EntryRunState::running));
+    REQUIRE(within([&] { return runner->slices() >= 1; }));
+    const auto sent = std::chrono::steady_clock::now();
+    runner->send(sim::StopEntryRun{});
+    REQUIRE(prompt(sim::EntryRunState::stopped));
+    CHECK(std::chrono::steady_clock::now() - sent < std::chrono::seconds(1));
+    // Shutdown in the middle of a run joins promptly too.
+    runner->send(sim::StartEntryRun{setup});
+    REQUIRE(prompt(sim::EntryRunState::running));
+    const auto destroyed = std::chrono::steady_clock::now();
+    runner.reset();
+    CHECK(std::chrono::steady_clock::now() - destroyed < std::chrono::seconds(1));
 }
 
 TEST_CASE("Entry runner failures are published with their reason", "[app][entry]") {

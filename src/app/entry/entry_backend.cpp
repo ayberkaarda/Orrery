@@ -110,7 +110,8 @@ public:
 
     bool advance(double seconds, EntrySeries& out) override {
         if (!run_.finished()) {
-            auto advanced = run_.advance(core::si::Time{std::max(seconds, 0.0)});
+            auto advanced =
+                run_.advance(core::si::Time{std::max(seconds, 0.0)}, kEntryMaxStepsPerCall);
             if (!advanced) {
                 throw std::runtime_error(advanced.error().message);
             }

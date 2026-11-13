@@ -66,7 +66,8 @@ struct EntryExperiment::Impl {
 
     [[nodiscard]] static core::Result<std::unique_ptr<Impl>, AtmoError> create(EntryConfig config);
 
-    [[nodiscard]] core::Result<EntryOutcome, AtmoError> advance(double duration_s);
+    [[nodiscard]] core::Result<EntryOutcome, AtmoError> advance(double duration_s,
+                                                                std::size_t max_steps);
     [[nodiscard]] EntryEnergyBalance energy_balance() const noexcept;
 
     // Records the initial row and the entry event of a start inside the

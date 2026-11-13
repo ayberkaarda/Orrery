@@ -286,6 +286,17 @@ TEST_CASE("Entry runs are deterministic and independent of the advance chunks", 
     CHECK(chunked.series().size() == rows);
 }
 
+TEST_CASE("A step-bounded advance takes at most the given number of steps", "[atmo][entry]") {
+    EntryExperiment run = make(orrery::atmo::apollo_like_entry());
+    auto outcome = run.advance(si::Time(100.0), 3);
+    REQUIRE(outcome);
+    CHECK(outcome.value() == EntryOutcome::running);
+    CHECK(run.series().size() == 4); // the initial row and three steps
+    CHECK(run.time().value() == 1.5);
+    REQUIRE(run.advance(si::Time(100.0), 0));
+    CHECK(run.series().size() == 4);
+}
+
 TEST_CASE("Gravity integrators agree on the split step", "[atmo][entry]") {
     EntryExperiment ias15 = make(orrery::atmo::apollo_like_entry());
     run_to_end(ias15);
