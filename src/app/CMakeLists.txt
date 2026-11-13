@@ -51,6 +51,20 @@ target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/aero/in
 target_link_libraries(orrery_sim PUBLIC orrery_aero orrery_geom)
 target_link_libraries(orrery_sim PRIVATE orrery_geom_net)
 
+# Phase 9b: the graphics-free side of the Entry workspace
+# (docs/entry-workspace.md): entry inputs and series, the adapter to the entry
+# physics, the solver thread, experiment records and the comparison table.
+target_sources(orrery_sim PRIVATE
+    entry/entry_backend.cpp
+    entry/entry_comparison.cpp
+    entry/entry_model.cpp
+    entry/entry_runner.cpp
+    entry/include/orrery/sim/entry_backend.h
+    entry/include/orrery/sim/entry_comparison.h
+    entry/include/orrery/sim/entry_model.h
+    entry/include/orrery/sim/entry_runner.h)
+target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/entry/include)
+
 add_library(orrery_app_core STATIC
     cli.cpp
     frame_stats.cpp
