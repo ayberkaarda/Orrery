@@ -1,4 +1,4 @@
-#include "window_app.h"
+#include "orrery/app/window_app.h"
 
 #include <algorithm>
 #include <chrono>
@@ -111,10 +111,12 @@ double focus_distance(const core::SimSnapshot& snapshot, std::size_t index) {
 class WindowApp {
 public:
     WindowApp(WindowRequest request, render::GlContext& gl, render::UiContext& ui,
-              render::SpaceRenderer& space, sim::PhysicsThread& physics, std::ostream& out)
+              render::SpaceRenderer& space, sim::PhysicsThread& physics, std::ostream& out,
+              WindowDriver* driver)
         : request_(std::move(request)), gl_(gl), ui_(ui), space_(space), physics_(physics),
-          out_(out), trails_(trail_settings(settings_)), workspace_(request_.workspace),
-          aero_(aero_options(request_.config)), entry_(entry_options(request_.config)),
+          out_(out), driver_(driver), trails_(trail_settings(settings_)),
+          workspace_(request_.workspace), aero_(aero_options(request_.config)),
+          entry_(entry_options(request_.config)),
           space_panel_(request_.config.experiment_dir, request_.bundled_experiment_dir) {
         for (const sim::ScenarioEntry& entry : request_.scenarios) {
             scenario_names_.push_back(entry.name);
@@ -152,13 +154,21 @@ private:
     // What the shortcuts act on this frame (shortcut_dispatch.h).
     ShortcutTargets shortcut_targets();
     void draw_space_experiment();
-    void reframe(const render::UiRect& scene, int window_height);
+    void reframe(const render::UiRect& scene, int window_width, int window_height);
     void build_ui(double dt, int width, int height);
     void draw_space_bar(double fps);
-    void build_space_ui(const render::SceneInput& input, double dt, int height);
+    void build_space_ui(const render::SceneInput& input, double dt, int width, int height);
     void handle_scene_input(const render::SceneInput& input, double dt);
     void draw_aero_scene(const render::FrameInfo& frame, double dt, std::ostream& err);
     void draw_entry_scene(const render::FrameInfo& frame, std::ostream& err);
+    // One drawn frame into `pipeline` (recreated for a new size); false when
+    // the pipeline cannot be created.
+    bool draw_frame(int width, int height, double dt, std::ostream& err);
+    void draw_space_scene(const render::FrameInfo& frame, double dt);
+    // Scripted sessions: the driver's requests before a frame, and its view
+    // of the frame afterwards.
+    WindowControl drive_before_frame();
+    void report_frame(bool drawn, int width, int height, double frame_seconds);
 
     WindowRequest request_;
     render::GlContext& gl_;
@@ -166,6 +176,10 @@ private:
     render::SpaceRenderer& space_;
     sim::PhysicsThread& physics_;
     std::ostream& out_;
+    WindowDriver* driver_ = nullptr;
+    std::int64_t frames_ = 0;
+    std::size_t gl_errors_ = 0;
+    std::optional<render::HdrPipeline> pipeline_;
 
     render::RenderSettings settings_;
     render::TrailHistory trails_;
@@ -244,7 +258,7 @@ void WindowApp::take(const sim::PublishedFrame& frame) {
 // Frames the system in the scene area left free by the panels: the framing
 // is computed for that area's aspect and moved back so that the area's
 // height (not the window's) spans the field of view.
-void WindowApp::reframe(const render::UiRect& scene, int window_height) {
+void WindowApp::reframe(const render::UiRect& scene, int /*window_width*/, int window_height) {
     if (!snapshot_) {
         return;
     }
@@ -305,7 +319,7 @@ void WindowApp::build_ui(double dt, int width, int height) {
         entry_scene_ = entry_.draw_panels();
         entry_.handle_scene_input(scene_input, dt);
     } else {
-        build_space_ui(scene_input, dt, height);
+        build_space_ui(scene_input, dt, width, height);
     }
     apply_late_shortcuts(actions, targets); // open: after the panels exist this frame
     draw_shortcut_help(request_.config.shortcuts, workspace_, help_open_,
@@ -374,11 +388,11 @@ void WindowApp::draw_space_bar(double fps) {
     }
 }
 
-void WindowApp::build_space_ui(const render::SceneInput& input, double dt, int height) {
+void WindowApp::build_space_ui(const render::SceneInput& input, double dt, int width, int height) {
     const render::UiRect scene = ui_.dockspace();
     if (reframe_pending_) {
         reframe_pending_ = false;
-        reframe(scene, height);
+        reframe(scene, width, height);
     }
     handle_scene_input(input, dt);
 
@@ -496,20 +510,124 @@ void WindowApp::draw_entry_scene(const render::FrameInfo& frame, std::ostream& e
     entry_.set_view_problem(std::move(problem));
 }
 
+void WindowApp::draw_space_scene(const render::FrameInfo& frame, double dt) {
+    camera_.update(dt, camera_input_, body_frames(snapshot_));
+    if (snapshot_) {
+        const render::PreparedBodies prepared =
+            render::prepare_bodies(*snapshot_, camera_, frame, settings_);
+        const std::vector<render::SceneLabel> labels =
+            render::make_scene_labels(*snapshot_, prepared.screen, selected_);
+        render::draw_scene_labels(labels);
+    }
+    pipeline_->set_exposure(settings_.exposure);
+    pipeline_->begin_scene();
+    if (snapshot_) {
+        const render::SpaceView view{snapshot_.get(), &trails_, &camera_, settings_};
+        (void)space_.draw(view, frame);
+    }
+    pipeline_->resolve();
+    pipeline_->begin_overlay();
+}
+
+bool WindowApp::draw_frame(int width, int height, double dt, std::ostream& err) {
+    if (!pipeline_ || pipeline_->frame().width != width || pipeline_->frame().height != height) {
+        gl_.make_current();
+        pipeline_.reset();
+        render::HdrSettings hdr;
+        hdr.samples = 4;
+        auto created = render::HdrPipeline::create(width, height, hdr);
+        if (!created) {
+            err << "orrery_app: frame pipeline " << width << 'x' << height << ": "
+                << created.error() << '\n';
+            return false;
+        }
+        pipeline_.emplace(std::move(created).value());
+    }
+    if (workspace_ == Workspace::aero) {
+        aero_.update(dt);
+    } else if (workspace_ == Workspace::entry) {
+        entry_.update(dt);
+    }
+    build_ui(dt, width, height);
+    const render::FrameInfo frame{width, height};
+    if (workspace_ == Workspace::aero) {
+        pipeline_->set_exposure(1.0); // the aero view's colours assume exposure 1
+        pipeline_->begin_scene();
+        draw_aero_scene(frame, dt, err);
+        pipeline_->resolve();
+        pipeline_->begin_overlay();
+        if (aero_view_) {
+            aero_view_->draw_overlay(frame);
+        }
+    } else if (workspace_ == Workspace::entry) {
+        pipeline_->set_exposure(1.0); // the entry view's colours assume exposure 1
+        pipeline_->begin_scene();
+        draw_entry_scene(frame, err);
+        pipeline_->resolve();
+        pipeline_->begin_overlay();
+    } else {
+        draw_space_scene(frame, dt);
+    }
+    ui_.end_frame();
+    pipeline_->present(width, height);
+    return true;
+}
+
+WindowControl WindowApp::drive_before_frame() {
+    WindowControl control;
+    if (driver_ == nullptr) {
+        return control;
+    }
+    ui_.make_current();
+    driver_->before_frame(frames_, control);
+    if (control.window_size) {
+        gl_.set_window_size(control.window_size->first, control.window_size->second);
+    }
+    return control;
+}
+
+void WindowApp::report_frame(bool drawn, int width, int height, double frame_seconds) {
+    if (driver_ == nullptr) {
+        return;
+    }
+    gl_.make_current();
+    gl_errors_ += gl_.drain_gl_errors();
+    WindowFrame frame;
+    frame.index = frames_;
+    frame.drawn = drawn;
+    frame.width = width;
+    frame.height = height;
+    frame.content_scale = gl_.content_scale();
+    frame.frame_seconds = frame_seconds;
+    frame.workspace = workspace_;
+    frame.help_open = help_open_;
+    frame.warp_limited_shown = warp_limited_hold_ > 0.0;
+    frame.status = &status_;
+    frame.snapshot = snapshot_;
+    frame.scenario = current_scenario_;
+    frame.aero = &aero_;
+    frame.entry = &entry_;
+    frame.space_panel = &space_panel_;
+    frame.ui = &ui_;
+    frame.gl = &gl_;
+    frame.gl_errors = gl_errors_ + gl_.debug_error_count();
+    driver_->after_frame(frame);
+}
+
 int WindowApp::run(std::ostream& err) {
-    std::optional<render::HdrPipeline> pipeline;
-    int pipeline_width = 0;
-    int pipeline_height = 0;
     Clock::time_point last = Clock::now();
-    std::int64_t frames = 0;
     BenchmarkStats benchmark(kBenchmarkWarmupFrames);
 
     while (!gl_.should_close()) {
         ORRERY_FRAME_ZONE();
         gl_.poll_events();
-        const int width = gl_.framebuffer_width();
-        const int height = gl_.framebuffer_height();
+        const WindowControl control = drive_before_frame();
+        const int width = control.empty_framebuffer ? 0 : gl_.framebuffer_width();
+        const int height = control.empty_framebuffer ? 0 : gl_.framebuffer_height();
         physics_.wake();
+        const Clock::time_point now = Clock::now();
+        // Interactive updates use the clamped delta, statistics the measured one.
+        const FrameDelta delta = frame_delta(std::chrono::duration<double>(now - last).count());
         if (width <= 0 || height <= 0) {
             // Minimised: keep the simulation running, render nothing.
             std::this_thread::sleep_for(std::chrono::milliseconds(16));
@@ -517,84 +635,32 @@ int WindowApp::run(std::ostream& err) {
                 take(physics_.latest());
             }
             last = Clock::now();
+            report_frame(false, width, height, delta.raw_seconds);
+            ++frames_;
+            if (control.close) {
+                break;
+            }
             continue;
         }
-        if (!pipeline || width != pipeline_width || height != pipeline_height) {
-            gl_.make_current();
-            pipeline.reset();
-            render::HdrSettings hdr;
-            hdr.samples = 4;
-            auto created = render::HdrPipeline::create(width, height, hdr);
-            if (!created) {
-                err << "orrery_app: frame pipeline " << width << 'x' << height << ": "
-                    << created.error() << '\n';
-                return kExitFailure;
-            }
-            pipeline.emplace(std::move(created).value());
-            pipeline_width = width;
-            pipeline_height = height;
-        }
-
-        const Clock::time_point now = Clock::now();
-        // Interactive updates use the clamped delta, statistics the measured one.
-        const FrameDelta delta = frame_delta(std::chrono::duration<double>(now - last).count());
         const double dt = delta.interactive_seconds;
         last = now;
         frame_seconds_ += (dt - frame_seconds_) * 0.05;
         warp_limited_hold_ = std::max(0.0, warp_limited_hold_ - dt);
-
         if (physics_.fetch()) {
             take(physics_.latest());
         }
-
-        if (workspace_ == Workspace::aero) {
-            aero_.update(dt);
-        } else if (workspace_ == Workspace::entry) {
-            entry_.update(dt);
+        if (!draw_frame(width, height, dt, err)) {
+            return kExitFailure;
         }
-        build_ui(dt, width, height);
-        const render::FrameInfo frame{width, height};
-        if (workspace_ == Workspace::aero) {
-            pipeline->set_exposure(1.0); // the aero view's colours assume exposure 1
-            pipeline->begin_scene();
-            draw_aero_scene(frame, dt, err);
-            pipeline->resolve();
-            pipeline->begin_overlay();
-            if (aero_view_) {
-                aero_view_->draw_overlay(frame);
-            }
-        } else if (workspace_ == Workspace::entry) {
-            pipeline->set_exposure(1.0); // the entry view's colours assume exposure 1
-            pipeline->begin_scene();
-            draw_entry_scene(frame, err);
-            pipeline->resolve();
-            pipeline->begin_overlay();
-        } else {
-            camera_.update(dt, camera_input_, body_frames(snapshot_));
-            if (snapshot_) {
-                const render::PreparedBodies prepared =
-                    render::prepare_bodies(*snapshot_, camera_, frame, settings_);
-                const std::vector<render::SceneLabel> labels =
-                    render::make_scene_labels(*snapshot_, prepared.screen, selected_);
-                render::draw_scene_labels(labels);
-            }
-            pipeline->set_exposure(settings_.exposure);
-            pipeline->begin_scene();
-            if (snapshot_) {
-                const render::SpaceView view{snapshot_.get(), &trails_, &camera_, settings_};
-                (void)space_.draw(view, frame);
-            }
-            pipeline->resolve();
-            pipeline->begin_overlay();
-        }
-        ui_.end_frame();
-        pipeline->present(width, height);
+        report_frame(true, width, height, delta.raw_seconds);
         gl_.swap_buffers();
-
-        ++frames;
+        ++frames_;
+        if (control.close) {
+            break;
+        }
         if (request_.benchmark_frames > 0) {
             benchmark.add(delta);
-            if (frames >= request_.benchmark_frames + kBenchmarkWarmupFrames) {
+            if (frames_ >= request_.benchmark_frames + kBenchmarkWarmupFrames) {
                 out_ << "benchmark: " << benchmark.frames() << " frames at " << width << 'x'
                      << height << " (" << status_.scenario << ", " << snapshot_->size()
                      << " bodies): mean " << benchmark.mean_ms() << " ms, " << benchmark.fps()
@@ -608,14 +674,16 @@ int WindowApp::run(std::ostream& err) {
 
 } // namespace
 
-int run_window(WindowRequest request, std::ostream& out, std::ostream& err) {
+int run_window(WindowRequest request, std::ostream& out, std::ostream& err,
+               const WindowSession& session) {
     render::ContextOptions options;
     options.width = request.width;
     options.height = request.height;
     options.title = "Orrery";
-    options.visible = true;
-    options.debug = false;
-    options.swap_interval = request.benchmark_frames > 0 ? 0 : 1;
+    options.visible = !session.hidden;
+    options.debug = session.gl_debug;
+    // A hidden window is never on screen: its swaps wait for nothing.
+    options.swap_interval = request.benchmark_frames > 0 || session.hidden ? 0 : 1;
     auto context = render::GlContext::create(options);
     if (!context) {
         err << "orrery_app: cannot open an OpenGL 4.6 window: " << context.error() << '\n';
@@ -649,7 +717,7 @@ int run_window(WindowRequest request, std::ostream& out, std::ostream& err) {
         return kExitFailure;
     }
     sim::PhysicsThread physics(std::move(simulation).value());
-    WindowApp app(std::move(request), gl, ui, space, physics, out);
+    WindowApp app(std::move(request), gl, ui, space, physics, out, session.driver);
     const int code = app.run(err);
     gl.make_current();
     return code;

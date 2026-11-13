@@ -23,7 +23,7 @@
 #include "orrery/sim/space_experiment.h"
 
 #if !defined(ORRERY_HEADLESS)
-#include "window_app.h"
+#include "orrery/app/window_app.h"
 #endif
 
 namespace {
