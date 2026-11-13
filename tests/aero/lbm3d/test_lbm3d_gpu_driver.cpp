@@ -38,7 +38,7 @@ TEST_CASE("The GPU D3Q19 driver uploads, ping-pongs and reads back", "[aero][lbm
     REQUIRE(back.size() == expected.size());
     double worst = 0.0;
     for (std::size_t k = 0; k < back.size(); ++k) {
-        worst = std::max(worst, std::abs(back[k] - expected[k]));
+        worst = worse(worst, std::abs(back[k] - expected[k]));
     }
     CHECK(worst < 1e-8);
 

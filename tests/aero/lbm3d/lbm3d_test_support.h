@@ -2,9 +2,12 @@
 
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <numbers>
 #include <vector>
 
@@ -28,6 +31,31 @@ inline double velocity_l2(const MacroFields3D& a, const MacroFields3D& b) {
     skip.insert(skip.end(), b.solid.begin(), b.solid.end());
     skip.insert(skip.end(), b.solid.begin(), b.solid.end());
     return l2_relative(va, vb, skip);
+}
+
+// The larger of a running worst error and a new error; a non-finite error
+// (a NaN or infinite field value) makes it infinite, where std::max would
+// keep the old value for a NaN and let an all-NaN field pass.
+inline double worse(double worst, double error) noexcept {
+    if (!std::isfinite(error)) {
+        return std::numeric_limits<double>::infinity();
+    }
+    return std::max(worst, error);
+}
+
+// Largest deviation of a field from the uniform state (rho, u): the density
+// relative to rho, each velocity component relative to `speed_scale`, over
+// every node; infinite when any value is not finite.
+inline double uniform_state_error(const MacroFields3D& fields, double rho,
+                                  const std::array<double, 3>& u, double speed_scale) {
+    double worst = 0.0;
+    for (std::size_t c = 0; c < fields.density.size(); ++c) {
+        worst = worse(worst, std::abs(fields.density[c] - rho) / rho);
+        worst = worse(worst, std::abs(fields.velocity_x[c] - u[0]) / speed_scale);
+        worst = worse(worst, std::abs(fields.velocity_y[c] - u[1]) / speed_scale);
+        worst = worse(worst, std::abs(fields.velocity_z[c] - u[2]) / speed_scale);
+    }
+    return worst;
 }
 
 inline Wall wall(WallKind kind, double velocity = 0.0) {

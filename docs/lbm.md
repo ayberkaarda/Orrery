@@ -590,7 +590,10 @@ percent of the square-plate value of about 1.2 and 9.5 percent below the
   co-moving walls at densities 0.7, 1, 2 (1e-12), mass conservation with
   periodic, slip and moving walls and a sphere (1.4e-13 over 1500 steps),
   momentum exchange against the body force (1e-6), a uniform stream through
-  inlet and outlet, the inlet velocity next to a sphere, determinism,
+  inlet and outlet, the inlet velocity next to a sphere (the error checks
+  count a NaN or infinite field value as an infinite error, and a test feeds
+  them NaN fields; with std::max a NaN was dropped and an all-NaN field
+  passed), determinism,
   validation, memory estimates; the GPU driver on the Null backend (layout,
   ping-pong, binary32 and memory refusals); the adapter (sphere, rotated wind
   frame, every warning, refusals, cell budget, step-count guards, call-size

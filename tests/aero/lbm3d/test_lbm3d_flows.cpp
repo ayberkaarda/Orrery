@@ -106,16 +106,41 @@ TEST_CASE("D3Q19 uniform translation between co-moving walls at any density", "[
         require_ok(solver->initialize(uniform_state3d(rho, u)));
         require_ok(solver->step(300));
         const MacroFields3D fields = take(solver->macroscopic());
-        double worst = 0.0;
-        for (std::size_t c = 0; c < fields.density.size(); ++c) {
-            worst = std::max(worst, std::abs(fields.density[c] - rho) / rho);
-            worst = std::max(worst, std::abs(fields.velocity_x[c] - u) / u);
-            worst = std::max(worst, std::abs(fields.velocity_y[c]) / u);
-            worst = std::max(worst, std::abs(fields.velocity_z[c]) / u);
-        }
         INFO("density " << rho);
-        CHECK(worst < 1e-12);
+        CHECK(uniform_state_error(fields, rho, {u, 0.0, 0.0}, u) < 1e-12);
     }
+}
+
+TEST_CASE("The uniform-state check fails on non-finite fields", "[aero][lbm3d]") {
+    MacroFields3D fields;
+    fields.nx = 2;
+    fields.ny = 1;
+    fields.nz = 1;
+    fields.density = {1.0, 1.0};
+    fields.velocity_x = {0.03, 0.03};
+    fields.velocity_y = {0.0, 0.0};
+    fields.velocity_z = {0.0, 0.0};
+    fields.solid = {0, 0};
+    CHECK(uniform_state_error(fields, 1.0, {0.03, 0.0, 0.0}, 0.03) == 0.0);
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const auto spoilt = [&](std::vector<double> MacroFields3D::* field, double value) {
+        MacroFields3D f = fields;
+        (f.*field)[1] = value;
+        return uniform_state_error(f, 1.0, {0.03, 0.0, 0.0}, 0.03);
+    };
+    for (std::vector<double> MacroFields3D::* field :
+         {&MacroFields3D::density, &MacroFields3D::velocity_x, &MacroFields3D::velocity_y,
+          &MacroFields3D::velocity_z}) {
+        CHECK_FALSE(spoilt(field, nan) < 1e-12);
+        CHECK_FALSE(spoilt(field, std::numeric_limits<double>::infinity()) < 1e-12);
+    }
+    // An entirely NaN field.
+    MacroFields3D all = fields;
+    for (std::vector<double>* v :
+         {&all.density, &all.velocity_x, &all.velocity_y, &all.velocity_z}) {
+        v->assign(v->size(), nan);
+    }
+    CHECK_FALSE(uniform_state_error(all, 1.0, {0.03, 0.0, 0.0}, 0.03) < 1e-12);
 }
 
 TEST_CASE("D3Q19 conserves mass with periodic, slip and moving walls", "[aero][lbm3d]") {
@@ -179,14 +204,7 @@ TEST_CASE("A uniform stream through the inlet and outlet stays uniform", "[aero]
         auto solver = take(make_cpu_solver(config, fluid_mask_3d(16, 6, 5)));
         require_ok(solver->step(400));
         const MacroFields3D fields = take(solver->macroscopic());
-        double worst = 0.0;
-        for (std::size_t c = 0; c < fields.density.size(); ++c) {
-            worst = std::max(worst, std::abs(fields.density[c] - 1.0));
-            worst = std::max(worst, std::abs(fields.velocity_x[c] - 0.05));
-            worst = std::max(worst, std::abs(fields.velocity_y[c]));
-            worst = std::max(worst, std::abs(fields.velocity_z[c]));
-        }
-        CHECK(worst < 1e-13);
+        CHECK(uniform_state_error(fields, 1.0, {0.05, 0.0, 0.0}, 1.0) < 1e-13);
     }
 }
 
@@ -201,9 +219,9 @@ TEST_CASE("The inlet imposes its velocity next to a sphere", "[aero][lbm3d]") {
     for (std::size_t z = 0; z < 20; ++z) {
         for (std::size_t y = 0; y < 20; ++y) {
             const std::size_t c = 40 * (y + 20 * z);
-            worst = std::max(worst, std::abs(fields.velocity_x[c] - 0.05));
-            worst = std::max(worst, std::abs(fields.velocity_y[c] - 0.004));
-            worst = std::max(worst, std::abs(fields.velocity_z[c] + 0.003));
+            worst = worse(worst, std::abs(fields.velocity_x[c] - 0.05));
+            worst = worse(worst, std::abs(fields.velocity_y[c] - 0.004));
+            worst = worse(worst, std::abs(fields.velocity_z[c] + 0.003));
         }
     }
     CHECK(worst < 1e-13);

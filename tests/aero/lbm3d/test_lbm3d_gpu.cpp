@@ -252,11 +252,7 @@ TEST_CASE("GPU D3Q19: a uniform stream between co-moving walls stays uniform at 
         require_ok(solver->initialize(uniform_state3d(rho, u)));
         require_ok(solver->step(300));
         const MacroFields3D fields = take(solver->macroscopic());
-        double worst = 0.0;
-        for (std::size_t c = 0; c < fields.density.size(); ++c) {
-            worst = std::max(worst, std::abs(fields.density[c] - rho) / rho);
-            worst = std::max(worst, std::abs(fields.velocity_x[c] - u) / u);
-        }
+        const double worst = uniform_state_error(fields, rho, {u, 0.0, 0.0}, u);
         std::cout << "measured: GPU co-moving walls at density " << rho << ": " << worst << "\n";
         CHECK(worst < 1e-4);
     }

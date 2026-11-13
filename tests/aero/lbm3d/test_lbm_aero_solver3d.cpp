@@ -11,6 +11,7 @@
 #include <string>
 #include <vector>
 
+#include "lbm3d_test_support.h"
 #include "orrery/aero/aero_solver.h"
 #include "orrery/aero/compute/null_compute_backend.h"
 #include "orrery/aero/lbm3d/lbm_aero_solver3d.h"
@@ -389,7 +390,11 @@ TEST_CASE("3D history and result coefficients share the reference area", "[aero]
     REQUIRE(doubled.drag.size() == unit.drag.size());
     double worst = 0.0;
     for (std::size_t k = 0; k < unit.drag.size(); ++k) {
-        worst = std::max(worst, std::abs(doubled.drag[k] / (0.5 * unit.drag[k]) - 1.0));
+        // The first samples of the gradual start carry no drag at all.
+        const double error = unit.drag[k] == 0.0
+                                 ? std::abs(doubled.drag[k])
+                                 : std::abs(doubled.drag[k] / (0.5 * unit.drag[k]) - 1.0);
+        worst = test::worse(worst, error);
     }
     CHECK(worst < 1e-12);
 }
