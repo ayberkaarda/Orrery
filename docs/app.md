@@ -304,8 +304,10 @@ frame and physics step times, the integrator and the energy drift series
 
 **Experiment panel** (Phase 10, `space_experiment_panel.h`; spec 8
 "Scenario/Experiment"), docked as a tab beside the System Monitor: on the
-left what runs (scenario, the experiment opened last, integrator and step,
-force model, warp) and Save with a name field; on the right the saved space
+left what runs (scenario; the experiment: the one the window started with,
+the one opened last, or none after a scenario picked on its own, told
+apart by `SimStatus::source`; integrator and step, force model, warp) and
+Save with a name field; on the right the saved space
 experiments of the experiments folder and the bundled ones, with Open (or a
 double click) and Refresh. Save writes `sim::space_record` - the scenario
 file (relative to the experiments folder when both share a root), the

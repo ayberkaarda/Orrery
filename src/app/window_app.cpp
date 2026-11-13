@@ -321,22 +321,13 @@ ShortcutTargets WindowApp::shortcut_targets() {
                            space_panel_,
                            physics_,
                            status_,
-                           status_.scenario_file.empty() ? request_.experiment.scenario_path
-                                                         : status_.scenario_file,
+                           running_scenario(status_, request_.experiment.scenario_path),
                            snapshot_ ? snapshot_->time().value() : 0.0};
 }
 
 void WindowApp::draw_space_experiment() {
-    SpaceRunView run;
-    run.scenario = status_.scenario;
-    run.experiment = status_.experiment_file.empty()
-                         ? request_.experiment.experiment_path.filename().string()
-                         : status_.experiment_file.filename().string();
-    run.integrator = status_.integrator;
-    run.force_model = status_.force_model;
-    run.dt_days = status_.dt_days;
-    run.time_warp = status_.time_warp;
-    run.sim_time_days = snapshot_ ? snapshot_->time().value() : 0.0;
+    const SpaceRunView run = space_run_view(status_, request_.experiment.experiment_path,
+                                            snapshot_ ? snapshot_->time().value() : 0.0);
     const SpaceExperimentIntent intent = space_panel_.draw(run);
     if (intent.save) {
         ShortcutTargets targets = shortcut_targets();

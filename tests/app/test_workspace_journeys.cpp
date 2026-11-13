@@ -181,8 +181,7 @@ private:
                                panel_,
                                physics_,
                                status,
-                               status.scenario_file.empty() ? experiment_.scenario_path
-                                                            : status.scenario_file,
+                               running_scenario(status, experiment_.scenario_path),
                                latest_.snapshot ? latest_.snapshot->time().value() : 0.0};
     }
 
@@ -327,6 +326,39 @@ TEST_CASE("Space journey: run, raise the warp, save and open the experiment agai
     REQUIRE(shell.frames_until([&] { return shell.latest().status.experiment_file == saved; }));
     CHECK(shell.latest().status.time_warp == twice);
     CHECK(shell.latest().status.message.empty());
+}
+
+TEST_CASE("The Experiment panel names the experiment that runs, or none",
+          "[app][journey][space]") {
+    const std::filesystem::path startup_file = app_test::experiment_dir() / "figure_eight.json";
+    auto startup = sim::load_space_experiment(startup_file);
+    REQUIRE(startup.has_value());
+    auto created = sim::Simulation::create(startup.value().scene, startup.value().config);
+    REQUIRE(created.has_value());
+    sim::Simulation simulation = std::move(created).value();
+    const auto view = [&] { return space_run_view(simulation.status(), startup_file, 0.0); };
+    const auto scenario = [&] {
+        return running_scenario(simulation.status(), startup.value().scenario_path);
+    };
+    CHECK(view().experiment == "figure_eight.json");
+    CHECK(scenario() == startup.value().scenario_path);
+
+    // A standalone scenario is not the startup experiment.
+    const std::filesystem::path standalone = app_test::scenario_dir() / "sun_earth.json";
+    simulation.apply(sim::LoadScenario{standalone});
+    REQUIRE(simulation.status().message.empty());
+    CHECK(view().experiment.empty());
+    CHECK(view().scenario == simulation.status().scenario);
+    CHECK(scenario() == standalone);
+    simulation.apply(sim::Reset{}); // the same system again
+    CHECK(view().experiment.empty());
+    CHECK(scenario() == standalone);
+
+    const std::filesystem::path opened = app_test::experiment_dir() / "sun_earth_moon.json";
+    simulation.apply(sim::LoadExperiment{opened});
+    REQUIRE(simulation.status().message.empty());
+    CHECK(view().experiment == "sun_earth_moon.json");
+    CHECK(scenario().filename() == "sun_earth_moon.json");
 }
 
 TEST_CASE("Aero journey: run the default section, save, and open the record",

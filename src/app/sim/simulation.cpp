@@ -377,6 +377,7 @@ void Simulation::Impl::load_experiment(const std::filesystem::path& path) {
     commit(std::move(staged).value());
     status.scenario_file = std::move(experiment.scenario_path);
     status.experiment_file = std::move(experiment_file);
+    status.source = SystemSource::experiment;
 }
 
 Simulation::Simulation(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
@@ -435,6 +436,7 @@ void Simulation::apply(const SimCommand& command) {
         }
         s.status.scenario_file = load->path;
         s.status.experiment_file.clear();
+        s.status.source = SystemSource::scenario;
     } else if (const auto* experiment = std::get_if<LoadExperiment>(&command)) {
         s.load_experiment(experiment->path);
     } else if (std::holds_alternative<Reset>(command)) {

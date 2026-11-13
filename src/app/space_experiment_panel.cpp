@@ -34,6 +34,34 @@ bool list_row(const sim::StoredSpace& entry, bool selected, bool& opened) {
 
 } // namespace
 
+SpaceRunView space_run_view(const sim::SimStatus& status,
+                            const std::filesystem::path& startup_experiment,
+                            double sim_time_days) {
+    SpaceRunView run;
+    run.scenario = status.scenario;
+    switch (status.source) {
+        case sim::SystemSource::startup:
+            run.experiment = startup_experiment.filename().string();
+            break;
+        case sim::SystemSource::experiment:
+            run.experiment = status.experiment_file.filename().string();
+            break;
+        case sim::SystemSource::scenario:
+            break; // a standalone scenario: no experiment
+    }
+    run.integrator = status.integrator;
+    run.force_model = status.force_model;
+    run.dt_days = status.dt_days;
+    run.time_warp = status.time_warp;
+    run.sim_time_days = sim_time_days;
+    return run;
+}
+
+std::filesystem::path running_scenario(const sim::SimStatus& status,
+                                       const std::filesystem::path& startup_scenario) {
+    return status.source == sim::SystemSource::startup ? startup_scenario : status.scenario_file;
+}
+
 SpaceExperimentPanel::SpaceExperimentPanel(std::filesystem::path experiment_dir,
                                            std::filesystem::path bundled_dir)
     : experiment_dir_(std::move(experiment_dir)), bundled_dir_(std::move(bundled_dir)) {

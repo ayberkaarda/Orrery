@@ -32,6 +32,19 @@ struct SpaceRunView {
     double sim_time_days = 0.0;
 };
 
+// What the panel shows for `status` (status.source decides, never an empty
+// file name): the startup experiment's file name while the system the
+// window started with runs, the opened experiment's after a LoadExperiment,
+// and none after a standalone LoadScenario.
+[[nodiscard]] SpaceRunView space_run_view(const sim::SimStatus& status,
+                                          const std::filesystem::path& startup_experiment,
+                                          double sim_time_days);
+
+// The scenario file the running system came from (what Save records):
+// `startup_scenario` for the startup system, else the loaded one.
+[[nodiscard]] std::filesystem::path running_scenario(const sim::SimStatus& status,
+                                                     const std::filesystem::path& startup_scenario);
+
 struct SpaceExperimentIntent {
     bool save = false;                         // Save pressed (the caller calls save())
     std::optional<std::filesystem::path> open; // an experiment to open

@@ -97,12 +97,22 @@ struct RunSettings {
     friend bool operator==(const RunSettings&, const RunSettings&) = default;
 };
 
+// Where the simulated system came from: the one the simulation was created
+// with, a LoadScenario command or a LoadExperiment command (Reset keeps it).
+enum class SystemSource : std::uint8_t {
+    startup,
+    scenario,
+    experiment,
+};
+
 // Observable state of the simulation besides the bodies themselves.
 struct SimStatus {
     RunSettings settings;
     std::string scenario; // name of the loaded scenario
-    // File of the loaded scenario and experiment when they were loaded by a
-    // command (empty for the system the simulation was created with).
+    SystemSource source = SystemSource::startup;
+    // File of the scenario loaded by a command (LoadScenario, or the
+    // scenario of a LoadExperiment), and of the experiment of a
+    // LoadExperiment; empty otherwise (see `source`).
     std::filesystem::path scenario_file;
     std::filesystem::path experiment_file;
     std::string integrator;  // integrator name
