@@ -117,6 +117,28 @@
       "name": "linux-profile",
       "displayName": "Profiling zones + Tracy client (Linux; not used by CI)",
       "inherits": [ "cfg-profile", "linux" ]
+    },
+    {
+      "name": "cfg-package",
+      "hidden": true,
+      "cacheVariables": {
+        "ORRERY_BUILD_TESTS": "OFF",
+        "ORRERY_INSTALL_TEST": "ON",
+        "ORRERY_SOURCE_ASSET_FALLBACK": "OFF"
+      }
+    },
+    {
+      "name": "package",
+      "displayName": "Release packages: MSI and zip (the release preset, MSVC)",
+      "inherits": [ "cfg-package", "release" ]
+    },
+    {
+      "name": "linux-package",
+      "displayName": "Release packages: tarball and AppImage tree (the linux-release preset)",
+      "inherits": [ "cfg-package", "linux-release" ],
+      "cacheVariables": {
+        "CMAKE_EXE_LINKER_FLAGS": "-static-libstdc++ -static-libgcc"
+      }
     }
   ],
   "buildPresets": [
@@ -127,7 +149,9 @@
     { "name": "linux-release", "configurePreset": "linux-release" },
     { "name": "linux-ci-headless", "configurePreset": "linux-ci-headless" },
     { "name": "profile", "configurePreset": "profile" },
-    { "name": "linux-profile", "configurePreset": "linux-profile" }
+    { "name": "linux-profile", "configurePreset": "linux-profile" },
+    { "name": "package", "configurePreset": "package" },
+    { "name": "linux-package", "configurePreset": "linux-package" }
   ],
   "testPresets": [
     {
@@ -143,6 +167,12 @@
     { "name": "linux-release", "inherits": "test-base", "configurePreset": "linux-release" },
     { "name": "linux-ci-headless", "inherits": "test-base", "configurePreset": "linux-ci-headless" },
     { "name": "profile", "inherits": "test-base", "configurePreset": "profile" },
-    { "name": "linux-profile", "inherits": "test-base", "configurePreset": "linux-profile" }
+    { "name": "linux-profile", "inherits": "test-base", "configurePreset": "linux-profile" },
+    { "name": "package", "inherits": "test-base", "configurePreset": "package" },
+    { "name": "linux-package", "inherits": "test-base", "configurePreset": "linux-package" }
+  ],
+  "packagePresets": [
+    { "name": "package", "configurePreset": "package" },
+    { "name": "linux-package", "configurePreset": "linux-package" }
   ]
 }

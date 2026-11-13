@@ -198,9 +198,11 @@ km/s at -5.7 deg, about 6.8 g); see entry-workspace.md.
 A name given on the command line is looked up as `<assets>/experiments/<name>.json`,
 where `<assets>` is `assets/` next to the executable if present (located
 with GetModuleFileNameW, /proc/self/exe or _NSGetExecutablePath; argv[0] only
-as a fallback, since a bare name started through PATH says nothing about it), then the
-source tree's `assets/` recorded at build time; an existing file path is
-used as is.
+as a fallback, since a bare name started through PATH says nothing about it), then
+`../share/orrery/assets` from the executable's directory (an installed tree,
+[packaging.md](packaging.md)), then the source tree's `assets/` recorded at
+build time (not in package builds: `ORRERY_SOURCE_ASSET_FALLBACK=OFF`); an
+existing file path is used as is.
 
 ## 5. Command line
 

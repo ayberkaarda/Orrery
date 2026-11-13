@@ -1,0 +1,261 @@
+name: release
+
+# Builds the release packages (docs/packaging.md): the Windows installer and
+# portable zip, the Linux tarball and AppImage. Each job builds a package
+# preset (the release preset plus packaging options), runs the relocated
+# install test, packages and uploads the files as workflow artifacts. A
+# version tag (v*) also attaches them to a GitHub release. Never runs on pull
+# requests and is not a required check.
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: read
+
+# Accepted risks: pip packages are version-pinned without hashes. Action tags
+# remain mutable. The AppImage tools are pinned by SHA-256 in
+# packaging/linux/build-appimage.sh.
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # System packages the vcpkg glfw3 port requires on Linux (X11 headers,
+  # GL/GLU, pkg-config); vcpkg's X11 ports defer to the system libraries.
+  LINUX_DEPS: >-
+    libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+    xorg-dev libgl1-mesa-dev libglu1-mesa-dev pkg-config
+    autoconf autoconf-archive automake libtool make m4 file
+  CMAKE_PIN: cmake==4.4.4
+  NINJA_PIN: ninja==1.13.2
+  # WiX .NET tool for the CPack WIX generator (CPACK_WIX_VERSION 4).
+  WIX_VERSION: 5.0.2
+
+jobs:
+  windows:
+    name: package (windows-2022-msvc)
+    runs-on: windows-2022
+    timeout-minutes: 90
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up MSVC
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $installation = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          if ($LASTEXITCODE -ne 0 -or -not $installation) { throw "MSVC installation not found" }
+          $vcvars = Join-Path $installation 'VC\Auxiliary\Build\vcvars64.bat'
+          if (-not (Test-Path -LiteralPath $vcvars)) { throw "vcvars64.bat not found" }
+          # Run vcvars from a tiny batch file so cmd.exe never has to parse
+          # nested quotes around a path containing spaces.
+          $wrapper = Join-Path ([System.IO.Path]::GetTempPath()) 'orrery-vcvars.bat'
+          $wrapperLines = @('@echo off', "call `"$vcvars`" >nul", 'if errorlevel 1 exit /b 1', 'set')
+          Set-Content -LiteralPath $wrapper -Value $wrapperLines -Encoding ascii
+          $environment = & cmd.exe /d /c $wrapper
+          if ($LASTEXITCODE -ne 0) { throw "vcvars64.bat failed" }
+          if (-not $environment) { throw "vcvars64.bat produced no environment" }
+          foreach ($line in $environment) {
+            if ($line -match '^([^=]+)=(.*)$') {
+              $name, $value = $Matches[1], $Matches[2]
+              # Keep workflow-level VCPKG_* values (VS ships its own VCPKG_ROOT).
+              if ($name -notmatch '(?i)^(GITHUB_|RUNNER_|ACTIONS_|VCPKG_)' -and $name -ne 'NODE_OPTIONS') {
+                "$name=$value" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+              }
+            }
+          }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CMake and Ninja
+        shell: bash
+        run: |
+          python -m pip install "$CMAKE_PIN" "$NINJA_PIN"
+          cmake --version
+          ninja --version
+      - name: Install WiX
+        shell: pwsh
+        run: |
+          $tools = Join-Path $env:RUNNER_TEMP 'wix'
+          $extensions = Join-Path $env:RUNNER_TEMP 'wix-extensions'
+          dotnet tool install --tool-path $tools wix --version $env:WIX_VERSION
+          if ($LASTEXITCODE -ne 0) { throw "wix install failed" }
+          $env:WIX_EXTENSIONS = $extensions
+          & (Join-Path $tools 'wix.exe') extension add --global "WixToolset.UI.wixext/$env:WIX_VERSION"
+          if ($LASTEXITCODE -ne 0) { throw "wix extension add failed" }
+          "WIX=$tools" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "WIX_EXTENSIONS=$extensions" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          $tools | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Icon is up to date
+        shell: bash
+        run: python packaging/icon/make_icon.py --check
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-release-windows-2022-msvc-${{ hashFiles('vcpkg.json') }}
+      - name: Bootstrap vcpkg
+        shell: bash
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
+      - name: Configure
+        run: cmake --preset package
+      - name: Version
+        shell: bash
+        run: bash packaging/check-version.sh build/package/orrery_version.txt
+      - name: Build
+        run: cmake --build --preset package
+      - name: Relocated install test
+        run: ctest --preset package --output-on-failure
+      - name: Package
+        run: cpack --preset package
+      - name: Validate the installer (ICE)
+        # Expected warnings: ICE61 (same-version upgrades, CPack's template),
+        # ICE69 (CPack's shortcut component), ICE91 (per-user files).
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem build/package/orrery-*.msi
+          wix msi validate $msi.FullName
+          if ($LASTEXITCODE -ne 0) { throw "ICE validation failed" }
+      - name: Sizes
+        shell: bash
+        run: |
+          {
+            echo "### Windows packages"
+            echo
+            for f in build/package/orrery-*.msi build/package/orrery-*.zip; do
+              echo "- $(basename "$f"): $(( $(stat -c %s "$f") / 1024 )) KiB"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orrery-windows-x64
+          if-no-files-found: error
+          path: |
+            build/package/orrery-*.msi
+            build/package/orrery-*.msi.sha256
+            build/package/orrery-*.zip
+            build/package/orrery-*.zip.sha256
+
+  linux:
+    # Ubuntu 22.04 (glibc 2.35) is the oldest glibc the packages need;
+    # libstdc++ and libgcc are linked statically (linux-package preset).
+    name: package (ubuntu-22.04-clang-17)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      CC: clang-17
+      CXX: clang++-17
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux toolchain
+        run: |
+          APT=(sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2)
+          retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
+          read -r -a deps <<< "$LINUX_DEPS"
+          retry "${APT[@]}" update
+          retry "${APT[@]}" install -y "${deps[@]}"
+          if command -v clang-17 >/dev/null 2>&1 && command -v llvm-ar-17 >/dev/null 2>&1; then
+            echo "clang-17 and llvm-17 already installed; skipping apt.llvm.org"
+          else
+            retry "${APT[@]}" install -y ca-certificates curl gnupg
+            # LLVM archive key: https://apt.llvm.org/ (Install section).
+            # Scope trust to this repository through a dedicated signed-by keyring.
+            retry curl --connect-timeout 20 --max-time 120 -fsSLo /tmp/llvm-key.asc https://apt.llvm.org/llvm-snapshot.gpg.key
+            gpg --batch --yes --dearmor -o /tmp/llvm-key.gpg /tmp/llvm-key.asc
+            sudo install -m 644 /tmp/llvm-key.gpg /usr/share/keyrings/llvm-archive-keyring.gpg
+            echo "deb [signed-by=/usr/share/keyrings/llvm-archive-keyring.gpg] https://apt.llvm.org/jammy/ llvm-toolchain-jammy-17 main" | sudo tee /etc/apt/sources.list.d/llvm-17.list
+            retry "${APT[@]}" update
+            # llvm-17 provides llvm-ar-17 and llvm-ranlib-17 for LTO archives.
+            retry "${APT[@]}" install -y clang-17 llvm-17
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CMake and Ninja
+        run: |
+          python -m pip install "$CMAKE_PIN" "$NINJA_PIN"
+          cmake --version
+          ninja --version
+      - name: Icon is up to date
+        run: python packaging/icon/make_icon.py --check
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-release-ubuntu-22.04-clang-17-${{ hashFiles('vcpkg.json') }}
+      - name: Bootstrap vcpkg
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure
+        run: cmake --preset linux-package
+      - name: Version
+        run: bash packaging/check-version.sh build/linux-package/orrery_version.txt
+      - name: Build
+        run: cmake --build --preset linux-package
+      - name: Relocated install test
+        run: ctest --preset linux-package --output-on-failure
+      - name: Package (tarball)
+        run: cpack --preset linux-package
+      - name: Package (AppImage)
+        run: |
+          cmake --install build/linux-package --prefix "$RUNNER_TEMP/orrery-install" --strip
+          bash packaging/linux/build-appimage.sh "$RUNNER_TEMP/orrery-install" "$ORRERY_VERSION" \
+            build/linux-package/appimage
+      - name: Sizes
+        run: |
+          {
+            echo "### Linux packages"
+            echo
+            for f in build/linux-package/orrery-*.tar.gz build/linux-package/appimage/orrery-*.AppImage; do
+              echo "- $(basename "$f"): $(( $(stat -c %s "$f") / 1024 )) KiB"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: orrery-linux-x86_64
+          if-no-files-found: error
+          path: |
+            build/linux-package/orrery-*.tar.gz
+            build/linux-package/orrery-*.tar.gz.sha256
+            build/linux-package/appimage/orrery-*.AppImage
+            build/linux-package/appimage/orrery-*.AppImage.sha256
+
+  publish:
+    name: publish (GitHub release)
+    needs: [windows, linux]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Attach the packages to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          ls -l dist
+          if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            prerelease=()
+            case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
+            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+              --title "Orrery ${TAG#v}" --generate-notes "${prerelease[@]}"
+          fi

@@ -56,3 +56,6 @@ if(ORRERY_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# Install rules, the relocated install test and CPack (docs/packaging.md).
+include(Packaging)

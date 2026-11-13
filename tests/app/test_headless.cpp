@@ -6,9 +6,11 @@
 #include <cmath>
 #include <cstdint>
 #include <filesystem>
+#include <iterator>
 #include <sstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "../render/gl_test_support.h"
 #include "app_test_support.h"
@@ -384,4 +386,47 @@ TEST_CASE("The running executable is located through the operating system", "[ap
     CHECK(running->stem() == "orrery_test_app");
     // argv[0] is only a fallback: a bare name does not override the system.
     CHECK(app::executable_path("orrery_test_app") == *running);
+}
+
+// Phase 11: an installed tree keeps the executable in bin/ and the assets in
+// share/orrery/assets (docs/packaging.md); a portable copy keeps assets/
+// beside the executable, which wins when both exist.
+TEST_CASE("Bundled assets are found relative to the executable", "[app][headless]") {
+    const std::filesystem::path root =
+        std::filesystem::path(ORRERY_RENDER_OUTPUT_DIR) / "asset_layout";
+    std::filesystem::remove_all(root);
+    const std::filesystem::path executable = root / "bin" / "orrery_app";
+    const std::filesystem::path beside = root / "bin" / "assets";
+    const std::filesystem::path installed = root / "share" / "orrery" / "assets";
+    std::filesystem::create_directories(root / "bin");
+
+    const auto in_tree = [&root](const std::vector<std::filesystem::path>& dirs) {
+        std::vector<std::filesystem::path> found;
+        std::copy_if(dirs.begin(), dirs.end(), std::back_inserter(found),
+                     [&root](const std::filesystem::path& dir) {
+                         return dir.lexically_normal().string().starts_with(
+                             root.lexically_normal().string());
+                     });
+        return found;
+    };
+
+    SECTION("neither layout") {
+        CHECK(in_tree(app::asset_directories(executable)).empty());
+    }
+    SECTION("installed tree") {
+        std::filesystem::create_directories(installed);
+        const auto dirs = in_tree(app::asset_directories(executable));
+        REQUIRE(dirs.size() == 1);
+        CHECK(std::filesystem::equivalent(dirs[0], installed));
+        CHECK(app::asset_directories(executable).front() == dirs[0]);
+    }
+    SECTION("portable copy before the installed tree") {
+        std::filesystem::create_directories(installed);
+        std::filesystem::create_directories(beside);
+        const auto dirs = in_tree(app::asset_directories(executable));
+        REQUIRE(dirs.size() == 2);
+        CHECK(std::filesystem::equivalent(dirs[0], beside));
+        CHECK(std::filesystem::equivalent(dirs[1], installed));
+    }
+    std::filesystem::remove_all(root);
 }
