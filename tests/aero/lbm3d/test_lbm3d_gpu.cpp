@@ -10,12 +10,15 @@
 #include <iostream>
 #include <limits>
 #include <numbers>
+#include <optional>
 #include <regex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
 #include "../lbm/lbm_gl_support.h"
 #include "lbm3d_test_support.h"
+#include "orrery/aero/compute/null_compute_backend.h"
 #include "orrery/aero/lbm3d/d3q19.h"
 #include "orrery/aero/lbm3d/lbm3d.h"
 #include "orrery/aero/lbm3d/lbm_aero_solver3d.h"
@@ -113,6 +116,53 @@ TEST_CASE("The OpenGL backend builds the D3Q19 kernels and reports its memory",
                                          : -1.0)
               << " MiB (-1: not reported)\n";
     CHECK(gl.context.debug_error_count() == 0);
+}
+
+TEST_CASE("A vendor memory query of zero is no free memory rather than unknown", "[aero][lbm3d]") {
+    // The three outcomes: no query or a failed one (unknown), zero, positive.
+    CHECK_FALSE(render::free_memory_from_query(false, true, 4096));
+    CHECK_FALSE(render::free_memory_from_query(true, false, 4096));
+    CHECK_FALSE(render::free_memory_from_query(true, true, -1));
+    const std::optional<std::size_t> exhausted = render::free_memory_from_query(true, true, 0);
+    REQUIRE(exhausted);
+    CHECK(*exhausted == 0);
+    const std::optional<std::size_t> free = render::free_memory_from_query(true, true, 65536);
+    REQUIRE(free);
+    CHECK(*free == std::size_t{64} << 20U);
+
+    // Each outcome through the memory checks of the GPU solver and of the
+    // adapter's cell budget: zero refuses before allocating, unknown and
+    // 64 MiB accept the 16^3 lattice.
+    const Lbm3DConfig config = periodic_box(16, 16, 16, 0.6);
+    const SolidMask3D mask = fluid_mask_3d(16, 16, 16);
+    aero::compute::NullComputeBackend backend;
+    backend.set_memory({exhausted, std::nullopt});
+    auto refused = make_gpu_solver(backend, config, mask);
+    REQUIRE_FALSE(refused);
+    CHECK(refused.error().find("available") != std::string::npos);
+    CHECK(backend.live_buffers() == 0);
+    aero::AeroGeometry geometry;
+    geometry.mesh = geom::sphere_profile(0.5).mesh({16, 0.2});
+    geometry.reference.length = 1.0;
+    geometry.reference.area = 0.25 * std::numbers::pi;
+    aero::FlowConditions conditions;
+    conditions.speed = 0.1;
+    conditions.density = 1000.0;
+    conditions.viscosity = 1000.0 * 0.1 / 20.0; // Re 20
+    LbmSolver3DOptions options;
+    options.resolution = LatticeResolution{8.0, 0.05};
+    options.upstream = 2.0;
+    options.downstream = 3.0;
+    options.width = 3.0;
+    options.backend = &backend;
+    LbmAeroSolver3D adapter(options);
+    CHECK_THROWS_AS(adapter.setup(geometry, conditions), std::invalid_argument);
+    CHECK(backend.live_buffers() == 0);
+
+    for (const std::optional<std::size_t> available : {std::optional<std::size_t>{}, free}) {
+        backend.set_memory({available, std::nullopt});
+        CHECK(make_gpu_solver(backend, config, mask));
+    }
 }
 
 TEST_CASE("GPU and CPU D3Q19 agree on the analytic flows", "[aero][lbm3d][gl]") {

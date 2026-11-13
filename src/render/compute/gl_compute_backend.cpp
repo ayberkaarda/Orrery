@@ -231,21 +231,27 @@ aero::compute::DeviceMemory GlComputeBackend::memory() const {
     if (!impl_->current()) {
         return memory;
     }
-    std::array<GLint, 4> kib{0, 0, 0, 0};
-    switch (impl_->memory_query) {
-        case MemoryQuery::nvx:
-            glGetIntegerv(kGpuMemoryAvailableNvx, kib.data());
-            break;
-        case MemoryQuery::ati:
-            glGetIntegerv(kVboFreeMemoryAti, kib.data()); // [0]: total free in the pool
-            break;
-        case MemoryQuery::none:
-            return memory;
+    if (impl_->memory_query == MemoryQuery::none) {
+        return memory;
     }
-    if (kib[0] > 0) {
-        memory.available_bytes = static_cast<std::size_t>(kib[0]) * std::size_t{1024};
+    // Pending error flags are cleared first (as in gl_resources.cpp), so
+    // the check below sees only the query's own error.
+    for (int i = 0; i < 64 && glGetError() != GL_NO_ERROR; ++i) {
     }
+    std::array<GLint, 4> kib{-1, -1, -1, -1};
+    glGetIntegerv(impl_->memory_query == MemoryQuery::nvx ? kGpuMemoryAvailableNvx
+                                                          : kVboFreeMemoryAti, // [0]: pool free
+                  kib.data());
+    memory.available_bytes = free_memory_from_query(true, glGetError() == GL_NO_ERROR, kib[0]);
     return memory;
+}
+
+std::optional<std::size_t> free_memory_from_query(bool supported, bool succeeded,
+                                                  std::int64_t kib) noexcept {
+    if (!supported || !succeeded || kib < 0) {
+        return std::nullopt;
+    }
+    return static_cast<std::size_t>(kib) * std::size_t{1024};
 }
 
 aero::compute::ComputeBackendInfo GlComputeBackend::info() const {

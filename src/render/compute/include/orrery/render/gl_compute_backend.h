@@ -1,7 +1,9 @@
 #pragma once
 
 #include <cstddef>
+#include <cstdint>
 #include <memory>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -27,6 +29,14 @@
 // outside the binary32 range.
 namespace orrery::render {
 
+// Free device memory from the result of a vendor memory query (KiB, the unit
+// of GL_NVX_gpu_memory_info and GL_ATI_meminfo): empty (unknown) when the
+// driver offers no query (`supported` false) or the query failed (a GL
+// error, a negative value); otherwise kib * 1024 bytes, zero included: a
+// successful query of zero is an exhausted device, not an unknown one.
+[[nodiscard]] std::optional<std::size_t> free_memory_from_query(bool supported, bool succeeded,
+                                                                std::int64_t kib) noexcept;
+
 class GlComputeBackend final : public aero::compute::IComputeBackend {
 public:
     // Requires a current OpenGL 4.6 core context (GlContext).
@@ -41,7 +51,8 @@ public:
     [[nodiscard]] bool has_kernel(std::string_view name) const override;
     // Largest shader storage block (GL_MAX_SHADER_STORAGE_BLOCK_SIZE) and,
     // where the driver offers GL_NVX_gpu_memory_info or GL_ATI_meminfo, the
-    // free device memory (read now; empty while the context is not current).
+    // free device memory (read now; empty while the context is not current
+    // or when the query fails, zero when the device reports none free).
     [[nodiscard]] aero::compute::DeviceMemory memory() const override;
     [[nodiscard]] core::Result<aero::compute::BufferId, std::string>
     create_buffer(std::size_t bytes) override;

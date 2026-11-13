@@ -28,7 +28,12 @@ holds before it allocates, and refuse with an explicit error.
   backends and test doubles need no change. `GlComputeBackend` reports
   `GL_MAX_SHADER_STORAGE_BLOCK_SIZE` and, where the driver offers
   `GL_NVX_gpu_memory_info` or `GL_ATI_meminfo`, the free memory;
-  `NullComputeBackend` reports what a test sets with `set_memory`.
+  `NullComputeBackend` reports what a test sets with `set_memory`. An empty
+  field means unknown (no such query, or the query raised a GL error); a
+  successful query of zero is reported as zero, an exhausted device, which
+  refuses every lattice (`free_memory_from_query`).
+- The memory a solver checks is everything it allocates, the boundary
+  tables that grow with the geometry included (links, wall fractions).
 - The D3Q19 GPU driver refuses, before allocating, a population buffer above
   the largest binding and a lattice above the free memory. The `IAeroSolver`
   adapter sizes its budget from the free memory when the device reports it,
