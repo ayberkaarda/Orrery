@@ -57,6 +57,31 @@ double fitting_resolution(double cells_per_length, double needed, double budget)
 
 } // namespace
 
+bool forces_settled_3d(std::span<const double> time, std::span<const double> drag,
+                       std::span<const double> lift, std::span<const double> side, double from,
+                       const SettledCriteria& criteria) {
+    const double bound = criteria.steady_tolerance * std::abs(mean_since(time, drag, from));
+    const auto stationary = [&](std::span<const double> values) {
+        // Steady: at least two samples, range within the bound.
+        const std::size_t n = std::min(time.size(), values.size());
+        std::size_t count = 0;
+        double lo = 0.0;
+        double hi = 0.0;
+        for (std::size_t k = 0; k < n; ++k) {
+            if (time[k] >= from) {
+                lo = count == 0 ? values[k] : std::min(lo, values[k]);
+                hi = count == 0 ? values[k] : std::max(hi, values[k]);
+                ++count;
+            }
+        }
+        if (count >= 2 && hi - lo <= bound) {
+            return true;
+        }
+        return settled_oscillation(time, drag, values, from, criteria).has_value();
+    };
+    return stationary(drag) && stationary(lift) && stationary(side);
+}
+
 void LbmAeroSolver3D::setup(const AeroGeometry& geometry, const FlowConditions& conditions) {
     solver_.reset();
     units_.reset();
@@ -531,11 +556,11 @@ void LbmAeroSolver3D::update_result() {
             {"lbm.local_mach", "largest lattice Mach number in the flow " + format(local_mach) +
                                    " (compressibility error of order Ma^2, A3)"});
     }
-    // Converged: the force history over the last half of the run (or the
-    // averaging window, if longer) is steady in drag, lift and side force,
-    // or settled periodic shedding in one of them (consistent periods,
-    // stationary amplitude and mean drag). A 3D wake may shed in any plane,
-    // and a sphere's drag oscillates with it.
+    // Converged: over the last half of the run (or the averaging window, if
+    // longer) drag, lift and side force are each steady or settled periodic
+    // (consistent periods, stationary amplitude and mean drag;
+    // forces_settled_3d). A 3D wake may shed in any plane, and a sphere's
+    // drag oscillates with it.
     const bool finished = next.iterations >= total_steps_;
     if (finished) {
         const std::span<const double> time = history_.time();
@@ -544,15 +569,8 @@ void LbmAeroSolver3D::update_result() {
             from = std::min(from, time[history_.size() - window_samples_]);
         }
         const SettledCriteria criteria{kSteadyResidual, kMaxPeriodSpread, kStationarity};
-        const std::span<const double> drag = history_.drag();
-        const std::span<const double> lift = history_.lift();
-        const std::span<const double> side = side_;
-        const bool steady = steady_since(time, drag, lift, from, criteria) &&
-                            steady_since(time, drag, side, from, criteria);
-        const bool periodic = settled_oscillation(time, drag, lift, from, criteria).has_value() ||
-                              settled_oscillation(time, drag, side, from, criteria).has_value() ||
-                              settled_oscillation(time, drag, drag, from, criteria).has_value();
-        next.converged = steady || periodic;
+        next.converged =
+            forces_settled_3d(time, history_.drag(), history_.lift(), side_, from, criteria);
         if (!next.converged) {
             next.warnings.push_back(
                 {"lbm.unconverged",

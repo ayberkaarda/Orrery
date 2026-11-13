@@ -480,10 +480,13 @@ Result: Cd, Cl, Cy and Cm of the window-averaged force and moment
 (lattice force unit rho dx^4 / dt^2, body axes); wall samples (one per
 fluid node next to the body, normal from its links, an equal share of the
 mesh area each, Cp against the mean density of the plane next to the inlet);
-the velocity field when both angles are zero; `converged` when the force
-history of the last half of the run (or the window, if longer) is steady in
-drag, lift and side force (ranges within 1e-3 of the mean drag) or settled
-periodic in the lift, the side force or the drag (section 7). A wake that
+the velocity field when both angles are zero; `converged` when, over the
+last half of the run (or the window, if longer), every component of the
+force history is stationary (`forces_settled_3d`): drag, lift and side force
+are each steady (range within 1e-3 of the mean drag) or settled periodic
+(section 7). One periodic component does not excuse another that drifts
+(tested on synthetic histories: steady drag, periodic lift and a drifting
+side force stay unconverged, and so on for every exchange). A wake that
 is neither (the sphere at Re 300 sheds irregularly at these resolutions, the
 wakes at Re 1000 are chaotic) is reported `lbm.unconverged`; its mean
 coefficients are still the window average.

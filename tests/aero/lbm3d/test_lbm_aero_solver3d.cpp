@@ -394,6 +394,64 @@ TEST_CASE("3D history and result coefficients share the reference area", "[aero]
     CHECK(worst < 1e-12);
 }
 
+namespace {
+
+// Synthetic force histories for forces_settled_3d: 1000 samples every 10
+// steps, analysed over the second half.
+enum class Signal : std::uint8_t { steady, periodic, drifting };
+
+std::vector<double> signal_of(Signal kind, const std::vector<double>& time, double mean,
+                              double period) {
+    std::vector<double> values;
+    values.reserve(time.size());
+    for (const double t : time) {
+        switch (kind) {
+            case Signal::steady:
+                values.push_back(mean);
+                break;
+            case Signal::periodic:
+                values.push_back(mean + 0.05 * std::sin(2.0 * std::numbers::pi * t / period));
+                break;
+            case Signal::drifting:
+                values.push_back(mean + 2e-6 * t); // 0.01 over the analysed half
+                break;
+        }
+    }
+    return values;
+}
+
+bool settled(Signal drag, Signal lift, Signal side) {
+    std::vector<double> time;
+    time.reserve(1000);
+    for (int k = 0; k < 1000; ++k) {
+        time.push_back(10.0 * k);
+    }
+    // The drag oscillates at twice the shedding frequency, as behind a body
+    // shedding in one plane.
+    return forces_settled_3d(time, signal_of(drag, time, 1.0, 200.0),
+                             signal_of(lift, time, 0.0, 400.0), signal_of(side, time, 0.0, 400.0),
+                             5000.0, SettledCriteria{1e-3, 0.05, 0.02});
+}
+
+} // namespace
+
+TEST_CASE("3D convergence needs every force component stationary", "[aero][lbm3d][solver]") {
+    using enum Signal;
+    // Settled: each component steady or periodic.
+    CHECK(settled(steady, steady, steady));
+    CHECK(settled(steady, periodic, steady));
+    CHECK(settled(steady, steady, periodic));
+    CHECK(settled(periodic, periodic, periodic));
+    CHECK(settled(periodic, steady, steady));
+    // One periodic component does not excuse a drifting one.
+    CHECK_FALSE(settled(steady, periodic, drifting));
+    CHECK_FALSE(settled(steady, drifting, periodic));
+    CHECK_FALSE(settled(periodic, drifting, steady));
+    CHECK_FALSE(settled(periodic, steady, drifting));
+    CHECK_FALSE(settled(drifting, steady, steady));
+    CHECK_FALSE(settled(drifting, periodic, periodic));
+}
+
 TEST_CASE("3D convergence: a start-up transient is not converged, a steady wake is",
           "[aero][lbm3d][solver]") {
     // 2.5 convective times from the free stream: the drag is still falling.

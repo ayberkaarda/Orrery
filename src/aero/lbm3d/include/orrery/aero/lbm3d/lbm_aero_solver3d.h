@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <memory>
 #include <optional>
+#include <span>
 #include <string>
 #include <vector>
 
@@ -85,6 +86,17 @@ struct Coefficients3D {
     double lift = 0.0;
     double side = 0.0;
 };
+
+// Convergence test of a 3D force history over the samples with time >= from:
+// every component (drag, lift and side force) must be stationary, either
+// steady (its range at most `criteria.steady_tolerance` of the magnitude of
+// the mean drag) or settled periodic (settled_oscillation of that
+// component, which also requires a stationary mean drag). A wake may shed in
+// any plane, so each component may be either; one periodic component does
+// not excuse another that drifts.
+[[nodiscard]] bool forces_settled_3d(std::span<const double> time, std::span<const double> drag,
+                                     std::span<const double> lift, std::span<const double> side,
+                                     double from, const SettledCriteria& criteria);
 
 class LbmAeroSolver3D final : public IAeroSolver {
 public:
