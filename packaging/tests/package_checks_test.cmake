@@ -42,3 +42,16 @@ expect(WIX 4.4.4 OFF OK)
 # The zip and the tarball build with the project's minimum, CMake 4.1.
 expect(ZIP 4.1.0 OFF OK)
 expect(TGZ 4.1.0 OFF OK)
+
+# The package notice (packaging/notice.txt, also the installer's licence
+# page) reproduces the project licence verbatim.
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../../LICENSE" licence_text)
+file(READ "${CMAKE_CURRENT_LIST_DIR}/../notice.txt" notice_text)
+string(REPLACE "\r" "" licence_text "${licence_text}")
+string(REPLACE "\r" "" notice_text "${notice_text}")
+string(FIND "${notice_text}" "${licence_text}" licence_at)
+if(licence_at EQUAL -1)
+    message(SEND_ERROR "packaging/notice.txt does not contain the text of LICENSE")
+else()
+    message(STATUS "ok: packaging/notice.txt contains LICENSE")
+endif()

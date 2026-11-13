@@ -5,7 +5,7 @@
 # Installed layout (relative to the prefix, the same on every platform):
 #   bin/orrery_app[.exe]           the application (and its DLLs on Windows)
 #   share/orrery/assets/           bundled experiments and scenarios
-#   share/doc/orrery/              READMEs, docs/, notice, third_party/<library>/
+#   share/doc/orrery/              READMEs, LICENSE, docs/, notice, third_party/<library>/
 #   share/applications/            desktop entry (Linux)
 #   share/icons/hicolor/           application icon (Linux)
 # The application finds share/orrery/assets from its own directory
@@ -72,7 +72,7 @@ install(DIRECTORY "${PROJECT_SOURCE_DIR}/assets/" DESTINATION "${ORRERY_INSTALL_
 # screenshots), so the documentation they link to is installed beside them;
 # install.relocated checks every link of the installed tree.
 install(FILES "${PROJECT_SOURCE_DIR}/README.md" "${PROJECT_SOURCE_DIR}/README.tr.md"
-    "${PROJECT_SOURCE_DIR}/packaging/notice.txt"
+    "${PROJECT_SOURCE_DIR}/LICENSE" "${PROJECT_SOURCE_DIR}/packaging/notice.txt"
     DESTINATION "${ORRERY_INSTALL_DOC_DIR}")
 install(DIRECTORY "${PROJECT_SOURCE_DIR}/docs/" DESTINATION "${ORRERY_INSTALL_DOC_DIR}/docs")
 

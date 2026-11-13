@@ -39,7 +39,7 @@ The same relative layout on every platform:
 ```
 bin/orrery_app[.exe]             the application (Windows: and the DLLs it loads)
 share/orrery/assets/             bundled experiments/ and scenarios/
-share/doc/orrery/                README.md, README.tr.md, docs/, notice.txt, third_party/<library>/
+share/doc/orrery/                README.md, README.tr.md, LICENSE, docs/, notice.txt, third_party/<library>/
 share/applications/orrery.desktop                Linux only
 share/icons/hicolor/{256x256,scalable}/apps/     Linux only
 ```
@@ -59,7 +59,14 @@ applies the conditions of `packaging/package_checks.cmake`, which also
 reject the MSI under a CMake older than 4.3. The ctests `packaging.checks`
 and `packaging.refuses_fallback` (in builds with tests) cover both.
 
-### Third-party notices
+### Licence and third-party notices
+
+Orrery itself is under the MIT License (`LICENSE` at the repository root,
+installed as `share/doc/orrery/LICENSE`). `packaging/notice.txt`, installed
+beside it and shown as the licence page of the MSI, reproduces that text and
+says that the bundled libraries keep their own licences; the ctest
+`packaging.checks` fails when the notice no longer contains `LICENSE`
+verbatim, and `install.relocated` requires both files in the installed tree.
 
 `share/doc/orrery/third_party` holds the licence notice of every vcpkg
 library of the build (vcpkg's `copyright` file per port; build helpers and
