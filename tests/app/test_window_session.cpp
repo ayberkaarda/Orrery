@@ -357,6 +357,37 @@ TEST_CASE("The window's framebuffer holds the frame with its panels", "[app][win
         const std::size_t at = image.offset(x, y);
         CHECK(image.pixels[at] + image.pixels[at + 1] + image.pixels[at + 2] > 15);
 
+        // The Sun, framed by the window, is drawn at the centre of the scene
+        // area the panels leave free (the dock space's central node), not at
+        // the window's centre where the System Monitor would cover the lower
+        // part of the system.
+        const ImGuiWindow* docked = ImGui::FindWindowByName("Body Inspector");
+        REQUIRE(docked != nullptr);
+        REQUIRE(docked->DockNode != nullptr);
+        const ImGuiDockNode* central = ImGui::DockNodeGetRootNode(docked->DockNode)->CentralNode;
+        REQUIRE(central != nullptr);
+        double sx = 0.0;
+        double sy = 0.0;
+        double count = 0.0;
+        for (auto py = static_cast<std::uint32_t>(central->Pos.y);
+             py < static_cast<std::uint32_t>(central->Pos.y + central->Size.y); ++py) {
+            for (auto px = static_cast<std::uint32_t>(central->Pos.x);
+                 px < static_cast<std::uint32_t>(central->Pos.x + central->Size.x); ++px) {
+                const std::size_t i = image.offset(px, py);
+                if (std::min({image.pixels[i], image.pixels[i + 1], image.pixels[i + 2]}) >= 250) {
+                    sx += px;
+                    sy += py;
+                    count += 1.0;
+                }
+            }
+        }
+        REQUIRE(count > 20.0); // the Sun's disk and glare, not a few stars
+        const double cx = central->Pos.x + 0.5 * central->Size.x;
+        const double cy = central->Pos.y + 0.5 * central->Size.y;
+        INFO("Sun at " << sx / count << ", " << sy / count << "; scene area centre " << cx << ", "
+                       << cy);
+        CHECK(std::abs(sx / count - cx) < 12.0);
+        CHECK(std::abs(sy / count - cy) < 12.0);
         return true;
     };
     session.then(look);
