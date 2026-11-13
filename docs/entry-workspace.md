@@ -87,7 +87,9 @@ the setup. Outcomes: `impact` is shown as **Landed**, `skip_out` as
 The shown run follows the inputs: the workspace's run while it is active,
 afterwards only while the inputs are the ones it ran with (the name aside);
 a loaded record likewise. Changing an input clears the profile, the map and
-the view until the next run.
+the view until the next run. An active run stays shown while the inputs
+change, and the view keeps drawing it on the planet (radius, interface,
+style) it flew around, from the inputs it was started with.
 
 ## 4. Entry Profile
 

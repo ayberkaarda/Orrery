@@ -174,6 +174,38 @@ TEST_CASE("Entry workspace pauses and stops its run", "[app][ui][entry]") {
     CHECK(trace->summary.outcome == sim::EntryOutcome::none);
 }
 
+TEST_CASE("A paused run stays on its own planet when the planet input changes",
+          "[app][ui][entry]") {
+    Harness h(scratch("planet"), 30.0);
+    sim::EntrySetup setup = h.workspace.setup();
+    setup.planet = sim::EntryPlanet::earth;
+    setup.max_time_s = 3'600.0;
+    h.workspace.set_setup(setup);
+    REQUIRE(h.workspace.start_run());
+    REQUIRE(h.frames_until([&] {
+        const std::shared_ptr<const sim::EntryTrace> trace = h.workspace.shown_trace();
+        return trace != nullptr && trace->series.size() > 2;
+    }));
+    h.workspace.pause(true);
+    REQUIRE(h.frames_until(
+        [&] { return h.workspace.progress().status.state == sim::EntryRunState::paused; }));
+    const app::EntryViewState earth = h.workspace.view_state();
+    sim::EntrySetup mars = setup;
+    mars.planet = sim::EntryPlanet::mars;
+    h.workspace.set_setup(mars);
+    // The paused run is still shown, and still drawn on the Earth it flew around.
+    const app::EntryViewState state = h.workspace.view_state();
+    REQUIRE(state.trace != nullptr);
+    CHECK(state.planet == sim::EntryPlanet::earth);
+    CHECK(state.globe.radius_m == sim::planet_constants(sim::EntryPlanet::earth).radius_m);
+    CHECK(state.globe.atmosphere_top_m == earth.globe.atmosphere_top_m);
+    CHECK(state.options.style == render::EntryPlanetStyle::earth);
+    CHECK(state.revision == earth.revision);
+    h.workspace.stop();
+    REQUIRE(h.frames_until(
+        [&] { return h.workspace.progress().status.state == sim::EntryRunState::stopped; }));
+}
+
 TEST_CASE("Entry results follow the inputs they were made with", "[app][ui][entry]") {
     Harness h(scratch("stale"));
     REQUIRE(h.run_to_end());

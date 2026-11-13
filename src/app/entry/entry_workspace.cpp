@@ -131,6 +131,17 @@ std::shared_ptr<const sim::EntryTrace> EntryWorkspace::Impl::shown() const {
     return nullptr;
 }
 
+const sim::EntrySetup& EntryWorkspace::Impl::shown_setup() const {
+    const std::shared_ptr<const sim::EntryTrace> trace = shown();
+    if (trace != nullptr && trace == runner.latest().trace && run_setup) {
+        return *run_setup;
+    }
+    if (trace != nullptr && trace == loaded_trace && loaded_setup) {
+        return *loaded_setup;
+    }
+    return setup;
+}
+
 bool EntryWorkspace::Impl::shows_record() const {
     const std::shared_ptr<const sim::EntryTrace> trace = shown();
     return trace != nullptr && trace == loaded_trace && loaded_is_record;
@@ -157,7 +168,7 @@ std::uint64_t EntryWorkspace::Impl::view_key() const {
     const std::shared_ptr<const sim::EntryTrace> trace = shown();
     std::uint64_t key = 0xcbf29ce484222325ULL;
     key = mix(key, reinterpret_cast<std::uintptr_t>(trace.get()));
-    key = mix(key, static_cast<std::uint64_t>(setup.planet));
+    key = mix(key, static_cast<std::uint64_t>(shown_setup().planet));
     // The exaggeration is clamped to the slider's range before the cast.
     const double scale =
         std::isfinite(layers.altitude_scale) ? std::clamp(layers.altitude_scale, 1.0, 1000.0) : 1.0;
@@ -612,19 +623,22 @@ EntryViewState EntryWorkspace::view_state() const {
 EntryViewState EntryWorkspace::Impl::view_state() const {
     const Impl& s = *this;
     EntryViewState state;
-    state.planet = s.setup.planet;
-    const sim::PlanetConstants planet = sim::planet_constants(s.setup.planet);
+    // The planet the shown run flew around, not the one the inputs name now
+    // (a paused run stays shown while the inputs change).
+    const sim::EntrySetup& inputs = s.shown_setup();
+    state.planet = inputs.planet;
+    const sim::PlanetConstants planet = sim::planet_constants(inputs.planet);
     state.globe.radius_m = planet.radius_m;
     state.globe.atmosphere_top_m =
-        s.setup.integration.interface_altitude_m.value_or(planet.atmosphere_top_m);
+        inputs.integration.interface_altitude_m.value_or(planet.atmosphere_top_m);
     state.globe.altitude_scale = std::max(1.0, s.layers.altitude_scale);
     state.trace = s.shown();
     // The uploaded ribbon carries the coloured quantity too; the framing key
     // leaves it out so that switching quantities does not move the camera.
     state.revision = mix(s.view_key(), static_cast<std::uint64_t>(s.layers.coloring) + 1U);
     render::EntryViewOptions& o = state.options;
-    o.style = s.setup.planet == sim::EntryPlanet::mars ? render::EntryPlanetStyle::mars
-                                                       : render::EntryPlanetStyle::earth;
+    o.style = inputs.planet == sim::EntryPlanet::mars ? render::EntryPlanetStyle::mars
+                                                      : render::EntryPlanetStyle::earth;
     o.atmosphere = s.layers.atmosphere;
     o.graticule = s.layers.graticule;
     o.ground_track = s.layers.ground_track;

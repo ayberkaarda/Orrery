@@ -96,6 +96,9 @@ struct EntryWorkspace::Impl {
     // --- State -------------------------------------------------------------
     [[nodiscard]] bool active() const; // running or paused
     [[nodiscard]] std::shared_ptr<const sim::EntryTrace> shown() const;
+    // The inputs the shown run was made with (the current inputs when
+    // nothing is shown): its planet and interface place it in the view.
+    [[nodiscard]] const sim::EntrySetup& shown_setup() const;
     [[nodiscard]] bool shows_record() const;
     [[nodiscard]] std::optional<double> cursor() const;
     // Key of what the camera frames (trace revision, planet, exaggeration).
