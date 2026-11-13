@@ -149,10 +149,12 @@ TEST_CASE("Headless command: exit codes and messages", "[app][headless][cli]") {
     CHECK(err.str().starts_with("orrery_app: experiment 'no_such_experiment' not found"));
     CHECK_FALSE(std::filesystem::exists(options.out));
 
+    // An aero experiment goes to the aero renderer, which reports what is
+    // wrong with this one (an unknown geometry source) before any rendering.
     err.str("");
     options.experiment = (app_test::test_source_dir() / "fixtures" / "aero_domain.json").string();
     CHECK(app::run_headless_command(options, dirs, out, err) == app::kExitFailure);
-    CHECK(err.str().find("domain 'aero'") != std::string::npos);
+    CHECK(err.str().find("inputs.geometry: unknown geometry source 'sphere'") != std::string::npos);
     CHECK_FALSE(std::filesystem::exists(options.out));
 }
 
