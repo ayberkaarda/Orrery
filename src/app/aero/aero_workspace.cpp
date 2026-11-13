@@ -399,6 +399,9 @@ struct AeroWorkspace::Impl {
         task_request = ++geometry_request;
         geometry_task = sim::BackgroundTask<sim::PrepareResult>(
             [model = std::move(model), scale, up](sim::TaskProgress& progress) {
+                if (progress.stop_requested()) {
+                    return sim::PrepareResult(core::failure(sim::cancelled_error()));
+                }
                 progress.set_stage("repairing");
                 return sim::prepare_user_model(model, scale, up);
             },

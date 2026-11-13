@@ -12,11 +12,21 @@
 // "Geometry"): from disk through the importer of orrery_geom, or from an
 // https URL through the secure loader of orrery_geom_net (ADR-010) and then
 // the same importer. Both are blocking and meant for a BackgroundTask; every
-// failure carries a title and the full detail for the error modal.
+// failure carries a title and the full detail for the error modal. A task
+// whose progress reports stop_requested() ends at the next stage boundary
+// with the title "Cancelled"; a running download, parse or repair call is
+// not interrupted (orrery_geom has no cancellation hook): a stalled download
+// ends at the fetch limits (geom::net::FetchLimits, 30 s below 1 KiB/s,
+// 300 s in all).
 namespace orrery::sim {
 
 using ImportResult = core::Result<ImportedModel, GeometryError>;
 using PrepareResult = core::Result<PreparedGeometry, GeometryError>;
+
+// True when `progress` asks the work to stop.
+[[nodiscard]] bool cancelled(const TaskProgress* progress) noexcept;
+// The failure of cancelled work.
+[[nodiscard]] GeometryError cancelled_error();
 
 // Imports a model file (raw units and axes) with its unit and up-axis
 // estimates. `license_note` is carried into the geometry reference.

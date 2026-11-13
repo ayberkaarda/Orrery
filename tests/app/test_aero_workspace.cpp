@@ -3,6 +3,7 @@
 #include <catch2/generators/catch_generators.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <cmath>
 #include <filesystem>
@@ -10,6 +11,7 @@
 #include <memory>
 #include <numbers>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <utility>
@@ -471,6 +473,26 @@ TEST_CASE("User models: import errors are reported, units are confirmed",
         CHECK(again.value().ref.path == "tetra.stl");
         CHECK(geom::bounds(again.value().mesh).extent().x == Approx(1.0));
     }
+    SECTION("a cancelled task stops before its next stage") {
+        std::stop_source stop;
+        sim::TaskProgress progress;
+        progress.watch(stop.get_token());
+        CHECK_FALSE(progress.stop_requested());
+        stop.request_stop();
+        CHECK(progress.stop_requested());
+        const auto file = sim::load_model_file(dir / "nothing.stl", "", &progress);
+        REQUIRE_FALSE(file.has_value());
+        CHECK(file.error().title == "Cancelled");
+        const auto url = sim::fetch_model_url("https://example.invalid/model.stl", {}, &progress);
+        REQUIRE_FALSE(url.has_value());
+        CHECK(url.error().title == "Cancelled");
+        scene::GeometryRef ref;
+        ref.source = scene::GeometrySource::file;
+        ref.path = "nothing.stl";
+        const auto geometry = sim::load_experiment_geometry(ref, dir, &progress);
+        REQUIRE_FALSE(geometry.has_value());
+        CHECK(geometry.error().title == "Cancelled");
+    }
     SECTION("only https URLs are fetched") {
         const auto refused = sim::fetch_model_url("http://example.org/model.stl", {});
         REQUIRE_FALSE(refused.has_value());
@@ -563,4 +585,31 @@ TEST_CASE("Background tasks hand over results and exceptions", "[aero][workspace
         [](const std::string& message) { return "failed: " + message; });
     REQUIRE(app_test::wait_until([&] { return thrown.done(); }));
     CHECK(thrown.take() == "failed: disk on fire");
+}
+
+TEST_CASE("Destroying a running background task cancels it without waiting for its work",
+          "[aero][workspace][thread]") {
+    using Clock = std::chrono::steady_clock;
+    std::atomic<bool> entered{false};
+    std::atomic<bool> saw_stop{false};
+    const Clock::time_point start = Clock::now();
+    {
+        sim::BackgroundTask<int> blocked(
+            [&entered, &saw_stop](sim::TaskProgress& progress) {
+                // Stands for a long import or download that polls for
+                // cancellation; without it the task would run for a minute.
+                entered.store(true);
+                const Clock::time_point deadline = Clock::now() + std::chrono::seconds(60);
+                while (!progress.stop_requested() && Clock::now() < deadline) {
+                    std::this_thread::sleep_for(std::chrono::milliseconds(1));
+                }
+                saw_stop.store(progress.stop_requested());
+                return 0;
+            },
+            [](const std::string&) { return -1; });
+        REQUIRE(app_test::wait_until([&] { return entered.load(); }));
+        CHECK_FALSE(blocked.done());
+    } // shutdown: the destructor requests the stop and joins
+    CHECK(saw_stop.load());
+    CHECK(Clock::now() - start < std::chrono::seconds(20));
 }

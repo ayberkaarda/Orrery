@@ -256,3 +256,12 @@ numbers, coefficients, lattice steps, convergence and each warning.
   lattices are slow there, and the 3D node budget is 4.2 M.
 - User models are repaired automatically after the unit confirmation; the
   report says what changed, and the result stays marked unvalidated.
+- Background work is cancelled at stage boundaries only. Closing the window
+  (or replacing a running import) requests the stop of the task and joins
+  its thread; the work checks the request before downloading, importing and
+  repairing and then ends with "Cancelled". A call already running -
+  `geom::net::fetch_model`, `geom::import_mesh_file`, `geom::repair_mesh` -
+  has no cancellation hook in orrery_geom and finishes first: a stalled
+  download ends at the fetch limits (`geom::net::FetchLimits`: below
+  1 KiB/s for 30 s, or 300 s in all), so closing during one can wait that
+  long.

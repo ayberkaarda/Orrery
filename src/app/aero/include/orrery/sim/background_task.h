@@ -6,6 +6,7 @@
 #include <memory>
 #include <optional>
 #include <stdexcept>
+#include <stop_token>
 #include <string>
 #include <thread>
 #include <utility>
@@ -15,10 +16,12 @@
 // downloads, imports and repairs. No frame ever waits for it: done() is one
 // atomic load, and the result is handed over by a release store after the
 // worker has written it. The work reports its current stage (a string
-// literal) for the progress line.
+// literal) for the progress line and polls stop_requested(): destroying or
+// replacing a running task requests the stop and joins the worker, so work
+// that checks between its stages ends at the next one.
 namespace orrery::sim {
 
-// Progress channel of a running task.
+// Progress and cancellation channel of a running task.
 class TaskProgress {
 public:
     // `stage` must be a string literal (it is kept by pointer).
@@ -27,8 +30,14 @@ public:
         return stage_.load(std::memory_order_acquire);
     }
 
+    // The token whose stop cancels the work (set by BackgroundTask before
+    // the work starts; the worker thread alone reads it).
+    void watch(std::stop_token stop) noexcept { stop_ = std::move(stop); }
+    [[nodiscard]] bool stop_requested() const noexcept { return stop_.stop_requested(); }
+
 private:
     std::atomic<const char*> stage_{"starting"};
+    std::stop_token stop_;
 };
 
 template <typename T> class BackgroundTask {
@@ -37,12 +46,15 @@ public:
 
     // Starts `work(progress)` on a new thread. An exception escaping the
     // work is turned into `on_exception(message)`, so the result is always
-    // set.
+    // set. progress.stop_requested() turns true when the task is destroyed
+    // or replaced.
     template <typename Work, typename OnException>
     BackgroundTask(Work work, OnException on_exception) : state_(std::make_shared<State>()) {
         std::shared_ptr<State> state = state_;
         thread_ = std::jthread(
-            [state, work = std::move(work), on_exception = std::move(on_exception)]() mutable {
+            [state, work = std::move(work),
+             on_exception = std::move(on_exception)](std::stop_token stop) mutable {
+                state->progress.watch(std::move(stop));
                 try {
                     state->result.emplace(work(state->progress));
                 } catch (const std::exception& error) {
@@ -58,7 +70,8 @@ public:
     BackgroundTask& operator=(BackgroundTask&&) noexcept = default;
     BackgroundTask(const BackgroundTask&) = delete;
     BackgroundTask& operator=(const BackgroundTask&) = delete;
-    // Joins the worker (a finished task joins at once).
+    // Requests the stop and joins the worker (a finished task joins at once;
+    // a running one when its work next checks stop_requested()).
     ~BackgroundTask() = default;
 
     [[nodiscard]] bool started() const noexcept { return state_ != nullptr; }

@@ -68,6 +68,9 @@ std::string fetch_title(geom::net::FetchErrorKind kind) {
 
 ImportResult import_path(const std::filesystem::path& path, scene::GeometryRef ref,
                          TaskProgress* progress) {
+    if (cancelled(progress)) {
+        return core::failure(cancelled_error());
+    }
     report(progress, "importing");
     auto imported = geom::import_mesh_file(path);
     if (!imported) {
@@ -86,6 +89,14 @@ ImportResult import_path(const std::filesystem::path& path, scene::GeometryRef r
 
 } // namespace
 
+bool cancelled(const TaskProgress* progress) noexcept {
+    return progress != nullptr && progress->stop_requested();
+}
+
+GeometryError cancelled_error() {
+    return {"Cancelled", "the work was cancelled before it finished"};
+}
+
 std::filesystem::path default_model_cache() {
     return geom::net::default_model_cache_dir();
 }
@@ -101,6 +112,9 @@ ImportResult load_model_file(const std::filesystem::path& path, std::string lice
 
 ImportResult fetch_model_url(std::string_view url, const UrlImportOptions& options,
                              TaskProgress* progress) {
+    if (cancelled(progress)) {
+        return core::failure(cancelled_error());
+    }
     report(progress, "downloading");
     geom::net::FetchOptions fetch;
     fetch.cache_dir = options.cache_dir;
@@ -159,6 +173,9 @@ PrepareResult load_experiment_geometry(const scene::GeometryRef& ref,
                                            "the download from " + ref.url + " has SHA-256 " +
                                                imported.value().ref.sha256 +
                                                ", the experiment recorded " + ref.sha256});
+    }
+    if (cancelled(progress)) {
+        return core::failure(cancelled_error());
     }
     report(progress, "repairing");
     ImportedModel model = std::move(imported).value();
