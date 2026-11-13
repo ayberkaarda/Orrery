@@ -65,9 +65,9 @@ struct FakeClock {
     std::shared_ptr<std::int64_t> cost = std::make_shared<std::int64_t>(0);
 
     [[nodiscard]] std::function<std::int64_t()> function() const {
-        return [now = now, cost = cost] {
-            const std::int64_t reading = *now;
-            *now += *cost;
+        return [clock_now = now, step_cost = cost] {
+            const std::int64_t reading = *clock_now;
+            *clock_now += *step_cost;
             return reading;
         };
     }

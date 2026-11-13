@@ -183,6 +183,8 @@ private:
     // The view is framed again (scenario loaded or reset, F/Home) once the
     // scene area of the dock space is known in the next UI frame.
     bool reframe_pending_ = true;
+    // Phase 10: the help overlay of the keyboard shortcuts is shown.
+    bool help_open_ = false;
     render::CameraInput camera_input_;
 
     // Phase 8b: workspaces. The Aero workspace's view is created in the
@@ -202,9 +204,7 @@ private:
     std::string entry_view_problem_;
     render::UiRect entry_scene_;
 
-    // Phase 10: the help overlay of the keyboard shortcuts and the Space
-    // workspace's Experiment panel.
-    bool help_open_ = false;
+    // Phase 10: the Space workspace's Experiment panel.
     SpaceExperimentPanel space_panel_;
 };
 

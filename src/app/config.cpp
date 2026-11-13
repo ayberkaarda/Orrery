@@ -134,15 +134,23 @@ void read_shortcuts(const toml::table& shortcuts, std::string_view source, Confi
         const std::string name(key.str());
         const auto action = shortcut_action_from_name(name);
         if (!action) {
-            out.warnings.push_back(where(source, node.source()) + ": shortcuts." + name +
-                                   ": unknown action, ignored");
+            std::string warning = where(source, node.source());
+            warning += ": shortcuts.";
+            warning += name;
+            warning += ": unknown action, ignored";
+            out.warnings.push_back(std::move(warning));
             continue;
         }
         std::string problem;
         auto chords = read_chords(node, problem);
         if (!chords) {
-            out.warnings.push_back(where(source, node.source()) + ": shortcuts." + name + ": " +
-                                   problem + "; keeping the default");
+            std::string warning = where(source, node.source());
+            warning += ": shortcuts.";
+            warning += name;
+            warning += ": ";
+            warning += problem;
+            warning += "; keeping the default";
+            out.warnings.push_back(std::move(warning));
             continue;
         }
         overrides.push_back({*action, std::move(*chords), where(source, node.source())});
