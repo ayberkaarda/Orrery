@@ -200,7 +200,8 @@ TEST_CASE("Saving the configuration replaces the file or leaves it as it was",
                 break;
             }
             ++failures;
-            INFO("allocation " << allowed << " failed; " << now.size() << " bytes: " << now.substr(0, 80));
+            INFO("allocation " << allowed << " failed; " << now.size()
+                               << " bytes: " << now.substr(0, 80));
             // The old file, or (a failure after the replacement) the new one.
             CHECK((now == before || now == after));
             CHECK_FALSE(std::filesystem::exists(dir / "config.toml.tmp"));

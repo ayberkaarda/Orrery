@@ -271,8 +271,7 @@ std::vector<ScenarioEntry> json_files(const std::filesystem::path& directory,
     if (!error) {
         it = std::filesystem::directory_iterator(directory, error);
     }
-    for (const std::filesystem::directory_iterator end; !error && it != end;
-         it.increment(error)) {
+    for (const std::filesystem::directory_iterator end; !error && it != end; it.increment(error)) {
         const std::filesystem::path& path = it->path();
         if (path.extension() == ".json" && is_file(path)) {
             entries.push_back({path.stem().string(), path});

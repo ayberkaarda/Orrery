@@ -35,8 +35,7 @@ bool list_row(const sim::StoredSpace& entry, bool selected, bool& opened) {
 } // namespace
 
 SpaceRunView space_run_view(const sim::SimStatus& status,
-                            const std::filesystem::path& startup_experiment,
-                            double sim_time_days) {
+                            const std::filesystem::path& startup_experiment, double sim_time_days) {
     SpaceRunView run;
     run.scenario = status.scenario;
     switch (status.source) {

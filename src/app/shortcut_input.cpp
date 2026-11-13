@@ -85,7 +85,8 @@ ImGuiKey imgui_key(Key key) {
 bool any_key_went_down() {
     for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index) {
         const auto key = static_cast<ImGuiKey>(index);
-        if (ImGui::IsKeyboardKey(key) && !ImGui::IsLRModKey(key) && ImGui::IsKeyPressed(key, false)) {
+        if (ImGui::IsKeyboardKey(key) && !ImGui::IsLRModKey(key) &&
+            ImGui::IsKeyPressed(key, false)) {
             return true;
         }
     }

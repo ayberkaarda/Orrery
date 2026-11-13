@@ -256,7 +256,9 @@ TEST_CASE("Experiment folder errors are problems, a missing folder is not",
     CHECK(missing.entries.empty());
     CHECK(missing.problems.empty());
 
-    { std::ofstream(dir / "not_a_folder") << "a file"; }
+    {
+        std::ofstream(dir / "not_a_folder") << "a file";
+    }
     const SpaceListing file = list_space_experiments(dir / "not_a_folder");
     CHECK(file.entries.empty());
     REQUIRE(file.problems.size() == 1);
@@ -350,7 +352,8 @@ TEST_CASE("Files that are not regular files are refused before they are opened",
           "[app][sim][experiment][special]") {
     const std::filesystem::path dir = scratch("special_files");
     std::filesystem::create_directories(dir / "folder.json");
-    const std::filesystem::path experiment = experiment_using(dir, "uses_folder.json", "folder.json");
+    const std::filesystem::path experiment =
+        experiment_using(dir, "uses_folder.json", "folder.json");
 
     const auto loaded = load_space_experiment(experiment);
     REQUIRE_FALSE(loaded.has_value());
@@ -444,8 +447,7 @@ TEST_CASE("A FIFO named as a scenario neither blocks listing nor loading",
 TEST_CASE("A LoadExperiment that fails on an allocation changes nothing",
           "[app][sim][experiment][alloc]") {
     const auto started = [] {
-        Simulation simulation =
-            app_test::make_simulation("sun_earth_moon.json", governed_config());
+        Simulation simulation = app_test::make_simulation("sun_earth_moon.json", governed_config());
         for (int i = 0; i < 3; ++i) {
             REQUIRE(simulation.advance(kFrameNs).steps > 0);
         }

@@ -74,8 +74,7 @@ bool contains(const std::string& text, std::string_view part) {
 TEST_CASE("A run that throws still writes its trace", "[app][run_guard][trace]") {
     const std::filesystem::path dir = scratch("trace");
     std::ostringstream err;
-    CHECK_THROWS_WITH(run_traced(dir / "failed.json", fail_after_a_zone, err),
-                      "injected failure");
+    CHECK_THROWS_WITH(run_traced(dir / "failed.json", fail_after_a_zone, err), "injected failure");
     CHECK_FALSE(profile::capture_active());
     REQUIRE(std::filesystem::exists(dir / "failed.json"));
     CHECK(zone_events(dir / "failed.json", "test_zone_before_failure") == 1);
@@ -84,8 +83,8 @@ TEST_CASE("A run that throws still writes its trace", "[app][run_guard][trace]")
     // Through main's guard: the failure ends the run with exit code 1, and
     // the trace is there.
     const int code = run_reporting_errors(
-        [&] { return run_traced(dir / "guarded.json", fail_after_a_zone, err); },
-        dir / "crash.log", "test", err);
+        [&] { return run_traced(dir / "guarded.json", fail_after_a_zone, err); }, dir / "crash.log",
+        "test", err);
     CHECK(code == kExitFailure);
     CHECK(zone_events(dir / "guarded.json", "test_zone_before_failure") == 1);
     CHECK(contains(err.str(), "orrery_app: unexpected error: injected failure"));
@@ -99,8 +98,8 @@ TEST_CASE("A run that throws still writes its trace", "[app][run_guard][trace]")
     // A successful run keeps its code; an unwritable trace fails it.
     std::ostringstream quiet;
     CHECK(run_traced(dir / "ok.json", [] { return kExitOk; }, quiet) == kExitOk);
-    CHECK(run_traced(dir / "no_such_dir" / "ok.json", [] { return kExitOk; }, quiet) ==
-          kExitFailure);
+    CHECK(
+        run_traced(dir / "no_such_dir" / "ok.json", [] { return kExitOk; }, quiet) == kExitFailure);
     CHECK(run_traced(dir / "no_such_dir" / "ok.json", [] { return 3; }, quiet) == 3);
 }
 
@@ -130,7 +129,9 @@ TEST_CASE("A crash log that cannot be written is reported", "[app][run_guard][cr
     const std::filesystem::path dir = scratch("crash_log_blocked");
     // The log's parent is a regular file: neither the directory nor the log
     // can be created.
-    { std::ofstream(dir / "blocker") << "not a directory"; }
+    {
+        std::ofstream(dir / "blocker") << "not a directory";
+    }
     std::ostringstream err;
     CHECK(run_reporting_errors(fail_after_a_zone, dir / "blocker" / "crash.log", "1.2.3", err) ==
           kExitFailure);

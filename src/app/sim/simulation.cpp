@@ -292,7 +292,7 @@ struct Simulation::Impl {
     void commit(Staged&& staged) noexcept {
         forces = std::move(staged.forces);
         integrator = std::move(staged.integrator);
-        diagnostics = std::move(staged.diagnostics);
+        diagnostics = staged.diagnostics;
         state = std::move(staged.state);
         initial = std::move(staged.scene);
         log.clear();

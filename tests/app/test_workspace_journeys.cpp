@@ -103,8 +103,8 @@ const app_test::KeyStroke kCloseBracket{ImGuiKey_RightBracket, false, false, fal
 class Shell {
 public:
     Shell(const std::filesystem::path& dir, Workspace start)
-        : experiment_(space_experiment()), physics_(paused_simulation(experiment_)),
-          ui_(make_ui()), aero_(aero_options(dir)), entry_(entry_options(dir)),
+        : experiment_(space_experiment()), physics_(paused_simulation(experiment_)), ui_(make_ui()),
+          aero_(aero_options(dir)), entry_(entry_options(dir)),
           panel_(dir, app_test::experiment_dir()), workspace_(start), latest_(physics_.latest()) {}
 
     // Queues `events` (key_events.h), then runs one frame.
@@ -328,8 +328,7 @@ TEST_CASE("Space journey: run, raise the warp, save and open the experiment agai
     CHECK(shell.latest().status.message.empty());
 }
 
-TEST_CASE("The Experiment panel names the experiment that runs, or none",
-          "[app][journey][space]") {
+TEST_CASE("The Experiment panel names the experiment that runs, or none", "[app][journey][space]") {
     const std::filesystem::path startup_file = app_test::experiment_dir() / "figure_eight.json";
     auto startup = sim::load_space_experiment(startup_file);
     REQUIRE(startup.has_value());

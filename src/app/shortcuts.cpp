@@ -438,9 +438,9 @@ bool keys_claimed(const ShortcutTable& table, const KeyFrame& frame, std::uint8_
 
 bool chord_fired(const KeyChord& chord, const KeyFrame& frame, bool repeats, bool claimed) {
     if (chord.character != '\0') {
-        return !claimed && (frame.typed.find(chord.character) != std::string::npos ||
-                            (repeats && frame.typed_repeated.find(chord.character) !=
-                                            std::string::npos));
+        return !claimed &&
+               (frame.typed.find(chord.character) != std::string::npos ||
+                (repeats && frame.typed_repeated.find(chord.character) != std::string::npos));
     }
     return contains_chord(frame.pressed, chord) ||
            (repeats && contains_chord(frame.repeated, chord));

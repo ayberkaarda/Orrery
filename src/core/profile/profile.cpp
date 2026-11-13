@@ -27,7 +27,7 @@ struct Sink {
     std::atomic<bool> active{false};
     std::atomic<std::uint64_t> generation{0}; // incremented by every start
     std::atomic<std::int64_t> origin_ns{0};   // steady clock at capture start
-    std::atomic<std::uint64_t> lost{0};     // events lost to an allocation failure
+    std::atomic<std::uint64_t> lost{0};       // events lost to an allocation failure
     std::vector<ZoneEvent> events;
     std::vector<ZoneTotal> totals;
     std::vector<std::thread::id> threads;
