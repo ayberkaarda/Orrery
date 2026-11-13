@@ -8,7 +8,7 @@
 // lighting factor is 1 where the surface faces the key light, so there the
 // displayed colour equals the legend colour.
 //
-// APPROXIMATION: studio shading - a camera-attached key light with a wrapped
+// APPROXIMATION (V11): studio shading - a camera-attached key light with a wrapped
 // Lambert term (floor u_ambient), a weak Blinn-Phong highlight with Schlick
 // Fresnel (F0 = 0.04) and a faint cool rim - reads the shape without hiding
 // the colour map; no shadows or global illumination.

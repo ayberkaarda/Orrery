@@ -316,6 +316,10 @@ std::vector<glm::dvec3> colormap_table(Colormap map, std::size_t count) {
     return table;
 }
 
+// APPROXIMATION (V9): display pre-compensation - inverse of Hill's ACES fit
+// (tone_map.h) for colours with a non-negative pre-image - exact to 8-bit
+// rounding for every colour of the maps (they are confined to that gamut);
+// shading below the key light darkens the displayed colour.
 glm::dvec3 scene_linear_for_display(const glm::dvec3& display, double exposure) noexcept {
     const glm::dvec3 target = glm::clamp(display, glm::dvec3(0.0), glm::dvec3(kMaxDisplay));
     const glm::dvec3 curve = multiply(output_inverse(), target);

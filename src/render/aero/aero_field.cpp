@@ -30,6 +30,10 @@ bool is_solid(std::span<const std::uint8_t> solid, std::size_t node) noexcept {
     return !solid.empty() && solid[node] != 0;
 }
 
+// APPROXIMATION (V6): derived quantities - finite differences of the nodal
+// velocity, central (second order) inside the fluid, one-sided (first order)
+// at grid edges and next to bodies - vorticity and Q near walls are smeared
+// over one cell; display only.
 // Derivative of `value(node)` along `axis` at node (i, j, k): central where
 // both neighbours are fluid nodes of the grid, one-sided where only one is,
 // zero otherwise (and along z on a 2D grid).
@@ -94,6 +98,9 @@ template <typename Visit> void for_each_node(const GridGeometry& grid, const Vis
     }
 }
 
+// APPROXIMATION (V1): field interpolation - trilinear (bilinear in 2D)
+// between grid nodes - exact for linear fields, second order otherwise;
+// structures below two grid spacings are not resolved.
 // Cell and weights of a point for interpolation; empty outside the grid.
 struct Stencil {
     std::array<std::size_t, 3> cell{};
@@ -230,6 +237,10 @@ FlowField flow_field_from(const aero::VelocityField& velocity) {
 
 namespace {
 
+// APPROXIMATION (V10): lattice pressure - the weakly compressible LBM
+// pressure c_s^2 (rho - 1) against rho_ref = 1, as Cp with the inlet speed -
+// valid at lattice Mach below 0.1 (A3); includes the acoustic noise of the
+// solver.
 ScalarGrid lattice_pressure(const GridGeometry& grid, const std::vector<double>& density,
                             const LatticeMapping& mapping, std::string& label) {
     ScalarGrid p;
@@ -404,6 +415,9 @@ std::optional<glm::dvec3> sample(const VectorGrid& field, const glm::dvec3& poin
     return interpolate<glm::dvec3>(field.grid, *s, field.values);
 }
 
+// APPROXIMATION (V7): section sampling - grid-node resolution in the plane,
+// linear along its normal, solid flag of the nearer node - the cut is as
+// sharp as the grid; bodies show their staircase unless a mesh covers them.
 SectionImage sample_section(const ScalarGrid& field, std::span<const std::uint8_t> solid, Axis axis,
                             double position) {
     SectionImage image;

@@ -101,6 +101,10 @@ core::Result<AeroSurface, std::string> extrude_section(std::span<const geom::Sec
     return surface;
 }
 
+// APPROXIMATION (V8): Cp smoothing - per-panel Cp averaged to the vertices
+// (angle-weighted) and interpolated across each triangle - display only; the
+// solver's integrated loads are unaffected; across sharp edges the two sides
+// are averaged at shared vertices.
 std::vector<double> vertex_values(const geom::TriangleMesh& mesh,
                                   std::span<const double> triangle_values) {
     std::vector<double> sum(mesh.vertices.size(), 0.0);

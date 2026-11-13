@@ -59,6 +59,10 @@ struct Tracer {
         return *u * (sign / speed);
     }
 
+    // APPROXIMATION (V2): streamline integration - classical RK4 in arc
+    // length with a fixed step (0.5 grid spacings by default) on the
+    // interpolated field (V1) - fourth order in the step; lines through
+    // stagnation regions stop at 1e-3 of the peak speed; binary32 on the GPU.
     // Classical RK4 step of arc length ds.
     [[nodiscard]] std::optional<glm::dvec3> step(const glm::dvec3& p, double ds,
                                                  double sign) const {
@@ -321,6 +325,10 @@ std::vector<glm::dvec3> seed_plane(const GridGeometry& grid, Axis axis, double p
     return seeds;
 }
 
+// APPROXIMATION (V3): particle advection - explicit midpoint rule (second
+// order) in time on the field of the current frame, sub-stepped to at most
+// half a grid spacing - traces are pathlines only while the field changes
+// slowly between updates; in an unsteady flow they are a visual aid.
 std::optional<glm::dvec3> advect_particle(const VectorGrid& velocity,
                                           std::span<const std::uint8_t> solid,
                                           const glm::dvec3& position, double dt) {

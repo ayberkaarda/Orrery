@@ -232,6 +232,15 @@ struct EdgeVertex {
     glm::dvec3 normal{0.0};
 };
 
+// APPROXIMATION (V4): marching cubes - vertices by linear interpolation of
+// the two node values along each cell edge, face ambiguity resolved by
+// separating the inside corners, interior ambiguity ignored - closed,
+// consistently oriented surfaces whose topology can differ from the
+// trilinear interpolant's at saddles; area error below 2 percent for a
+// sphere of radius 6 cells and more (tested).
+// APPROXIMATION (V5): iso-surface normals - minus the gradient of the node
+// values (central differences), interpolated along the edge - smooth
+// shading; first order at the grid boundary.
 double edge_fraction(double a, double b, double level) noexcept {
     const double denominator = b - a;
     return denominator != 0.0 ? std::clamp((level - a) / denominator, 0.0, 1.0) : 0.5;
