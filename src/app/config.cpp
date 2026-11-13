@@ -352,12 +352,60 @@ std::string config_to_toml(const AppConfig& config) {
     root.insert("space", std::move(space));
     root.insert("shortcuts", std::move(shortcuts));
     std::ostringstream out;
+    // A stream swallows a failure (memory exhausted) and keeps what it has:
+    // rethrown instead, so that a truncated text is never saved.
+    out.exceptions(std::ios::badbit | std::ios::failbit);
     out << "# Orrery configuration (docs/app.md, \"Configuration\").\n" << root << '\n';
     return out.str();
 }
 
+namespace {
+
+// A temporary file removed when it goes out of scope, unless it was renamed
+// into place (or never created).
+class TemporaryFile {
+public:
+    explicit TemporaryFile(std::filesystem::path path) : path_(std::move(path)) {}
+    TemporaryFile(const TemporaryFile&) = delete;
+    TemporaryFile& operator=(const TemporaryFile&) = delete;
+    TemporaryFile(TemporaryFile&&) = delete;
+    TemporaryFile& operator=(TemporaryFile&&) = delete;
+    ~TemporaryFile() {
+        if (created_) {
+            std::error_code ignored;
+            std::filesystem::remove(path_, ignored);
+        }
+    }
+
+    [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
+    void created() noexcept { created_ = true; }
+    void renamed() noexcept { created_ = false; }
+
+private:
+    std::filesystem::path path_;
+    bool created_ = false;
+};
+
+// Writes `text` to the temporary file; false when it cannot.
+bool write_whole(TemporaryFile& file, const std::string& text) {
+    std::ofstream out(file.path(), std::ios::binary | std::ios::trunc);
+    if (!out) {
+        return false;
+    }
+    file.created();
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+    out.close();
+    return static_cast<bool>(out);
+}
+
+} // namespace
+
 core::Result<std::filesystem::path, std::string> save_config(const std::filesystem::path& path,
                                                              const AppConfig& config) {
+    // Serialised before anything on disk changes; written to a sibling
+    // temporary file that then replaces the configuration in one rename, so
+    // a failure at any point leaves the previous file whole.
+    const std::string text = config_to_toml(config);
     // A bare file name has no directory to create (the working directory).
     if (const std::filesystem::path dir = path.parent_path(); !dir.empty()) {
         std::error_code error;
@@ -366,13 +414,18 @@ core::Result<std::filesystem::path, std::string> save_config(const std::filesyst
             return core::failure("cannot create " + dir.string() + ": " + error.message());
         }
     }
-    std::ofstream out(path, std::ios::binary | std::ios::trunc);
-    const std::string text = config_to_toml(config);
-    out.write(text.data(), static_cast<std::streamsize>(text.size()));
-    out.close();
-    if (!out) {
-        return core::failure("cannot write " + path.string());
+    std::filesystem::path temporary_path = path;
+    temporary_path += ".tmp";
+    TemporaryFile temporary(std::move(temporary_path));
+    if (!write_whole(temporary, text)) {
+        return core::failure("cannot write " + temporary.path().string());
     }
+    std::error_code error;
+    std::filesystem::rename(temporary.path(), path, error);
+    if (error) {
+        return core::failure("cannot replace " + path.string() + ": " + error.message());
+    }
+    temporary.renamed();
     return path;
 }
 

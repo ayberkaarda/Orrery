@@ -287,6 +287,8 @@ find_package(imgui CONFIG REQUIRED)
 add_executable(orrery_test_app
     app/app_test_support.h
     app/key_events.h
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp
     app/test_cli.cpp
     app/test_headless.cpp
     app/test_app_bar.cpp

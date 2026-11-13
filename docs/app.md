@@ -388,7 +388,11 @@ value that is not a chord string or a list of them, or a chord that does
 not parse is reported and the action keeps its default; so is an entry
 that conflicts with another action (section 12). `config_to_toml` writes
 every key, the shortcut table included, so a saved file documents itself
-(round trip tested).
+(round trip tested). `save_config` serialises first, writes the text to
+`config.toml.tmp` beside the file and renames that over it (a replacing
+rename, on Windows too), so a failed save leaves the previous file
+byte-identical: tested with every allocation failing in turn, a temporary
+file that cannot be written and a file that cannot be replaced.
 
 ## 11. Error surface
 

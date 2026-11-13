@@ -3,12 +3,15 @@
 #include <exception>
 #include <filesystem>
 #include <fstream>
+#include <ios>
+#include <new>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <system_error>
 #include <vector>
 
+#include "../core/allocation_failure_injection.h"
 #include "orrery/app/config.h"
 #include "orrery/app/error_surface.h"
 
@@ -142,6 +145,89 @@ TEST_CASE("Configuration saves to a bare file name and to a nested path", "[app]
         const auto loaded = app::load_config(path);
         REQUIRE(loaded.has_value());
         CHECK(loaded.value().config == c);
+    }
+}
+
+namespace {
+
+std::string file_text(const std::filesystem::path& path) {
+    std::ifstream in(path, std::ios::binary);
+    std::ostringstream text;
+    text << in.rdbuf();
+    return text.str();
+}
+
+void write_text(const std::filesystem::path& path, const std::string& text) {
+    std::ofstream out(path, std::ios::binary | std::ios::trunc);
+    out.write(text.data(), static_cast<std::streamsize>(text.size()));
+}
+
+} // namespace
+
+TEST_CASE("Saving the configuration replaces the file or leaves it as it was",
+          "[app][config][save]") {
+    const std::filesystem::path dir = scratch("atomic_save");
+    const std::filesystem::path path = dir / "config.toml";
+    app::AppConfig first = app::default_config();
+    first.window_width = 1234;
+    REQUIRE(app::save_config(path, first).has_value());
+    const std::string before = file_text(path);
+    REQUIRE(before == app::config_to_toml(first));
+    app::AppConfig second = app::default_config();
+    second.window_width = 2345;
+    const std::string after = app::config_to_toml(second);
+
+    SECTION("an existing file is replaced") {
+        REQUIRE(app::save_config(path, second).has_value());
+        CHECK(file_text(path) == after);
+        CHECK_FALSE(std::filesystem::exists(dir / "config.toml.tmp"));
+    }
+    SECTION("a failure while serialising or writing leaves the file whole") {
+        int failures = 0;
+        for (long long allowed = 0;; ++allowed) {
+            write_text(path, before);
+            bool fired = false;
+            try {
+                const test::AllocationFailureScope scope(allowed);
+                (void)app::save_config(path, second);
+                fired = scope.fired();
+            } catch (const std::bad_alloc&) {
+                fired = true;
+            }
+            const std::string now = file_text(path);
+            if (!fired) {
+                CHECK(now == after);
+                break;
+            }
+            ++failures;
+            INFO("allocation " << allowed << " failed; " << now.size() << " bytes: " << now.substr(0, 80));
+            // The old file, or (a failure after the replacement) the new one.
+            CHECK((now == before || now == after));
+            CHECK_FALSE(std::filesystem::exists(dir / "config.toml.tmp"));
+        }
+        CHECK(failures > 10);
+    }
+    SECTION("a temporary file that cannot be written fails the save") {
+        std::filesystem::create_directories(dir / "config.toml.tmp");
+        CHECK_FALSE(app::save_config(path, second).has_value());
+        CHECK(file_text(path) == before);
+        CHECK(std::filesystem::is_directory(dir / "config.toml.tmp"));
+    }
+    SECTION("a file that cannot be replaced fails the save") {
+#if defined(_WIN32)
+        // Open without delete sharing: Windows refuses to replace it.
+        const std::ifstream held(path, std::ios::binary);
+        REQUIRE(held.is_open());
+        CHECK_FALSE(app::save_config(path, second).has_value());
+        CHECK(file_text(path) == before);
+#else
+        // A directory in the file's place cannot be replaced by a file.
+        std::filesystem::remove(path);
+        std::filesystem::create_directories(path / "keep");
+        CHECK_FALSE(app::save_config(path, second).has_value());
+        CHECK(std::filesystem::is_directory(path / "keep"));
+#endif
+        CHECK_FALSE(std::filesystem::exists(dir / "config.toml.tmp"));
     }
 }
 
