@@ -95,8 +95,8 @@ Pixel pixel_at(const ImageRgba8& image, double x, double y) {
 glm::dvec2 project(const Camera& camera, const FrameInfo& frame, const glm::dvec3& world) {
     const glm::vec4 clip =
         camera.view_projection_matrix(frame.aspect()) * glm::vec4(camera.to_render(world), 1.0F);
-    const double x = clip.x / clip.w;
-    const double y = clip.y / clip.w;
+    const auto x = static_cast<double>(clip.x / clip.w);
+    const auto y = static_cast<double>(clip.y / clip.w);
     return {(x * 0.5 + 0.5) * frame.width, (0.5 - y * 0.5) * frame.height};
 }
 
