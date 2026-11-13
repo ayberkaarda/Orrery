@@ -173,7 +173,9 @@ struct PlanetConstants {
 // Flight-path angle [deg, negative = descending] at `altitude_m` and
 // `speed_m_s` on the Kepler orbit whose periapsis is at
 // `periapsis_altitude_m`; nullopt when no such orbit exists (periapsis above
-// the start, or the speed too low to rise to the start altitude from it).
+// the start, the speed too low to rise to the start altitude from it, or a
+// periapsis at the start altitude below circular speed, where the start is
+// the apoapsis).
 [[nodiscard]] std::optional<double>
 flight_path_angle_for_periapsis(EntryPlanet planet, double altitude_m, double speed_m_s,
                                 double periapsis_altitude_m) noexcept;

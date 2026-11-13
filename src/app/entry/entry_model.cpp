@@ -215,7 +215,10 @@ std::optional<double> flight_path_angle_for_periapsis(EntryPlanet planet, double
     // Energy and angular momentum: vp^2 = v^2 + 2 mu (1/rp - 1/r),
     // r v cos(gamma) = rp vp.
     const double vp2 = speed_m_s * speed_m_s + 2.0 * c.mu_m3_s2 * (1.0 / rp - 1.0 / r);
-    if (!(vp2 > 0.0)) {
+    // The turning point at rp is the periapsis only at or above the circular
+    // speed there; below it, rp is the apoapsis (only possible for rp = r:
+    // the start itself) and the real periapsis is lower.
+    if (!(vp2 > 0.0) || vp2 * rp < c.mu_m3_s2 * (1.0 - 1.0e-12)) {
         return std::nullopt;
     }
     const double cosine = rp * std::sqrt(vp2) / (r * speed_m_s);

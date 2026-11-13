@@ -49,11 +49,13 @@ Space runs or pauses.
   as a background task; its warnings are listed, a failure opens the problem
   modal. A result that arrives after other inputs were loaded (an experiment,
   a preset) or the reference area changed is discarded with a notice, so it
-  never replaces another experiment's table. The chip says which source the table has.
+  never replaces another experiment's table. The chip says which source the
+  table has.
 - **Initial state**: altitude, inertial speed and flight-path angle, or the
   **vacuum periapsis** of the approach orbit (the flight-path angle at the
-  start altitude follows from energy and angular momentum and is shown);
-  latitude, longitude, heading; time limit.
+  start altitude follows from energy and angular momentum and is shown; a
+  periapsis at the start altitude below circular speed is refused, since the
+  start is then the apoapsis); latitude, longitude, heading; time limit.
 - **Integration**: IAS15 (tolerance), Yoshida 4 or leapfrog for the gravity
   part of the split step, the step inside the atmosphere (also the series
   spacing), end at skip-out.

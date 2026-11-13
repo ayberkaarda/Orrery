@@ -70,6 +70,29 @@ TEST_CASE("The periapsis form gives the flight-path angle of the same orbit", "[
     CHECK_FALSE(sim::setup_errors(setup).empty());
 }
 
+TEST_CASE("A periapsis at the start altitude is accepted only when it is one", "[app][entry]") {
+    const sim::PlanetConstants earth = sim::planet_constants(sim::EntryPlanet::earth);
+    const double altitude = 121'920.0;
+    const double circular = std::sqrt(earth.mu_m3_s2 / (earth.radius_m + altitude));
+    // Below circular speed the start is the apoapsis; the periapsis is lower.
+    CHECK_FALSE(sim::flight_path_angle_for_periapsis(sim::EntryPlanet::earth, altitude,
+                                                     0.95 * circular, altitude)
+                    .has_value());
+    sim::EntrySetup setup;
+    setup.start = sim::EntryStart::periapsis;
+    setup.altitude_m = altitude;
+    setup.speed_m_s = 0.95 * circular;
+    setup.periapsis_altitude_m = altitude;
+    CHECK_FALSE(sim::setup_errors(setup).empty());
+    // Circular and faster: the start is the periapsis, a horizontal start.
+    for (const double speed : {circular, 1.2 * circular}) {
+        const auto gamma = sim::flight_path_angle_for_periapsis(sim::EntryPlanet::earth, altitude,
+                                                                speed, altitude);
+        REQUIRE(gamma.has_value());
+        CHECK(std::abs(gamma.value_or(1.0)) < 1e-6);
+    }
+}
+
 TEST_CASE("Entry summaries find peaks, the heat load and interpolate", "[app][entry]") {
     sim::EntrySeries series;
     for (int i = 0; i <= 10; ++i) {
