@@ -182,7 +182,10 @@ Yoshida4 or leapfrog selectable) and `NewtonianGravity` on a two-body SimState
 to half the time to reach the top at the current descent rate, between
 `time_step` and `max_coast_step` (default 30 s), so a start from orbit is cheap.
 Runs are deterministic: identical configurations give bit-identical series,
-and the series does not depend on how `advance` splits the run.
+and the series does not depend on how `advance` splits the run: the requested
+durations accumulate, a step is taken once the total asked for reaches its
+end, and the clock never passes that total (an `advance` shorter than the
+next step takes no step and keeps the request).
 
 ### Events
 

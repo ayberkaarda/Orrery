@@ -1,6 +1,7 @@
 #include <catch2/catch_approx.hpp>
 #include <catch2/catch_test_macros.hpp>
 
+#include <algorithm>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -200,6 +201,33 @@ TEST_CASE("Pause and stop act between slices of the entry runner", "[app][entry]
     // The trace up to the stop stays readable.
     REQUIRE(runner.latest().trace != nullptr);
     CHECK_FALSE(runner.latest().trace->series.empty());
+}
+
+TEST_CASE("A paced entry run keeps to its pace", "[app][entry]") {
+    // 10 simulated seconds per wall-clock second with the library's 0.5 s
+    // steps: every wake asks for about 0.08 s, far less than one step.
+    sim::EntryRunner runner;
+    runner.send(sim::SetEntryPace{10.0});
+    sim::EntrySetup setup;
+    setup.max_time_s = 3'600.0;
+    const auto started = std::chrono::steady_clock::now();
+    runner.send(sim::StartEntryRun{setup});
+    REQUIRE(wait_for(runner, sim::EntryRunState::running));
+    const auto elapsed = [&] {
+        return std::chrono::duration<double>(std::chrono::steady_clock::now() - started).count();
+    };
+    double worst = 0.0;
+    while (elapsed() < 1.0) {
+        runner.wake();
+        (void)runner.fetch();
+        // Simulated time never runs ahead of pace x wall time.
+        worst = std::max(worst, runner.latest().status.sim_time_s - 10.0 * elapsed());
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    CHECK(worst <= 0.0);
+    CHECK(runner.latest().status.sim_time_s > 0.0);
+    runner.send(sim::StopEntryRun{});
+    REQUIRE(wait_for(runner, sim::EntryRunState::stopped));
 }
 
 TEST_CASE("Stop and shutdown stay prompt with a tiny integration step", "[app][entry]") {

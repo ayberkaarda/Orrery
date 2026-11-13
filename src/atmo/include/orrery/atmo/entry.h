@@ -229,10 +229,14 @@ public:
     EntryExperiment& operator=(const EntryExperiment&) = delete;
     ~EntryExperiment();
 
-    // Advances by up to `duration` of simulated time, stopping early at an
-    // end condition; returns the outcome afterwards (running if none was
-    // reached). After a failure the outcome is failed and the state is the
-    // last good one. Calls after the end change nothing.
+    // Asks for `duration` more simulated time and takes every whole step that
+    // ends within the time asked for so far (all calls together), stopping
+    // early at an end condition; returns the outcome afterwards (running if
+    // none was reached). time() never passes the total asked for, and a
+    // request shorter than the next step is kept for the following calls, so
+    // the steps do not depend on how a run is split. After a failure the
+    // outcome is failed and the state is the last good one. Calls after the
+    // end change nothing.
     [[nodiscard]] core::Result<EntryOutcome, AtmoError> advance(core::si::Time duration);
     // Like advance(duration), taking at most `max_steps` steps, so that a
     // caller that must stay responsive (a solver thread polling Stop) bounds

@@ -57,6 +57,9 @@ struct EntryExperiment::Impl {
     std::vector<EntryEvent> events;
     EntrySummary summary;
     double time_s = 0.0;
+    // Simulated time asked for by advance() so far (at most max_duration);
+    // time_s never passes it.
+    double requested_s = 0.0;
     double drag_work_j = 0.0;
     double mass_kg = 0.0;
     bool inside_interface = false;

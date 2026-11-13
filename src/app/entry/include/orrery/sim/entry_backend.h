@@ -44,9 +44,11 @@ public:
     EntryStepper& operator=(EntryStepper&&) = delete;
     virtual ~EntryStepper() = default;
 
-    // Integrates at most `seconds` of simulated time and at most
-    // kEntryMaxStepsPerCall steps (a short slice, so that the caller can poll
-    // its commands between calls) and appends the
+    // Asks for `seconds` more simulated time: integrates the whole steps that
+    // end within the time asked for by all calls so far (the rest carries
+    // over, so a paced caller keeps its pace even with slices shorter than a
+    // step), at most kEntryMaxStepsPerCall of them (a short slice, so that
+    // the caller can poll its commands between calls), and appends the
     // samples recorded in it to `out` (the first call also records the
     // initial state). Returns true once the entry has ended; outcome() says
     // how. Throws std::runtime_error when the integration fails.

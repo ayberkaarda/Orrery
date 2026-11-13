@@ -175,14 +175,20 @@ core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double dura
                                        "advance: duration must be non-negative and finite"});
     }
     const double limit = config.max_duration.value();
-    const double end = std::min(time_s + duration_s, limit);
+    // The requests accumulate: a step is taken once the time asked for so
+    // far reaches its end, so short requests neither stall the run nor let
+    // it run ahead, and the steps do not depend on how the run is split.
+    requested_s = std::min(requested_s + duration_s, limit);
     for (std::size_t steps = 0;
-         summary.outcome == EntryOutcome::running && time_s < end && steps < max_steps; ++steps) {
+         summary.outcome == EntryOutcome::running && time_s < limit && steps < max_steps; ++steps) {
         const double remaining = limit - time_s;
         const double next = next_step();
         const bool last = remaining <= next;
-        if (std::optional<AtmoError> failed =
-                step(last ? remaining : next, last ? limit : time_s + next)) {
+        const double step_end = last ? limit : time_s + next;
+        if (step_end > requested_s) {
+            break;
+        }
+        if (std::optional<AtmoError> failed = step(last ? remaining : next, step_end)) {
             return core::failure(std::move(*failed));
         }
     }

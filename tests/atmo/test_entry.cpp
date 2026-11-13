@@ -286,6 +286,35 @@ TEST_CASE("Entry runs are deterministic and independent of the advance chunks", 
     CHECK(chunked.series().size() == rows);
 }
 
+TEST_CASE("Advance never runs past the requested time", "[atmo][entry]") {
+    // 0.125 s requests against 0.5 s steps: a step is taken once the
+    // accumulated request covers it.
+    EntryExperiment run = make(orrery::atmo::apollo_like_entry());
+    for (int i = 0; i < 3; ++i) {
+        REQUIRE(run.advance(si::Time(0.125)));
+        CHECK(run.time().value() == 0.0);
+    }
+    REQUIRE(run.advance(si::Time(0.125)));
+    CHECK(run.time().value() == 0.5);
+    CHECK(run.series().size() == 2);
+
+    // Coast steps above the atmosphere are up to 30 s long.
+    EntryConfig high = orrery::atmo::apollo_like_entry();
+    high.initial.altitude = si::Length(1.5e6);
+    high.initial.flight_path_angle = Angle::from_degrees(-30.0);
+    EntryExperiment coast = make(high);
+    EntryExperiment whole = make(high);
+    run_to_end(whole);
+    double requested = 0.0;
+    while (!coast.finished()) {
+        REQUIRE(coast.advance(si::Time(0.75)));
+        requested += 0.75;
+        REQUIRE(coast.time().value() <= requested);
+    }
+    // Small requests change neither the steps nor the result.
+    CHECK(coast.series() == whole.series());
+}
+
 TEST_CASE("A step-bounded advance takes at most the given number of steps", "[atmo][entry]") {
     EntryExperiment run = make(orrery::atmo::apollo_like_entry());
     auto outcome = run.advance(si::Time(100.0), 3);
