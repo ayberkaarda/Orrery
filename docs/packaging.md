@@ -191,18 +191,30 @@ Measured on Windows (MSVC 19.44, `package` preset, version 0.0.1):
 | installed tree (65 files) | 19.2 MiB (20,119,093 bytes in the MSI's extracted tree) |
 | `orrery_app.exe` | 3.6 MiB |
 | largest DLLs | assimp 5.3 MiB, libcrypto 5.0 MiB |
-| `.msi` | 6.8 MiB |
-| `.zip` | 7.8 MiB |
+| `.msi` | 6.8 MiB (7,104,484 bytes) |
+| `.zip` | 7.8 MiB (8,228,837 bytes) |
 
 The spec limit for binary and assets is 80 MB: the whole installed tree,
 runtime libraries included, uses about a quarter of it. The Linux numbers
 are reported by the release workflow in its job summary.
 
-Cold start to the first frame (headless, from the extracted MSI tree,
-Radeon RX 9060 XT): process start, OpenGL context, experiment load, one
-frame and the PNG written, 1.5 s for `entry_apollo_like` and 1.6 to 2.8 s for
-the space experiments at small sizes (spec: under 3 s). `--version` alone
-returns in about 0.1 s, so start-up is dominated by the OpenGL context.
+Start-up to the first frame (headless, from the unpacked zip, Radeon RX
+9060 XT; process start, OpenGL context, experiment load, one frame and the
+PNG written; five runs each):
+
+| Run | Time |
+|---|---|
+| `--version` | 11 to 60 ms |
+| `solar_system`, 1920x1080 | 0.56 to 0.60 s |
+| `black_hole`, 1920x1080 | 0.81 to 1.22 s |
+| `solar_system`, 160x90 | 0.39 to 2.6 s |
+
+The spec target is under 3 s. The very first runs of a freshly installed
+or unpacked tree were slower, 1.5 to 4.5 s (the 4.5 s for a 1080p frame):
+the antivirus scans the new binaries and the driver compiles the shaders
+into its cache once. So a first launch after installation can exceed 3 s
+on this machine; later launches stay well under it. The windowed start
+was not timed (it would open a window).
 
 ## 7. Signing
 
