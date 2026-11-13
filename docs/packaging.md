@@ -248,11 +248,12 @@ Measured on Windows (MSVC 19.44, `package` preset, version 0.0.1):
 
 | Item | Size |
 |---|---|
-| installed tree (65 files) | 19.2 MiB (20,119,093 bytes in the MSI's extracted tree) |
+| installed tree (115 files, with `docs/`) | 21.6 MiB (22,090 KiB in `install.relocated`) |
 | `orrery_app.exe` | 3.6 MiB |
 | largest DLLs | assimp 5.3 MiB, libcrypto 5.0 MiB |
-| `.msi` | 6.8 MiB (7,104,484 bytes) |
-| `.zip` | 7.8 MiB (8,228,837 bytes) |
+| installed documentation (`docs/`, mostly the screenshots) | 2.8 MiB |
+| `.msi` | 9.2 MiB (9,675,112 bytes) |
+| `.zip` | 10.3 MiB (10,846,080 bytes) |
 
 The spec limit for binary and assets is 80 MB: the whole installed tree,
 runtime libraries included, uses about a quarter of it. The Linux numbers
