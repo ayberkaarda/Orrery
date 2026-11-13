@@ -433,10 +433,10 @@ TEST_CASE("Comparison CSV text cells cannot start a spreadsheet formula",
         {"@SUM(A1)", "\"'@SUM(A1)\""},
         {"\tindent", "\"'\tindent\""},
         {"\rreturn", "\"'\rreturn\""},
-        {"=a,\"b\"", "\"'=a,\"\"b\"\"\""},
+        {R"(=a,"b")", R"("'=a,""b""")"},
         {"plain name", "plain name"},
         {"a, b", "\"a, b\""},
-        {"say \"hi\"", "\"say \"\"hi\"\"\""},
+        {R"(say "hi")", R"("say ""hi""")"},
         {"x=1", "x=1"},
     };
     sim::ComparisonTable table;
@@ -449,7 +449,12 @@ TEST_CASE("Comparison CSV text cells cannot start a spreadsheet formula",
         const std::string csv = sim::comparison_csv(table);
         INFO(csv);
         const std::string label = "\"'=HYPERLINK(\"\"http://example.invalid\"\")\"";
-        CHECK(csv.find("\r\n" + label + "," + field + ",panel,-2,") != std::string::npos);
+        std::string expected = "\r\n";
+        expected += label;
+        expected += ',';
+        expected += field;
+        expected += ",panel,-2,";
+        CHECK(csv.find(expected) != std::string::npos);
     }
 }
 
