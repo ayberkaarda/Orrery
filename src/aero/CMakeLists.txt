@@ -63,3 +63,19 @@ target_include_directories(orrery_aero PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/compute/include
     ${CMAKE_CURRENT_SOURCE_DIR}/lbm/include)
 target_link_libraries(orrery_aero PRIVATE TBB::tbb)
+
+# Phase 7c: the D3Q19 lattice Boltzmann solver (CPU reference on oneTBB, GPU
+# driver through IComputeBackend), solid masks from orrery_geom voxel grids
+# and the IAeroSolver adapter for closed body meshes.
+target_sources(orrery_aero PRIVATE
+    lbm3d/lbm3d_common.cpp
+    lbm3d/lbm3d_cpu.cpp
+    lbm3d/lbm3d_gpu.cpp
+    lbm3d/lbm3d_internal.h
+    lbm3d/lbm_aero_solver3d.cpp
+    lbm3d/solid_mask3d.cpp
+    lbm3d/include/orrery/aero/lbm3d/d3q19.h
+    lbm3d/include/orrery/aero/lbm3d/lbm3d.h
+    lbm3d/include/orrery/aero/lbm3d/lbm_aero_solver3d.h
+    lbm3d/include/orrery/aero/lbm3d/solid_mask3d.h)
+target_include_directories(orrery_aero PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/lbm3d/include)
