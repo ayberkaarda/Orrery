@@ -253,6 +253,9 @@ add_executable(orrery_test_sim
     app/test_physics_thread.cpp
     app/test_space_experiment.cpp
     app/test_aero_workspace.cpp)
+# Phase 9b: the Entry workspace's graphics-free side (inputs, solver thread,
+# comparison and CSV).
+target_sources(orrery_test_sim PRIVATE app/test_entry_model.cpp)
 target_link_libraries(orrery_test_sim PRIVATE orrery_sim Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_sim PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
