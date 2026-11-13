@@ -74,6 +74,11 @@ public:
     // and if none was current, none is current afterwards).
     ~UiContext();
 
+    // Makes this context's Dear ImGui and ImPlot contexts current, as
+    // begin_frame() does. Input queued on Dear ImGui's IO afterwards (the
+    // calls the GLFW platform backend's callbacks make) is read by the next
+    // begin_frame(); scripted window sessions queue their input this way.
+    void make_current() const;
     // Starts a frame; panels may be drawn until end_frame().
     void begin_frame(const UiFrameInput& input);
     // Full-viewport dockspace with a transparent central node and the default

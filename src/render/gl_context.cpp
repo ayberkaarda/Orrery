@@ -1,9 +1,12 @@
 #include "orrery/render/gl_context.h"
 
+#include <algorithm>
 #include <atomic>
+#include <cstddef>
 #include <cstdint>
 #include <string_view>
 #include <utility>
+#include <vector>
 
 #include "gl_context_internal.h"
 #include "gl_loader.h"
@@ -164,6 +167,7 @@ core::Result<GlContext, std::string> GlContext::create(const ContextOptions& opt
     glfwWindowHint(GLFW_CONTEXT_DEBUG, options.debug ? GLFW_TRUE : GLFW_FALSE);
     glfwWindowHint(GLFW_VISIBLE, options.visible ? GLFW_TRUE : GLFW_FALSE);
     glfwWindowHint(GLFW_FOCUS_ON_SHOW, options.visible ? GLFW_TRUE : GLFW_FALSE);
+    glfwWindowHint(GLFW_FOCUSED, options.visible ? GLFW_TRUE : GLFW_FALSE);
     impl->window.reset(
         glfwCreateWindow(options.width, options.height, options.title.c_str(), nullptr, nullptr));
     if (!impl->window) {
@@ -209,9 +213,7 @@ core::Result<GlContext, std::string> GlContext::create(const ContextOptions& opt
                         "debug context requested but not provided; KHR_debug output disabled");
         }
     }
-    if (options.visible) {
-        glfwSwapInterval(options.swap_interval);
-    }
+    glfwSwapInterval(options.swap_interval);
     return GlContext(std::move(impl));
 }
 
@@ -285,6 +287,59 @@ int GlContext::framebuffer_height() const {
         glfwGetFramebufferSize(impl_->window.get(), &width, &height);
     }
     return height;
+}
+
+void GlContext::set_window_size(int width, int height) {
+    if (impl_ && width > 0 && height > 0) {
+        glfwSetWindowSize(impl_->window.get(), width, height);
+    }
+}
+
+ContentScale GlContext::content_scale() const {
+    ContentScale scale;
+    if (impl_) {
+        float x = 1.0F;
+        float y = 1.0F;
+        glfwGetWindowContentScale(impl_->window.get(), &x, &y);
+        scale.x = static_cast<double>(x);
+        scale.y = static_cast<double>(y);
+    }
+    return scale;
+}
+
+std::size_t GlContext::drain_gl_errors() const {
+    std::size_t errors = 0;
+    if (impl_) {
+        while (errors < 64 && glGetError() != GL_NO_ERROR) {
+            ++errors;
+        }
+    }
+    return errors;
+}
+
+ImageRgba8 GlContext::read_window_pixels(int width, int height) const {
+    ImageRgba8 image;
+    if (!impl_ || width <= 0 || height <= 0) {
+        return image;
+    }
+    image.width = static_cast<std::uint32_t>(width);
+    image.height = static_cast<std::uint32_t>(height);
+    const std::size_t row = static_cast<std::size_t>(image.width) * 4U;
+    std::vector<std::uint8_t> bottom_up(image.byte_size());
+    GLint read_framebuffer = 0;
+    glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read_framebuffer);
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glReadBuffer(GL_BACK);
+    glPixelStorei(GL_PACK_ALIGNMENT, 1);
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, bottom_up.data());
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, static_cast<GLuint>(read_framebuffer));
+    image.pixels.resize(bottom_up.size());
+    for (std::size_t y = 0; y < image.height; ++y) {
+        const std::size_t source = (image.height - 1U - y) * row;
+        std::copy_n(bottom_up.begin() + static_cast<std::ptrdiff_t>(source), row,
+                    image.pixels.begin() + static_cast<std::ptrdiff_t>(y * row));
+    }
+    return image;
 }
 
 namespace detail {
