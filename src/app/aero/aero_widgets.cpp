@@ -103,17 +103,27 @@ float unit_room() {
 
 } // namespace
 
+// The control's column, or further right when the label is longer than the
+// column is wide: a control never covers its label.
+float control_column_after(const char* label) {
+    const float label_end =
+        ImGui::GetCursorPosX() + ImGui::CalcTextSize(label).x + ImGui::GetStyle().ItemSpacing.x;
+    return std::max(control_column(), label_end);
+}
+
 void row_label(const char* label) {
+    const float column = control_column_after(label);
     ImGui::AlignTextToFramePadding();
     muted(label);
-    ImGui::SameLine(control_column());
+    ImGui::SameLine(column);
     ImGui::SetNextItemWidth(-1.0F);
 }
 
 void row_label_with_unit(const char* label, const char* unit_text) {
+    const float column = control_column_after(label);
     ImGui::AlignTextToFramePadding();
     muted(label);
-    ImGui::SameLine(control_column());
+    ImGui::SameLine(column);
     (void)unit_text;
     ImGui::SetNextItemWidth(-unit_room());
 }
