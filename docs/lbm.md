@@ -1,7 +1,8 @@
-# Lattice Boltzmann Solver (2D, D2Q9)
+# Lattice Boltzmann Solver (2D D2Q9, 3D D3Q19)
 
 Reference for the Phase 7b lattice Boltzmann solver of `orrery_aero` and the
-compute backend it runs on. Formulas and approximations are summarised in
+compute backend it runs on; the Phase 7c three-dimensional solver follows in
+sections 10 to 15. Formulas and approximations are summarised in
 `physics.md` ("Lattice Boltzmann 2D"); the decisions are ADR-008 (LBM, BGK,
 Smagorinsky), ADR-006 (GLSL compute behind `IComputeBackend`) and ADR-019
 (the backend's design). LBM is a numerical *method* that recovers the
@@ -320,3 +321,263 @@ upper acceptance bound; D = 40 in a wider channel gives 1.42.
   hidden `[benchmark]` and `[.measure]`.
 - `orrery_test_lbm2d_validation`: the cylinder on CPU and GPU, hidden
   `[.study]`.
+
+## 10. Three dimensions: D3Q19 (Phase 7c)
+
+| Piece | Header | Source |
+|---|---|---|
+| D3Q19 lattice | `orrery/aero/lbm3d/d3q19.h` | |
+| Solid masks, wall distances, voxel placement | `orrery/aero/lbm3d/solid_mask3d.h` | `src/aero/lbm3d/solid_mask3d.cpp` |
+| Solver (CPU and GPU) | `orrery/aero/lbm3d/lbm3d.h` | `lbm3d_cpu.cpp`, `lbm3d_gpu.cpp`, `lbm3d_common.cpp` |
+| `IAeroSolver` adapter | `orrery/aero/lbm3d/lbm_aero_solver3d.h` | `src/aero/lbm3d` |
+| Kernels (GLSL 460) | | `src/render/shaders/lbm/lbm_d3q19_*.glsl` |
+
+The 3D solver is the 2D scheme (sections 1 to 4) with one more axis; units
+(`LatticeUnits`), force histories and the Smagorinsky closure are shared.
+Directions: 0 rest, 1..6 the axes (+x, -x, +y, -y, +z, -z), 7..18 the twelve
+face diagonals in opposite pairs; weights 1/3, 1/18, 1/36; c_s^2 = 1/3
+(Qian, d'Humieres and Lallemand 1992). The equilibrium, BGK, Guo forcing
+and the Smagorinsky relaxation time (the factor 18 sqrt(2) holds in 3D as in
+2D; |Pi_neq| now has six components) are those of section 1. Memory layout
+f[i * cells + x + nx (y + ny z)], the index of `geom::GridSpec`.
+
+## 11. 3D boundaries
+
+| Source of x - c_i | Rule |
+|---|---|
+| fluid node | plain streaming |
+| solid node, `SolidWall::halfway` | halfway bounce-back f_i(x) = f*_opp(i)(x) |
+| solid node, `SolidWall::interpolated` | Bouzidi linear interpolation (below) |
+| outside y or z, periodic / free slip / no-slip | as in 2D, per side (`y_low`, `y_high`, `z_low`, `z_high`); free slip mirrors c_y (c_z); a no-slip wall may move along x with the density-scaled term 6 w_i rho_w c_i.u_w |
+| x < 0, inflow | velocity inlet (below) |
+| x > nx - 1, outflow | convective or zero-gradient outlet, the five populations with c_x = -1 |
+
+The y sides are resolved before the z sides, so a population crossing an
+edge between two slip walls is reflected by both.
+
+- **Velocity inlet** on x = 0 (Zou and He 1997, regularized after Latt,
+  Chopard, Malaspinas, Deville and Michler 2008): rho = (sum_{c_x=0} f +
+  2 sum_{c_x=-1} f) / (1 - u_x); the five unknown populations by bounce-back
+  of their non-equilibrium part, f_i = f_opp(i) + 6 w_i rho c_i.u; then the
+  node is regularized, f_i = f_eq,i + w_i / (2 c_s^4) (c_i c_i - c_s^2 I) :
+  Pi_neq. Density and all three velocity components are then exact, so the
+  tangential corrections of the D3Q19 Zou-He scheme (Hecht and Harting 2010)
+  are not needed; tested to 1e-13 next to a sphere with a skewed inflow.
+- **Interpolated bounce-back** (Bouzidi, Firdaouss and Lallemand 2001): the
+  wall sits at the fraction q of the link from the fluid node x towards its
+  solid neighbour, q = d(x) / (d(x) - d(x - c_j)) from the signed distance d
+  of the mask (linear interpolation along the link, exact for a plane wall),
+  and
+  q < 1/2: f_j(x, t+1) = 2q f*_o(x) + (1 - 2q) f*_o(x + c_j),
+  q >= 1/2: f_j(x, t+1) = f*_o(x) / (2q) + (2q - 1)/(2q) f*_j(x),
+  o = opposite(j). A link with q < 1/2 whose second node is not fluid falls
+  back to q = 1/2. The distance comes from the analytic masks (`sphere_mask`,
+  `box_mask`, `mask_from_sdf_3d`) or, for meshes, from
+  `geom::signed_distance_band` (exact within three cells of the surface,
+  signed by the voxel classification; `place_distance`). Measured: the
+  sphere drag at D = 16 falls from 9.6 to 4.4 percent above
+  Schiller-Naumann at Re 100 (section 14).
+- **Absorbing layers** (`Sponge`; Xu and Sagaut 2013): within `thickness`
+  nodes of the inlet, the outlet or a non-periodic side the post-collision
+  populations relax towards the free-stream equilibrium,
+  f* <- f* - sigma (f* - f_eq(1, u_in)), sigma = strength ((T - d) / T)^2.
+  The adapter uses a layer of 2 reference lengths before the outlet with
+  strength 0.1: it pins the pressure level of the channel (without it the
+  mean density drifted with the inflow, and the sphere drag at Re 100 came
+  out 15 percent high) and takes out the pressure waves of the start.
+- **Gradual start** (`set_inlet_velocity`): the adapter starts from rest and
+  raises the inlet speed as U (1 - cos(pi t / T)) / 2 over T = 3 L / U,
+  constant over each sampling interval. An impulsive start from the uniform
+  stream launched pressure waves that rang between the inlet and the slip
+  sides for tens of convective times (drag ripple of 3.4 percent at Re 100
+  after 15 L / U, so the steady test of section 13 never passed); with the
+  gradual start and the outlet layer the ripple is 0.07 percent and the run
+  is steady by the 1e-3 test.
+
+## 12. 3D forces, GPU and throughput
+
+Momentum exchange per link: F = sum c_o (f*_o(x) + f_j(x, t+1)), which is
+2 c_o f*_o for the halfway wall (Ladd 1994) and uses the interpolated
+reflected population otherwise (Mei, Yu, Shyy and Luo 2002); the moment of
+each link acts at the wall point x - q c_j.
+
+`make_cpu_solver(Lbm3DConfig, SolidMask3D)` (double, oneTBB over rows of
+constant y and z) and `make_gpu_solver(backend, config, mask)` (binary32,
+populations shifted by their weights) share `lbm3d_internal.h`:
+
+| Kernel | Bindings | Work items |
+|---|---|---|
+| `lbm_d3q19_step` | 0 source, 1 node classes, 2 destination, 6 outlet history, 7 wall fractions | nx x ny x nz |
+| `lbm_d3q19_moments` | 0 populations, 1 node classes, 3 rho - 1, u_x, u_y, u_z | nx x ny x nz |
+| `lbm_d3q19_force` | 0 populations, 1 node classes, 4 links, 5 per-link f*_o + f_j, 7 wall fractions | links |
+
+A node class is 0 solid, 1 bulk fluid (plain streaming without any check), 2
+boundary fluid, or 3 + s for a node with wall fractions in slot s (19 per
+slot). Before allocating, `make_gpu_solver` refuses what binary32 cannot
+carry (as in 2D), a population buffer above the largest binding and a
+lattice above the free device memory, when the backend reports them
+(ADR-020; the RX 9060 XT reports 2048 MiB per binding and its free memory
+through `GL_ATI_meminfo`).
+
+GPU throughput, 128^3 sphere channel (hidden `[benchmark]` of
+`orrery_test_aero_lbm3d_gl`, AMD Radeon RX 9060 XT): 652 steps/s (1367
+million lattice updates per second) with BGK, 648 steps/s with the
+Smagorinsky closure (target: 60 steps/s on a GTX 1660-class GPU; not
+measured on such a GPU). CPU: about 100 million lattice updates per second (12 threads, MSVC Release;
+the CI sphere case below, 121 x 61 x 61 nodes, 6000 steps in 27 s).
+
+GPU against CPU (relative L2, `test_lbm3d_gpu.cpp`):
+
+| Case | Steps | Velocity L2 | Populations L2 | Drag |
+|---|---|---|---|---|
+| Poiseuille 4 x 32 x 4, tau 0.8 | 4000 | 1.6e-5 | 1.3e-8 | |
+| Square duct 4 x 20 x 20 | 4000 | 4.7e-7 | 9.0e-11 | |
+| Couette 4 x 4 x 16, moving wall | 4000 | 8.0e-6 | 8.3e-8 | |
+| Sphere 64 x 32 x 32, D 8, Re 20 | 800 | 7.6e-6 | 6.4e-6 | 1.0e-5 |
+| same with Smagorinsky | 800 | 7.7e-6 | 6.4e-6 | 1.0e-5 |
+| same, interpolated wall | 800 | 7.6e-6 | 6.4e-6 | 1.1e-5 |
+| same, extrapolation outlet, periodic y | 800 | 2.7e-6 | 1.8e-6 | 1.3e-5 |
+| Sphere through `IAeroSolver`, Re 50, D 10 | 1000 | | | 1.1e-5 (Cd 1.85151 / 1.85149) |
+
+The 1e-4 bound holds on these laminar cases; the binary32 caveat of
+section 6 applies unchanged (an instability transient amplifies the
+rounding difference).
+
+## 13. 3D `IAeroSolver` adapter
+
+`LbmAeroSolver3D` takes `AeroGeometry::mesh` (validated with
+`geom::validate_mesh`) and its reference values. The lattice is
+wind-aligned: x along `drag_direction()`, y along `side_direction()`, z
+along `lift_direction()` (a right-handed set), so angle of attack and
+sideslip rotate the body. The body is voxelized over its bounding box only
+(plus one node), shifted a quarter node off the lattice planes (no node on
+an axis-aligned face, where the winding number would sit at the threshold),
+and placed `upstream` reference lengths behind the inlet in a square
+channel `width` lengths wide with free-slip or periodic sides. Options as in
+2D plus `wall` (interpolated by default), the absorbing layers, `start_ramp`
+and `max_cells`.
+
+Grid sizing: the cell budget is `max_cells`, else the free device memory the
+backend reports divided by 172 bytes per node (and the largest binding
+divided by 76), else `default_max_cells_3d` = 256^3 (also for the CPU, about
+5.1 GB). A larger lattice is refused before anything is allocated, with the
+lattice size, the budget and its reason, and the largest cells per
+reference length that would fit. Step counts are checked below 2^53 before
+conversion; samples follow the absolute schedule (multiples of
+`sample_every`, the start ramp constant over each interval), so samples and
+averages do not depend on the call size (tested bitwise for 1, 7, 25 and
+400 steps per call). History, instantaneous and result coefficients share
+one normalisation (`apply_force`, `set_coefficients` with the caller's
+reference area).
+
+Result: Cd, Cl, Cy and Cm of the window-averaged force and moment
+(lattice force unit rho dx^4 / dt^2, body axes); wall samples (one per
+fluid node next to the body, normal from its links, an equal share of the
+mesh area each, Cp against the mean density of the plane next to the inlet);
+the velocity field when both angles are zero; `converged` when the force
+history of the last half of the run (or the window, if longer) is steady in
+drag, lift and side force (ranges within 1e-3 of the mean drag) or settled
+periodic in the lift, the side force or the drag (section 7). A wake that
+is neither (the sphere at Re 300 sheds irregularly at these resolutions, the
+wakes at Re 1000 are chaotic) is reported `lbm.unconverged`; its mean
+coefficients are still the window average.
+
+Warnings (never blocking): `lbm.mach`, `lbm.reynolds` (envelope),
+`lbm.resolution` (fewer than 16 cells per reference length, or fewer than 4
+across the thinnest body extent), `lbm.tau` (below 0.51), `lbm.les`,
+`lbm.les_off` (Re above 2000 without the closure), `lbm.blockage` (frontal
+area of the voxelized body above 5 percent of the cross-section),
+`lbm.local_mach` (above 0.2), `lbm.unconverged`, `lbm.diverged`. Every one
+is triggered in `test_lbm_aero_solver3d.cpp`.
+
+## 14. 3D validation
+
+`tests/aero_validation/lbm3d`: the sphere (orrery_geom tessellation, 64
+vertices per ring) and a square plate through the adapter, free-slip sides,
+interpolated wall, gradual start, outlet layer; forces every 10 steps.
+
+Sphere reference: Schiller and Naumann (1933), Cd = 24 / Re (1 + 0.15
+Re^0.687), within a few percent of the measured curve below Re about 800
+(Clift, Grace and Weber 1978); Johnson and Patel (1999, J. Fluid Mech.
+378:19) computed Cd 0.656 at Re 300. Acceptance: within 15 percent.
+
+| Solver | Re | D (cells) | Channel (D: up, down, wide) | Grid | Steps | Cd | Schiller-Naumann | Ratio | Converged | Time |
+|---|---|---|---|---|---|---|---|---|---|---|
+| CPU (CI) | 100 | 12 | 3, 6, 5 | 121 x 61 x 61 | 6000 | 1.186 | 1.092 | 1.086 | steady | 27.4 s |
+| GPU | 10 | 12 | 6, 10, 10 | 205 x 121 x 121 | 7200 | 4.415 | 4.151 | 1.064 | steady | 18.7 s |
+| GPU | 100 | 16 | 4, 8, 6 | 209 x 97 x 97 | 9600 | 1.140 | 1.092 | 1.044 | steady | 16.4 s |
+| GPU | 300 | 16 | 4, 8, 6 | 209 x 97 x 97 | 9600 | 0.693 | 0.684 | 1.013 | no | 16.4 s |
+| GPU | 1000 | 48 | 2, 4, 4 | 337 x 193 x 193 | 19200 | 0.482 | 0.438 | 1.099 | no | 202 s |
+
+Every case is within the 15 percent; the drag lies above the correlation
+throughout (resolution and confinement both raise it). Cd 0.693 at Re 300 is
+5.6 percent above the direct simulation of Johnson and Patel (0.656).
+
+The CPU case runs in optimised builds only, like the cylinder. Re 10 needs a
+wide channel (the disturbance of a slow sphere decays slowly: in a 6 D
+channel the drag was 9.6 percent high); Re 1000 needs D 48, where BGK is
+stable without the closure (tau 0.507): with the Smagorinsky closure the
+drag at D 32 was 22 percent high, without it 16 percent; the boundary layer
+(thickness of order D / sqrt(Re)) sets the resolution.
+
+Study (hidden `[.study]`, GPU; same setup unless noted):
+
+| Body | Re | Cells per length | Channel (up, down, wide) | Wall | Cd | Ratio | GPU time |
+|---|---|---|---|---|---|---|---|
+| sphere | 10 | 16 | 4, 8, 6 | interpolated | 4.550 | 1.096 | 17 s |
+| sphere | 10 | 16 | 6, 10, 10 | interpolated | 4.397 | 1.059 | 56 s |
+| sphere | 100 | 16 | 4, 8, 6 | halfway | 1.197 | 1.096 | 16 s |
+| sphere | 100 | 24 | 4, 8, 6 | halfway | 1.161 | 1.063 | 77 s |
+| sphere | 100 | 10 | 3, 6, 5 | interpolated | 1.219 | 1.117 | 0.8 s |
+| sphere | 100 | 24 | 4, 8, 6 | interpolated | 1.127 | 1.033 | 77 s |
+| sphere | 300 | 24 | 3, 6, 5 | interpolated | 0.679 | 0.992 | 43 s |
+| sphere | 1000 | 32 | 2, 4, 4 | interpolated, Smagorinsky | 0.534 | 1.219 | 48 s |
+| sphere | 1000 | 32 | 2, 4, 4 | interpolated | 0.509 | 1.161 | 48 s |
+| sphere | 1000 | 40 | 2, 4, 4 | interpolated | 0.511 | 1.167 | 95 s |
+| plate | 1000 | 16 | 4, 8, 6 | interpolated | 1.045 | 0.817 (of 1.28) | 20 s |
+| plate | 1000 | 32 | 3, 6, 5 | interpolated | 1.206 | 0.942 | 117 s |
+| plate | 5000 | 24 | 3, 6, 5 | interpolated, Smagorinsky | 1.185 | 0.926 | 39 s |
+
+The halfway wall converges at first order (9.6 and 6.3 percent above the
+correlation at D 16 and 24); the interpolated wall halves the error at the
+same resolution (4.4 and 3.3 percent). At Re 1000 the error is set by the
+boundary layer, not the wall model; the Smagorinsky closure only adds
+dissipation there. The plate below 24 cells per side (one-cell thickness)
+is outside the band.
+
+Plate reference: Cd 1.28 for a flat plate normal to the flow (NASA Glenn
+Research Center, Beginner's Guide to Aeronautics, "Shape Effects on Drag":
+frontal area, low-speed wind tunnel; the page gives no aspect ratio). A
+sharp-edged plate's drag depends on its aspect ratio rather than on Re:
+about 1.2 for a square plate, rising towards 2 for a two-dimensional one
+(Hoerner, Fluid-Dynamic Drag, 1965, chapter 3). The case is a square plate,
+thickness 1/16 of the side; acceptance within 15 percent of 1.28.
+
+| Re | Cells per side | Channel (sides: up, down, wide) | Grid | Steps | Cd | Ratio to 1.28 | Time |
+|---|---|---|---|---|---|---|---|
+| 1000 | 24 | 3, 6, 5 | 219 x 121 x 121 | 19200 | 1.158 | 0.905 | 51 s |
+
+The drag is averaged over the last 25 convective times (the wake is
+chaotic and the 5-length windows vary by about 7 percent); 1.158 is within 2
+percent of the square-plate value of about 1.2 and 9.5 percent below the
+1.28 of the reference.
+
+## 15. 3D tests
+
+- `orrery_test_aero_lbm3d` (graphics-free, `[aero][lbm3d]`): lattice
+  isotropy to fourth order, symmetry tables, equilibrium moments; checked
+  cell counts and voxel placement (a 4 x 4 x (2^60 + 1) grid that wraps to
+  16 cells is refused); plane Poiseuille (tau = 1/2 + sqrt(3/16): 7.3e-13; tau 0.8: 1.2e-3 relative L2), square duct against the
+  series solution (5.5e-4), Couette (1.0e-13), uniform translation between
+  co-moving walls at densities 0.7, 1, 2 (1e-12), mass conservation with
+  periodic, slip and moving walls and a sphere (1.4e-13 over 1500 steps),
+  momentum exchange against the body force (1e-6), a uniform stream through
+  inlet and outlet, the inlet velocity next to a sphere, determinism,
+  validation, memory estimates; the GPU driver on the Null backend (layout,
+  ping-pong, binary32 and memory refusals); the adapter (sphere, rotated wind
+  frame, every warning, refusals, cell budget, step-count guards, call-size
+  independence, reference area, convergence).
+- `orrery_test_aero_lbm3d_gl` (`[gl]`): GLSL tables, kernel compilation and
+  the memory query, GPU against CPU (section 12), co-moving walls on the GPU
+  (8e-6 at density 2), the adapter on the GPU; hidden `[benchmark]`.
+- `orrery_test_lbm3d_validation`: section 14; hidden `[.study]`.
