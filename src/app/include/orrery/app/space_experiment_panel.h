@@ -62,6 +62,9 @@ public:
     void set_name(std::string name) { name_ = std::move(name); }
 
 private:
+    void draw_run(const SpaceRunView& run, SpaceExperimentIntent& intent);
+    void draw_open(SpaceExperimentIntent& intent);
+
     std::filesystem::path experiment_dir_;
     std::filesystem::path bundled_dir_;
     sim::SpaceListing saved_;

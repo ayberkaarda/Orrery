@@ -277,9 +277,8 @@ std::string portable_reference(const std::filesystem::path& path,
 }
 
 std::string summary_of(const SpaceExperiment& experiment) {
-    std::string warp = std::to_string(experiment.config.time_warp);
     return experiment.scenario_path.stem().string() + ", " +
-           std::string(to_string(experiment.config.integrator)) + ", warp " + warp;
+           std::string(to_string(experiment.config.integrator));
 }
 
 } // namespace

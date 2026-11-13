@@ -87,7 +87,7 @@ save_space_experiment_file(const std::filesystem::path& path, const scene::Exper
 struct StoredSpace {
     std::filesystem::path path;
     std::string name;    // file stem
-    std::string summary; // "solar_system_j2000, leapfrog_kdk, 1e6 s/s"
+    std::string summary; // "solar_system_j2000, leapfrog_kdk"
 };
 
 struct SpaceListing {
