@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -28,8 +29,9 @@
 //               longitude_deg, heading_deg, interface_altitude_m, frame
 //               ("inertial" | "co_rotating")
 //   solver      name: "ias15", "yoshida4" or "leapfrog_kdk"; version "1";
-//               settings: tolerance, time_step_s, max_coast_step_s,
-//               max_duration_s, stop_on_skip_out (0 or 1)
+//               settings: tolerance, time_step_s (at least
+//               kMinEntryTimeStepS), max_coast_step_s, max_duration_s (at
+//               most kMaxEntrySteps time steps), stop_on_skip_out (0 or 1)
 //   result      outcome ("running" | "impact" | "skip_out" | "time_limit" |
 //               "failed"), duration_s, peak_g_load, peak_g_time_s,
 //               peak_heat_flux_w_m2, peak_heat_flux_time_s,
@@ -138,6 +140,20 @@ struct EntryExperiment {
 
 inline constexpr std::string_view kEntrySolverVersion = "1";
 
+// Bounds of the integration settings (docs/atmosphere.md, "Run size"): every
+// step of a run adds a row to its series, so the step may not be smaller
+// than kMinEntryTimeStepS and a run may not take more than kMaxEntrySteps
+// steps (max_duration_s / time_step_s; coast steps are never shorter than
+// time_step_s), which caps a series at kMaxEntrySteps + 1 rows.
+inline constexpr double kMinEntryTimeStepS = 1.0e-3;
+inline constexpr std::size_t kMaxEntrySteps = 200'000;
+
+// The first violated bound of the run size, naming
+// solver.settings.time_step_s, or nullopt. Values that are not positive and
+// finite are left to the other checks.
+[[nodiscard]] std::optional<std::string> entry_run_size_problem(double time_step_s,
+                                                                double max_duration_s);
+
 // The generic record of an entry experiment (domain entry, schema version 1).
 [[nodiscard]] Experiment to_experiment(const EntryExperiment& experiment);
 
@@ -159,7 +175,8 @@ parse_entry_experiment(std::string_view json);
 make_entry_atmosphere(const EntryEnvironment& environment);
 
 // The simulation configuration of a record (planet preset, atmosphere model,
-// Cd table, initial state, settings). Fails with a message naming the key.
+// Cd table, initial state, settings, the run size bounds). Fails with a
+// message naming the key.
 [[nodiscard]] core::Result<atmo::EntryConfig, std::string>
 to_entry_config(const EntryExperiment& experiment);
 

@@ -531,6 +531,9 @@ core::Result<EntrySolverSettings, Error> read_solver(const SolverInfo& info) {
     if (s.max_coast_step_s < s.time_step_s) {
         return core::failure(in.path("max_coast_step_s") + ": must be at least time_step_s");
     }
+    if (auto problem = entry_run_size_problem(s.time_step_s, s.max_duration_s)) {
+        return core::failure(std::move(*problem));
+    }
     auto stop = in.number("stop_on_skip_out", 1.0, Rule::flag);
     if (!stop) {
         return core::failure(stop.error());
@@ -738,6 +741,24 @@ std::string save_entry_experiment(const EntryExperiment& experiment) {
     return save_experiment(to_experiment(experiment));
 }
 
+std::optional<std::string> entry_run_size_problem(double time_step_s, double max_duration_s) {
+    if (!(time_step_s > 0.0) || !std::isfinite(time_step_s) || !std::isfinite(max_duration_s)) {
+        return std::nullopt;
+    }
+    if (time_step_s < kMinEntryTimeStepS) {
+        return std::string("solver.settings.time_step_s: must be at least 0.001 s (every step "
+                           "adds a row to the series of the run)");
+    }
+    // A relative tolerance keeps steps that are not binary fractions (0.02 s
+    // over 4000 s) at the limit instead of one rounding error above it.
+    const double steps = max_duration_s / time_step_s;
+    if (steps > static_cast<double>(kMaxEntrySteps) * (1.0 + 1.0e-9)) {
+        return std::string("solver.settings.time_step_s: max_duration_s / time_step_s allows at "
+                           "most 200000 steps; raise time_step_s or lower max_duration_s");
+    }
+    return std::nullopt;
+}
+
 core::Result<atmo::EntryConfig, std::string> to_entry_config(const EntryExperiment& experiment) {
     const EntryEnvironment& env = experiment.environment;
     if (env.planet != "earth" && env.planet != "mars") {
@@ -762,6 +783,9 @@ core::Result<atmo::EntryConfig, std::string> to_entry_config(const EntryExperime
     c.initial = make_initial(experiment.conditions);
     c.frame = experiment.conditions.frame;
     const EntrySolverSettings& s = experiment.solver;
+    if (auto problem = entry_run_size_problem(s.time_step_s, s.max_duration_s)) {
+        return core::failure(std::move(*problem));
+    }
     c.integrator = s.integrator;
     c.ias15_tolerance = s.tolerance;
     c.time_step = core::si::Time(s.time_step_s);
