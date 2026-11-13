@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -10,6 +11,10 @@
 #include <utility>
 #include <vector>
 
+#include <imgui.h>
+#include <imgui_internal.h>
+
+#include "aero/aero_widgets.h"
 #include "app_test_support.h"
 #include "orrery/app/aero_workspace.h"
 #include "orrery/app/workspace_strip.h"
@@ -265,4 +270,36 @@ TEST_CASE("Aero experiments opened in the workspace keep their record", "[app][u
     CHECK(h.workspace.experiment().geometry.naca == "2412");
     CHECK(h.workspace.experiment().conditions.angle_of_attack_deg == 5.0);
     CHECK_FALSE(h.workspace.view_state().geometry->trailing_edge.empty());
+}
+
+TEST_CASE("Numbers and changes in the Aero panels use glyphs the UI font has", "[app][ui][aero]") {
+    // A character the font lacks is drawn as '?': lattice step counts read
+    // "32?000" in the window when the digits were grouped with U+2009.
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    render::UiFrameInput input;
+    input.width = 640;
+    input.height = 480;
+    ui.begin_frame(input);
+    ImFont* font = ImGui::GetFont();
+    const auto missing = [font](const std::string& text) {
+        std::string absent;
+        const char* at = text.c_str();
+        const char* const end = at + text.size();
+        while (at < end) {
+            unsigned int c = 0;
+            at += ImTextCharFromUtf8(&c, at, end);
+            if (!font->IsGlyphInFont(static_cast<ImWchar>(c))) {
+                absent += "U+" + std::to_string(c) + " ";
+            }
+        }
+        return absent;
+    };
+    for (const std::uint64_t value : {7ULL, 32000ULL, 1234567ULL, 18446744073709551615ULL}) {
+        INFO(app::widgets::grouped(value));
+        CHECK(missing(app::widgets::grouped(value)).empty());
+    }
+    CHECK(app::widgets::grouped(32000) != "32000");
+    ui.end_frame();
 }

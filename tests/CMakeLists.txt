@@ -311,6 +311,9 @@ add_executable(orrery_test_app
 find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(orrery_test_app PRIVATE orrery_app_core imgui::imgui
     nlohmann_json::nlohmann_json Catch2::Catch2WithMain)
+# The Aero widgets' formatting helpers are private to orrery_app_core
+# (src/app/aero/aero_widgets.h); the font coverage test reads them.
+target_include_directories(orrery_test_app PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")
