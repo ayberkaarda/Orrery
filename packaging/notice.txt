@@ -1,0 +1,11 @@
+Orrery
+Physics laboratory: space dynamics, aerodynamics and atmospheric entry.
+
+This package contains the Orrery application, its bundled experiments and
+scenarios, and the runtime libraries the application needs.
+
+The third-party libraries in this package are distributed under their own
+licences. Their notices are installed with the application in
+share/doc/orrery/third_party, one folder per library.
+
+The software is provided as is, without warranty of any kind.

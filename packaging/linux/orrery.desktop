@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Orrery
+GenericName=Physics laboratory
+Comment=Space dynamics, aerodynamics and atmospheric entry
+Exec=orrery_app
+Icon=orrery
+Terminal=false
+Categories=Science;Education;Physics;
+Keywords=orbit;gravity;n-body;aerodynamics;simulation;
