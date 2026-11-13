@@ -184,8 +184,11 @@ struct ShortcutTable {
 [[nodiscard]] ShortcutTable default_shortcuts();
 
 // Two actions that would both fire on one chord in some workspace. Chords
-// conflict when they are equal, or when a character chord is what an
-// unmodified or shifted key types on a US layout ("." and the period key).
+// conflict when they are equal, when a character chord is what an
+// unmodified or shifted key types on a US layout ("." and the period key),
+// or when a key chord holds Alt on a key that types: AltGr (Ctrl+Alt on
+// Windows) and Option (Alt on macOS) type layout-dependent characters, so
+// such a chord conflicts with every character chord.
 struct ShortcutConflict {
     ShortcutAction first = ShortcutAction::help;
     ShortcutAction second = ShortcutAction::help;
@@ -214,6 +217,7 @@ apply_shortcut_overrides(ShortcutTable& table, std::span<const ShortcutOverride>
 struct KeyFrame {
     std::vector<KeyChord> pressed;  // keys going down this frame, with modifiers
     std::vector<KeyChord> repeated; // keys repeating while held
+    std::vector<KeyChord> held;     // keys down that neither went down nor repeated
     // Characters typed this frame by a key going down, and by key repeat (a
     // held key types its character again on every repeat).
     std::string typed;
@@ -224,7 +228,11 @@ struct KeyFrame {
 
 // The actions whose chords occurred in `frame` and that apply in
 // `workspace`, in table order, each at most once. Like key chords, typed
-// characters fire on key repeat only the actions that repeat.
+// characters fire on key repeat only the actions that repeat. One key event
+// fires one action: while a key chord bound in `workspace` is down (pressed,
+// repeated or held), the characters of the frame are taken as typed by it
+// and fire nothing (a layout can type a bound character with a bound chord:
+// AltGr+8 types "[" on a German layout).
 [[nodiscard]] std::vector<ShortcutAction>
 match_shortcuts(const ShortcutTable& table, const KeyFrame& frame, Workspace workspace);
 

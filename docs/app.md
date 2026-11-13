@@ -451,8 +451,12 @@ fires while a text field has the keyboard.
 
 **Conflicts.** Two actions that apply in a common workspace may not share a
 chord; a typed character also conflicts with the key that types it on a US
-layout (`.` and the period key, `?` and Shift+/). The defaults are
-conflict-free (tested). User bindings are applied together, so swapping two
+layout (`.` and the period key, `?` and Shift+/), and with every chord that
+holds Alt on a key that types: AltGr (Ctrl+Alt on Windows) and Option (Alt
+on macOS) type characters that depend on the layout (AltGr+8 types `[` on a
+German layout). At run time one key event fires one action: while a bound
+key chord is down, the characters of the frame are taken as typed by it
+and fire nothing. The defaults are conflict-free (tested). User bindings are applied together, so swapping two
 keys works; a binding that still conflicts is reverted to its default and
 reported with both actions, so the table in use never has a conflict.
 

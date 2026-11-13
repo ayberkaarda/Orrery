@@ -160,8 +160,8 @@ TEST_CASE("Conflicts are found across key and character chords", "[app][shortcut
 
     // Actions of different workspaces may share a chord.
     table = default_shortcuts();
-    table.of(ShortcutAction::warp_up) = {chord("Ctrl+Alt+W")};
-    table.of(ShortcutAction::reset) = {chord("Ctrl+Alt+W")};
+    table.of(ShortcutAction::warp_up) = {chord("Ctrl+Shift+W")};
+    table.of(ShortcutAction::reset) = {chord("Ctrl+Shift+W")};
     CHECK(find_conflicts(table).size() == 1); // both are Space actions
 }
 
@@ -356,6 +356,46 @@ TEST_CASE("A held character fires a non-repeating action once per press",
     CHECK(keys.hold(question, 6, ShortcutAction::help) == 1);
     // Warp shortcuts repeat: one step per typed character.
     CHECK(keys.hold(bracket, 6, ShortcutAction::warp_down) == 6);
+}
+
+TEST_CASE("One key event fires one action when a layout types a bound character",
+          "[app][shortcuts][input]") {
+    // German layout: AltGr+8 (Ctrl+Alt on Windows) types "[", warp_down's
+    // default. A table that also binds Ctrl+Alt+8 (bypassing the conflict
+    // check) must not run both.
+    ShortcutTable table = default_shortcuts();
+    table.of(ShortcutAction::save) = {chord("Ctrl+Alt+8")};
+    KeyFrames keys(table);
+    const app_test::KeyStroke altgr_8{ImGuiKey_8, true, false, true, '['};
+    const auto first = keys.frame([&] { app_test::key_down(altgr_8); });
+    CHECK(first == std::vector<ShortcutAction>{ShortcutAction::save});
+    // Held: the key repeats and types "[" again; still not warp_down.
+    for (int i = 0; i < 5; ++i) {
+        const auto held = keys.frame([&] { app_test::key_repeat(altgr_8); });
+        CHECK(std::count(held.begin(), held.end(), ShortcutAction::warp_down) == 0);
+        CHECK(std::count(held.begin(), held.end(), ShortcutAction::save) == 0);
+    }
+    (void)keys.frame([&] { app_test::key_up(altgr_8); });
+    // The same character from an unbound key still lowers the warp.
+    const app_test::KeyStroke bracket{ImGuiKey_LeftBracket, false, false, false, '['};
+    CHECK(keys.hold(bracket, 1, ShortcutAction::warp_down) == 1);
+
+    // The conflict check knows that Alt chords type layout characters.
+    const auto conflicts = find_conflicts(table);
+    CHECK(std::any_of(conflicts.begin(), conflicts.end(), [](const ShortcutConflict& c) {
+        return c.first == ShortcutAction::warp_down && c.second == ShortcutAction::save;
+    }));
+    ShortcutTable configured = default_shortcuts();
+    const std::vector<ShortcutOverride> overrides{
+        {ShortcutAction::save, {chord("Ctrl+Alt+8")}, "config.toml:2:1"}};
+    const std::vector<std::string> warnings = apply_shortcut_overrides(configured, overrides);
+    REQUIRE(warnings.size() == 1);
+    CHECK(contains(warnings.front(), "config.toml:2:1: shortcuts.save: "));
+    CHECK(contains(warnings.front(), "keeping Ctrl+S"));
+    CHECK(configured == default_shortcuts());
+    // Ctrl alone types nothing: Ctrl+8 stays free.
+    configured.of(ShortcutAction::save) = {chord("Ctrl+8")};
+    CHECK(find_conflicts(configured).empty());
 }
 
 TEST_CASE("Scene input takes its keys from the shortcut actions", "[app][shortcuts]") {

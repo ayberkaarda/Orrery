@@ -174,15 +174,29 @@ char typed_by(const KeyChord& chord) {
     return chord.shift ? spec->shifted : spec->plain;
 }
 
+// Whether a key chord can type a character on some layout that a US layout
+// does not tell: Alt on a key that types (AltGr is Ctrl+Alt on Windows, and
+// Option is Alt on macOS) types layout-dependent characters, e.g. "[" for
+// AltGr+8 on a German layout.
+bool may_type_any(const KeyChord& chord) {
+    const KeySpec* spec = chord.character == '\0' ? spec_of(chord.key) : nullptr;
+    return chord.alt && spec != nullptr && spec->plain != '\0' && spec->plain != ' ';
+}
+
+// A character chord and a key chord that can type it.
+bool types_character(const KeyChord& key, char character) {
+    return typed_by(key) == character || may_type_any(key);
+}
+
 bool chords_collide(const KeyChord& a, const KeyChord& b) {
     if (a == b) {
         return true;
     }
     if (a.character != '\0' && b.character == '\0') {
-        return typed_by(b) == a.character;
+        return types_character(b, a.character);
     }
     if (b.character != '\0' && a.character == '\0') {
-        return typed_by(a) == b.character;
+        return types_character(a, b.character);
     }
     return false;
 }
@@ -401,6 +415,39 @@ std::vector<std::string> apply_shortcut_overrides(ShortcutTable& table,
     return warnings;
 }
 
+namespace {
+
+bool contains_chord(const std::vector<KeyChord>& keys, const KeyChord& chord) {
+    return std::find(keys.begin(), keys.end(), chord) != keys.end();
+}
+
+// Whether a key chord of an action of `bit` is down: that key event belongs
+// to the action, the characters it types included (on its own repeats too,
+// whose timing is the system's, not Dear ImGui's).
+bool keys_claimed(const ShortcutTable& table, const KeyFrame& frame, std::uint8_t bit) {
+    return std::any_of(kActions.begin(), kActions.end(), [&](const ShortcutInfo& info) {
+        const std::vector<KeyChord>& chords = table.of(info.action);
+        return (info.workspaces & bit) != 0U &&
+               std::any_of(chords.begin(), chords.end(), [&](const KeyChord& chord) {
+                   return chord.character == '\0' && (contains_chord(frame.pressed, chord) ||
+                                                      contains_chord(frame.repeated, chord) ||
+                                                      contains_chord(frame.held, chord));
+               });
+    });
+}
+
+bool chord_fired(const KeyChord& chord, const KeyFrame& frame, bool repeats, bool claimed) {
+    if (chord.character != '\0') {
+        return !claimed && (frame.typed.find(chord.character) != std::string::npos ||
+                            (repeats && frame.typed_repeated.find(chord.character) !=
+                                            std::string::npos));
+    }
+    return contains_chord(frame.pressed, chord) ||
+           (repeats && contains_chord(frame.repeated, chord));
+}
+
+} // namespace
+
 std::vector<ShortcutAction> match_shortcuts(const ShortcutTable& table, const KeyFrame& frame,
                                             Workspace workspace) {
     std::vector<ShortcutAction> actions;
@@ -408,23 +455,16 @@ std::vector<ShortcutAction> match_shortcuts(const ShortcutTable& table, const Ke
         return actions;
     }
     const std::uint8_t bit = workspace_bit(workspace);
+    // One key event, one action: a layout may type a bound character with a
+    // bound key chord (AltGr+8 types "[" on a German layout), and the key
+    // chord, the more specific binding, wins.
+    const bool claimed = keys_claimed(table, frame, bit);
     for (const ShortcutInfo& info : kActions) {
-        if ((info.workspaces & bit) == 0U) {
-            continue;
-        }
-        const bool fired = std::any_of(
-            table.of(info.action).begin(), table.of(info.action).end(), [&](const KeyChord& chord) {
-                if (chord.character != '\0') {
-                    return frame.typed.find(chord.character) != std::string::npos ||
-                           (info.repeats &&
-                            frame.typed_repeated.find(chord.character) != std::string::npos);
-                }
-                const auto in = [&](const std::vector<KeyChord>& keys) {
-                    return std::find(keys.begin(), keys.end(), chord) != keys.end();
-                };
-                return in(frame.pressed) || (info.repeats && in(frame.repeated));
-            });
-        if (fired) {
+        const std::vector<KeyChord>& chords = table.of(info.action);
+        if ((info.workspaces & bit) != 0U &&
+            std::any_of(chords.begin(), chords.end(), [&](const KeyChord& chord) {
+                return chord_fired(chord, frame, info.repeats, claimed);
+            })) {
             actions.push_back(info.action);
         }
     }

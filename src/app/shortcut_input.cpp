@@ -179,6 +179,8 @@ KeyFrame read_key_frame() {
             frame.pressed.push_back(chord);
         } else if (ImGui::IsKeyPressed(imgui, true)) {
             frame.repeated.push_back(chord);
+        } else {
+            frame.held.push_back(chord);
         }
     }
     // A character arrives with the key event that typed it (the platform
