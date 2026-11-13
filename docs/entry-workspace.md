@@ -61,8 +61,11 @@ Space runs or pauses.
   spacing), end at skip-out.
 
 Values no run can use (non-positive mass, area, nose radius, speed, steps;
-an unsorted Cd table; a periapsis above the start) are listed under the
-inputs and disable Run.
+an integration step below 0.001 s, or a time limit of more than 200 000
+integration steps; an unsorted Cd table; a periapsis above the start) are
+listed under the inputs and disable Run. The step bounds are those of the
+experiment record (atmosphere.md, "Run size"): every step adds a row to the
+series, so they keep a run's memory bounded.
 
 ## 3. Solver thread
 
@@ -70,11 +73,13 @@ inputs and disable Run.
 (ADR-011): commands (start, pause, pace, stop) through a lock-free queue,
 progress through a triple buffer. The run advances in slices of at most
 2 s of simulated time and at most 1000 integration steps
-(`atmo::EntryExperiment::advance` with a step bound, so a record with a tiny
-time step cannot hold the thread for billions of steps) and polls its
-commands between slices, so Pause and Stop act within one slice (tested
-with a stepper that takes 20 ms per slice, and with the library at a 1e-9 s
-step: Stop and shutdown within a second). **Pace**: 10x to 1000x real
+(`atmo::EntryExperiment::advance` with a step bound, so that a slice stays
+short even at the smallest step) and polls its commands between slices, so
+Pause and Stop act within one slice (tested with a stepper that takes 20 ms
+per slice, and with the library at the smallest step the setup accepts,
+0.001 s: Stop and shutdown within a second). A setup outside the step bounds
+of section 2 (for example a 1e-9 s step) never starts: the runner reports
+the setup error (state failed) and integrates nothing. **Pace**: 10x to 1000x real
 time, or as fast as possible (batches of 12 ms of wall time). Progress is
 published at most 30 times a second and on every state change: the series
 so far, the summary, and once the run ended or was stopped the library's full

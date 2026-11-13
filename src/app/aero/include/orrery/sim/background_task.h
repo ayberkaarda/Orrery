@@ -74,6 +74,15 @@ public:
     // a running one when its work next checks stop_requested()).
     ~BackgroundTask() = default;
 
+    // Asks the running work to stop (the Cancel button) without waiting for
+    // it: the work ends at its next check (a download within about a
+    // second) and its result still arrives through done() and take().
+    void request_stop() noexcept {
+        if (thread_.joinable()) {
+            (void)thread_.request_stop();
+        }
+    }
+
     [[nodiscard]] bool started() const noexcept { return state_ != nullptr; }
     [[nodiscard]] bool done() const noexcept {
         return state_ && state_->done.load(std::memory_order_acquire);

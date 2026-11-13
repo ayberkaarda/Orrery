@@ -23,6 +23,7 @@ enum class Option : std::uint8_t {
     size,
     benchmark,
     trace,
+    allow_download,
 };
 
 struct OptionSpec {
@@ -32,7 +33,7 @@ struct OptionSpec {
     bool takes_value = false;
 };
 
-constexpr std::array<OptionSpec, 10> kOptions{{
+constexpr std::array<OptionSpec, 11> kOptions{{
     {Option::help, "--help", "-h", false},
     {Option::version, "--version", "", false},
     {Option::modules, "--modules", "", false},
@@ -43,6 +44,7 @@ constexpr std::array<OptionSpec, 10> kOptions{{
     {Option::size, "--size", "", true},
     {Option::benchmark, "--benchmark", "", true},
     {Option::trace, "--trace", "", true},
+    {Option::allow_download, "--allow-download", "", false},
 }};
 
 const OptionSpec* find_option(std::string_view name) {
@@ -88,6 +90,40 @@ core::Result<std::pair<int, int>, std::string> parse_size(std::string_view text)
         return bad();
     }
     return std::pair<int, int>(static_cast<int>(*width), static_cast<int>(*height));
+}
+
+// The first combination of options that makes no sense, or nullopt.
+std::optional<std::string> combination_problem(const CliOptions& options,
+                                               const std::set<Option>& seen) {
+    if (seen.contains(Option::modules) && seen.size() > 1) {
+        return std::string("--modules takes no other options");
+    }
+    const bool headless = options.mode == RunMode::headless;
+    if (headless) {
+        if (!options.experiment) {
+            return std::string("--headless requires --experiment <name-or-path>");
+        }
+        if (options.out.empty()) {
+            return std::string("--headless requires --out <file.png>");
+        }
+        if (!ends_with_png(options.out)) {
+            return "--out: the image is written as PNG; use a .png file name, got '" +
+                   options.out.string() + "'";
+        }
+    } else {
+        if (seen.contains(Option::frame)) {
+            return std::string("--frame is only valid with --headless");
+        }
+        if (seen.contains(Option::out)) {
+            return std::string("--out is only valid with --headless");
+        }
+        if (seen.contains(Option::allow_download)) {
+            return std::string(
+                "--allow-download is only valid with --headless (the window asks before it "
+                "downloads)");
+        }
+    }
+    return std::nullopt;
 }
 
 } // namespace
@@ -195,31 +231,14 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
             case Option::trace:
                 options.trace = std::filesystem::path(std::string(value));
                 break;
+            case Option::allow_download:
+                options.allow_download = true;
+                break;
         }
     }
 
-    if (seen.contains(Option::modules) && seen.size() > 1) {
-        return core::failure(std::string("--modules takes no other options"));
-    }
-    const bool headless = options.mode == RunMode::headless;
-    if (headless) {
-        if (!options.experiment) {
-            return core::failure(std::string("--headless requires --experiment <name-or-path>"));
-        }
-        if (options.out.empty()) {
-            return core::failure(std::string("--headless requires --out <file.png>"));
-        }
-        if (!ends_with_png(options.out)) {
-            return core::failure("--out: the image is written as PNG; use a .png file name, got '" +
-                                 options.out.string() + "'");
-        }
-    } else {
-        if (seen.contains(Option::frame)) {
-            return core::failure(std::string("--frame is only valid with --headless"));
-        }
-        if (seen.contains(Option::out)) {
-            return core::failure(std::string("--out is only valid with --headless"));
-        }
+    if (auto problem = combination_problem(options, seen)) {
+        return core::failure(std::move(*problem));
     }
     return options;
 }
@@ -229,6 +248,7 @@ std::string usage_text() {
            "  orrery_app [--experiment <name-or-path>] [--size WxH] [--benchmark <frames>]\n"
            "  orrery_app --headless --experiment <name-or-path> --out <file.png>\n"
            "             [--frame <N>] [--size WxH] [--benchmark <frames>]\n"
+           "             [--allow-download]\n"
            "  orrery_app --version | --help | --modules\n"
            "\n"
            "Options:\n"
@@ -245,6 +265,9 @@ std::string usage_text() {
            "                        frames of the written view (GPU work included)\n"
            "      --trace <file>    write the run's profiling zones as Chrome trace JSON\n"
            "                        (zones need an ORRERY_PROFILING build)\n"
+           "      --allow-download  headless: an aero experiment whose model is not in the\n"
+           "                        cache may download it from its recorded URL (checked\n"
+           "                        against the recorded SHA-256 before it is read)\n"
            "      --modules         print the linked module graph\n"
            "      --version         print the version\n"
            "  -h, --help            print this help\n"

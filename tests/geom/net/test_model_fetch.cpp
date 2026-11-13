@@ -7,6 +7,8 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <filesystem>
+#include <functional>
 #include <string>
 
 using orrery::geom::net::default_model_cache_dir;
@@ -522,4 +524,130 @@ TEST_CASE("A linked cache entry directory is replaced, never followed",
     CHECK(std::filesystem::symlink_status(entry_dir).type() ==
           std::filesystem::file_type::directory);
     CHECK(read_file(elsewhere / first.value().local_path.filename()) == stl);
+}
+
+namespace {
+
+// True when the cache holds no entry, no URL index and no staging leftover
+// (the directories the loader creates may exist, empty).
+bool cache_holds_nothing(const std::filesystem::path& cache) {
+    if (!std::filesystem::exists(cache)) {
+        return true;
+    }
+    for (const auto& entry : std::filesystem::directory_iterator(cache)) {
+        const std::string name = entry.path().filename().string();
+        if ((name != ".staging" && name != "urls") || !entry.is_directory() ||
+            !std::filesystem::is_empty(entry.path())) {
+            UNSCOPED_INFO("left in the cache: " << name);
+            return false;
+        }
+    }
+    return true;
+}
+
+// A cancellation callback that turns true at `when`.
+std::function<bool()> cancel_at(std::chrono::steady_clock::time_point when) {
+    return [when] { return std::chrono::steady_clock::now() >= when; };
+}
+
+} // namespace
+
+TEST_CASE("A cancelled trickling download ends promptly and leaves nothing behind",
+          "[net][fetch][cancel]") {
+    using Clock = std::chrono::steady_clock;
+    Fixture f;
+    // One byte every 200 ms: neither the low-speed guard below nor the total
+    // timeout would end it for a minute.
+    MockResponse slow = body(binary_stl(4));
+    slow.trickle_interval = 200ms;
+    f.server.route("/trickle.stl", slow);
+    f.server.route("/fast.stl", body(binary_stl(1)));
+    FetchOptions options = f.options();
+    options.limits.total_timeout = 60s;
+    options.limits.low_speed_bytes_per_second = 1;
+    options.limits.low_speed_window = 60s;
+    const Clock::time_point cancelled_at = Clock::now() + 1s;
+    options.cancel_requested = cancel_at(cancelled_at);
+
+    const auto result = fetch_model(f.server.url("/trickle.stl"), options);
+    const Clock::time_point ended = Clock::now();
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().kind == FetchErrorKind::cancelled);
+    CHECK(ended >= cancelled_at);
+    // libcurl reports progress about once a second while nothing arrives.
+    CHECK(ended - cancelled_at < 2s);
+    CHECK(f.server.requests("/trickle.stl") == 1);
+    CHECK(cache_holds_nothing(options.cache_dir));
+
+    // A callback that never cancels leaves a normal download unchanged.
+    options.cancel_requested = [] { return false; };
+    const auto fast = fetch_model(f.server.url("/fast.stl"), options);
+    REQUIRE(fast.has_value());
+    CHECK(read_file(fast.value().local_path) == binary_stl(1));
+    CHECK(fast.value().sha256 == sha256_hex(bytes_of(binary_stl(1))));
+}
+
+TEST_CASE("A cancelled download of a silent server ends promptly", "[net][fetch][cancel]") {
+    using Clock = std::chrono::steady_clock;
+    Fixture f;
+    // Headers and ten bytes, then silence: no body callback comes, so only
+    // the progress callback can notice the cancellation.
+    MockResponse silent = body(binary_stl(4));
+    silent.stall_after_bytes = 10;
+    silent.stall_for = 30s;
+    f.server.route("/silent.stl", silent);
+    FetchOptions options = f.options();
+    options.limits.total_timeout = 60s;
+    options.limits.low_speed_bytes_per_second = 1;
+    options.limits.low_speed_window = 60s;
+    const Clock::time_point cancelled_at = Clock::now() + 500ms;
+    options.cancel_requested = cancel_at(cancelled_at);
+
+    const auto result = fetch_model(f.server.url("/silent.stl"), options);
+    const Clock::time_point ended = Clock::now();
+    REQUIRE_FALSE(result.has_value());
+    CHECK(result.error().kind == FetchErrorKind::cancelled);
+    // libcurl reports progress about once a second while nothing arrives.
+    CHECK(ended - cancelled_at < 2s);
+    CHECK(cache_holds_nothing(options.cache_dir));
+}
+
+TEST_CASE("A fetch cancelled before it starts sends no request", "[net][fetch][cancel]") {
+    Fixture f;
+    f.server.route("/part.stl", body(binary_stl(1)));
+    FetchOptions options = f.options();
+    options.cancel_requested = [] { return true; };
+    CHECK(rejection(f.server.url("/part.stl"), options) == FetchErrorKind::cancelled);
+    CHECK(f.server.total_requests() == 0);
+    CHECK(cache_holds_nothing(options.cache_dir));
+}
+
+TEST_CASE("A download whose digest is not the expected one is discarded unread",
+          "[net][fetch][digest]") {
+    Fixture f;
+    const std::string stl = binary_stl(2);
+    const std::string other = binary_stl(3);
+    f.server.route("/part.stl", body(stl));
+    FetchOptions options = f.options();
+    options.expected_sha256 = sha256_hex(bytes_of(other));
+
+    CHECK(rejection(f.server.url("/part.stl"), options) == FetchErrorKind::digest_mismatch);
+    CHECK(f.server.requests("/part.stl") == 1);
+    CHECK(cache_holds_nothing(options.cache_dir));
+
+    // The expected digest: downloaded and cached as usual.
+    options.expected_sha256 = sha256_hex(bytes_of(stl));
+    const auto fetched = fetch_model(f.server.url("/part.stl"), options);
+    REQUIRE(fetched.has_value());
+    CHECK(fetched.value().sha256 == options.expected_sha256);
+    const auto hit = fetch_model(f.server.url("/part.stl"), options);
+    REQUIRE(hit.has_value());
+    CHECK(hit.value().from_cache);
+    CHECK(f.server.requests("/part.stl") == 2);
+
+    // A cached entry under another digest is not served for this one: the
+    // URL is downloaded again and the mismatch reported.
+    options.expected_sha256 = sha256_hex(bytes_of(other));
+    CHECK(rejection(f.server.url("/part.stl"), options) == FetchErrorKind::digest_mismatch);
+    CHECK(f.server.requests("/part.stl") == 3);
 }
