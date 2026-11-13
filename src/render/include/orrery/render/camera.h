@@ -87,20 +87,37 @@ struct SurfaceMode {
     double speed = 10.0;    // [m/s] at full translation input
 };
 
-using CameraMode = std::variant<FreeMode, OrbitMode, ChaseMode, SurfaceMode>;
+// Turntable for the aero workspace (spec 7.1): orbits a fixed world point
+// like OrbitMode without a target body, and in addition turns on its own at
+// `spin_rate` (added to the yaw input) and pans. The eye sits at
+// focus + distance * (cos p cos y, cos p sin y, sin p) and looks at the focus
+// with world +Z up (the body axes of orrery_aero: x downstream, z up).
+// Panning moves the focus at `distance` per second for a unit input: move.x
+// along the horizontal camera right (-sin y, cos y, 0), move.y along world
+// +Z; move.z is ignored.
+struct TurntableMode {
+    glm::dvec3 focus{0.0};  // [m]
+    double distance = 5.0;  // [m]
+    double yaw = 0.6;       // azimuth from world +X towards +Y [rad]
+    double pitch = 0.35;    // elevation above the world XY plane [rad]
+    double spin_rate = 0.0; // automatic yaw rate [rad/s], 0 = still
+};
 
-enum class CameraModeKind : std::uint8_t { free, orbit, chase, surface };
+using CameraMode = std::variant<FreeMode, OrbitMode, ChaseMode, SurfaceMode, TurntableMode>;
+
+enum class CameraModeKind : std::uint8_t { free, orbit, chase, surface, turntable };
 
 // Rate input for one update: every component is a rate per second, held
 // constant over the update and integrated simultaneously (see update()).
 //   move:  x right, y up, z forward, each in [-1, 1] (Free: camera axes at
 //          `speed`; Surface: x right of the heading, z along the heading,
-//          y altitude).
+//          y altitude; Turntable: x and y pan, see TurntableMode).
 //   yaw, pitch, roll: [rad/s] (positive yaw turns left, positive pitch looks
 //          up; roll is used only by Free; Free turns about the fixed camera
 //          axis (pitch, yaw, -roll)).
-//   zoom:  e-folds per second; positive moves closer (Orbit, Chase) or slows
-//          translation down (Free, Surface: speed(t) = speed * exp(-zoom t)).
+//   zoom:  e-folds per second; positive moves closer (Orbit, Chase,
+//          Turntable) or slows translation down (Free, Surface:
+//          speed(t) = speed * exp(-zoom t)).
 struct CameraInput {
     glm::dvec3 move{0.0};
     double yaw = 0.0;
@@ -153,8 +170,9 @@ public:
     // Time-step contract (the same input over the same total time gives the
     // same result however it is split into updates):
     //   - Goals are integrated exactly for constant rates: Free position
-    //     along the turning, decelerating path (closed form), Orbit/Chase
-    //     yaw, pitch and log distance, Surface heading, pitch, speed and
+    //     along the turning, decelerating path (closed form), Orbit/Chase/
+    //     Turntable yaw, pitch and log distance, Turntable pan along the
+    //     turning right axis (closed form), Surface heading, pitch, speed and
     //     altitude, and Surface ground motion in the local tangent plane.
     //   - Clamps (pitch limit, minimum distance, zero altitude) split the
     //     update at the moment they are reached, so the smoothing sees the

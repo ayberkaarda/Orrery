@@ -11,6 +11,7 @@
 
 #include "orrery/aero/compute/compute_backend.h"
 #include "orrery/core/result.h"
+#include "orrery/render/shader_compose.h"
 
 // OpenGL 4.6 implementation of orrery_aero's IComputeBackend (ADR-006,
 // ADR-019). Buffers are shader storage buffers with immutable storage;
@@ -41,6 +42,13 @@ class GlComputeBackend final : public aero::compute::IComputeBackend {
 public:
     // Requires a current OpenGL 4.6 core context (GlContext).
     [[nodiscard]] static core::Result<std::unique_ptr<GlComputeBackend>, std::string> create();
+    // Same, with `extra` sources next to the LBM ones, named by the same
+    // rules (a ".comp.glsl" file is a kernel, "<family>_common.glsl" a snippet
+    // of the kernels "<family>_*"; any other extra snippet goes into every
+    // kernel). Fails for a name that is already taken. The sources must
+    // outlive the backend (embedded shaders do).
+    [[nodiscard]] static core::Result<std::unique_ptr<GlComputeBackend>, std::string>
+    create(std::span<const ShaderSource> extra);
     ~GlComputeBackend() override;
     GlComputeBackend(const GlComputeBackend&) = delete;
     GlComputeBackend& operator=(const GlComputeBackend&) = delete;
@@ -73,6 +81,9 @@ public:
     [[nodiscard]] aero::compute::Status compile_all();
     // Blocks until the device has finished every submitted command (timing).
     void finish() const;
+    // OpenGL name of a buffer (0 for an unknown id), for drawing straight
+    // from kernel output (vertex pulling); valid while the buffer lives.
+    [[nodiscard]] std::uint32_t buffer_name(aero::compute::BufferId buffer) const noexcept;
 
 private:
     struct Impl;

@@ -93,6 +93,28 @@ target_sources(orrery_render PRIVATE
     include/orrery/render/black_hole.h
     include/orrery/render/blackbody_spectrum.h)
 
+# Phase 8a: aero visualisation (docs/aero-visualisation.md): Cp surface,
+# section planes, streamlines and particles, Q-criterion iso-surface and force
+# vectors, drawn from plain data (orrery_aero results, orrery_geom meshes).
+target_sources(orrery_render PRIVATE
+    aero/aero_colormap.cpp
+    aero/aero_compute.cpp
+    aero/aero_field.cpp
+    aero/aero_internal.h
+    aero/aero_isosurface.cpp
+    aero/aero_streamlines.cpp
+    aero/aero_overlay.cpp
+    aero/aero_overlay.h
+    aero/aero_surface.cpp
+    aero/aero_view.cpp
+    include/orrery/render/aero_colormap.h
+    include/orrery/render/aero_compute.h
+    include/orrery/render/aero_field.h
+    include/orrery/render/aero_isosurface.h
+    include/orrery/render/aero_streamlines.h
+    include/orrery/render/aero_surface.h
+    include/orrery/render/aero_view.h)
+
 # Shaders: src/render/shaders/*.glsl are embedded at build time into one
 # generated header (no runtime file reads). The header is private to the
 # library sources and to the render tests, which check the embedding.
@@ -132,5 +154,23 @@ target_sources(orrery_render PRIVATE
     compute/include/orrery/render/gl_compute_backend.h
     ${ORRERY_RENDER_LBM_SHADER_HEADER})
 target_include_directories(orrery_render PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/compute/include)
+
+# Phase 8a: the aero visualisation shaders (shaders/aero/*.glsl, drawing) and
+# compute kernels (shaders/aero/compute/aero_vis_*.glsl, run through
+# GlComputeBackend) are embedded into one header of their own.
+file(GLOB_RECURSE ORRERY_RENDER_AERO_SHADERS CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/shaders/aero/*.glsl)
+set(ORRERY_RENDER_AERO_SHADER_HEADER ${ORRERY_RENDER_GENERATED_DIR}/orrery/render/embedded_aero_shaders.h)
+add_custom_command(
+    OUTPUT ${ORRERY_RENDER_AERO_SHADER_HEADER}
+    COMMAND ${CMAKE_COMMAND}
+        -DOUTPUT=${ORRERY_RENDER_AERO_SHADER_HEADER}
+        -DNAMESPACE=orrery::render::aero_shaders
+        "-DSHADERS=${ORRERY_RENDER_AERO_SHADERS}"
+        -P ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shaders.cmake
+    DEPENDS ${ORRERY_RENDER_AERO_SHADERS} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/embed_shaders.cmake
+    COMMENT "Embedding aero visualisation shaders"
+    VERBATIM)
+target_sources(orrery_render PRIVATE ${ORRERY_RENDER_AERO_SHADER_HEADER})
 
 orrery_configure_target(orrery_render)
