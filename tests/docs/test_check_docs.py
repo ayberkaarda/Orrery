@@ -3,8 +3,9 @@
 
 Each case writes a small Markdown tree into a temporary directory and runs
 the link checker on it: links that resolve must pass, broken ones must fail.
-Covered: inline links, heading anchors with inline code, repeated headings
-and fences of mixed lengths.
+Covered: inline links, heading anchors with inline code, repeated headings,
+fences of mixed lengths, and URL-encoded paths and fragments (spaces,
+Turkish characters).
 """
 
 from __future__ import annotations
@@ -89,6 +90,25 @@ class RepositoryLinks(unittest.TestCase):
     def test_same_file_fragment(self) -> None:
         self.assert_clean("# Top `code`\n\n[Top](#top-code)\n")
         self.assert_broken("# Top\n\n[Missing](#bottom)\n")
+
+    # URL-encoded paths and fragments.
+    def test_encoded_space(self) -> None:
+        self.write("docs/my guide.md", "# My guide\n")
+        self.assert_clean("[Guide](docs/my%20guide.md)\n")
+        self.assert_clean("[Guide](docs/my%20guide.md#my-guide)\n")
+        self.assert_clean("[Guide](<docs/my guide.md>)\n")
+        self.assert_clean("[Guide][g]\n\n[g]: <docs/my guide.md#my-guide>\n")
+        self.assert_broken("[Guide](docs/my%20guides.md)\n")
+
+    def test_encoded_turkish(self) -> None:
+        self.write("docs/çalışma notları.md", "# Çalıştırma ve Ölçüm\n")
+        encoded = "docs/%C3%A7al%C4%B1%C5%9Fma%20notlar%C4%B1.md"
+        fragment = "%C3%A7al%C4%B1%C5%9Ft%C4%B1rma-ve-%C3%B6l%C3%A7%C3%BCm"
+        self.assert_clean(f"[Notlar]({encoded})\n")
+        self.assert_clean(f"[Notlar]({encoded}#{fragment})\n")
+        self.assert_clean(f"[Notlar]({encoded}#çalıştırma-ve-ölçüm)\n")
+        self.assert_broken(f"[Notlar]({encoded}#%C3%A7al%C4%B1%C5%9Fma)\n")
+        self.assert_clean(f"# Özet\n\n[Özet](#%C3%B6zet)\n")
 
 
 if __name__ == "__main__":

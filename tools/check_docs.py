@@ -3,8 +3,8 @@
 
 Checks:
   1. Links. Every relative link and image in README.md, README.tr.md and
-     docs/**/*.md resolves to an existing file or directory. A fragment into a
-     Markdown file (or into the same file) must name one of its headings, with
+     docs/**/*.md resolves to an existing file or directory. Paths and
+     fragments are URL-decoded first. A fragment into a Markdown file (or into the same file) must name one of its headings, with
      the heading anchors GitHub generates (inline code kept, fenced blocks of
      any fence length skipped, repeated headings numbered). External links
      (http, https, mailto) are not fetched.
@@ -31,13 +31,16 @@ import json
 import re
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 ROOT = Path(__file__).resolve().parent.parent
 PHYSICS_DOC = ROOT / "docs" / "physics.md"
 PHYSICS_INDEX = ROOT / "docs" / "physics_index.json"
 INDEX_SECTION = "Formula index"
 
-LINK_RE = re.compile(r"!?\[(?:[^\[\]]|\[[^\]]*\])*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
+LINK_TITLE = r"""(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?"""
+LINK_RE = re.compile(r"!?\[(?:[^\[\]]|\[[^\]]*\])*\]\(\s*(?:<([^>\n]+)>|([^)\s]+))"
+                     + LINK_TITLE + r"\s*\)")
 HTML_SRC_RE = re.compile(r"""<(?:img|a)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']""", re.I)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -126,7 +129,7 @@ def link_targets(text: str) -> list[tuple[int, str]]:
     found: list[tuple[int, str]] = []
     for number, line in enumerate(strip_code(text.splitlines()), start=1):
         for match in LINK_RE.finditer(line):
-            found.append((number, match.group(1)))
+            found.append((number, match.group(1) or match.group(2)))
         for match in HTML_SRC_RE.finditer(line):
             found.append((number, match.group(1)))
     return found
@@ -137,6 +140,7 @@ def check_link(source: Path, number: int, target: str, cache: dict[Path, set[str
     if target.startswith(EXTERNAL_PREFIXES):
         return
     path_part, _, fragment = target.partition("#")
+    path_part, fragment = unquote(path_part), unquote(fragment)
     resolved = (source.parent / path_part).resolve() if path_part else source.resolve()
     where = f"{rel(source)}:{number}"
     if not resolved.exists():
