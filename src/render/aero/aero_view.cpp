@@ -290,8 +290,8 @@ bool same_plane(const SectionPlane& a, const SectionPlane& b) {
 
 ColorScale effective_scale(const SectionPlane& plane) {
     ColorScale scale = plane.scale;
-    if (is_signed(plane.quantity) && scale.mode != ScaleMode::fixed) {
-        scale.mode = ScaleMode::symmetric;
+    if (is_signed(plane.quantity) && scale.mode != RangeMode::fixed) {
+        scale.mode = RangeMode::symmetric;
     }
     return scale;
 }

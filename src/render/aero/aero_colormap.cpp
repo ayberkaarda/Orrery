@@ -338,7 +338,7 @@ double ScalarRange::normalize(double value) const noexcept {
 }
 
 ScalarRange resolve_range(const ColorScale& scale, std::span<const double> values) {
-    if (scale.mode == ScaleMode::fixed && std::isfinite(scale.min) && std::isfinite(scale.max) &&
+    if (scale.mode == RangeMode::fixed && std::isfinite(scale.min) && std::isfinite(scale.max) &&
         scale.min < scale.max) {
         return {scale.min, scale.max};
     }
@@ -350,7 +350,7 @@ ScalarRange resolve_range(const ColorScale& scale, std::span<const double> value
             high = std::max(high, v);
         }
     }
-    const bool symmetric = scale.mode == ScaleMode::symmetric;
+    const bool symmetric = scale.mode == RangeMode::symmetric;
     if (!(low <= high)) {
         return symmetric ? ScalarRange{-1.0, 1.0} : ScalarRange{0.0, 1.0};
     }

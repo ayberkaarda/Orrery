@@ -224,27 +224,27 @@ TEST_CASE("Display pre-compensation inverts the ACES display transform",
 
 TEST_CASE("Colour scale ranges", "[render][aero][colormap]") {
     const std::vector<double> cp{-1.38, -0.4, 0.2, 1.0, std::numeric_limits<double>::infinity()};
-    const ScalarRange symmetric = resolve_range({ScaleMode::symmetric}, cp);
+    const ScalarRange symmetric = resolve_range({RangeMode::symmetric}, cp);
     CHECK(symmetric.min == Catch::Approx(-1.4));
     CHECK(symmetric.max == Catch::Approx(1.4));
-    ColorScale exact{ScaleMode::symmetric};
+    ColorScale exact{RangeMode::symmetric};
     exact.round_to_ticks = false;
     CHECK(resolve_range(exact, cp).max == Catch::Approx(1.38));
-    const ScalarRange automatic = resolve_range({ScaleMode::automatic}, cp);
+    const ScalarRange automatic = resolve_range({RangeMode::automatic}, cp);
     CHECK(automatic.min == Catch::Approx(-1.4));
     CHECK(automatic.max == Catch::Approx(1.0));
     const std::vector<double> speed{0.0, 0.0831};
-    const ScalarRange s = resolve_range({ScaleMode::automatic}, speed);
+    const ScalarRange s = resolve_range({RangeMode::automatic}, speed);
     CHECK(s.min == 0.0);
     CHECK(s.max == Catch::Approx(0.084));
-    ColorScale fixed{ScaleMode::fixed, -2.0, 3.0};
+    ColorScale fixed{RangeMode::fixed, -2.0, 3.0};
     CHECK(resolve_range(fixed, cp) == ScalarRange{-2.0, 3.0});
     fixed.min = 4.0; // invalid: falls back to automatic
     CHECK(resolve_range(fixed, cp) == automatic);
-    CHECK(resolve_range({ScaleMode::symmetric}, {}) == ScalarRange{-1.0, 1.0});
-    CHECK(resolve_range({ScaleMode::automatic}, {}) == ScalarRange{0.0, 1.0});
+    CHECK(resolve_range({RangeMode::symmetric}, {}) == ScalarRange{-1.0, 1.0});
+    CHECK(resolve_range({RangeMode::automatic}, {}) == ScalarRange{0.0, 1.0});
     const std::vector<double> flat{2.0, 2.0};
-    const ScalarRange widened = resolve_range({ScaleMode::automatic}, flat);
+    const ScalarRange widened = resolve_range({RangeMode::automatic}, flat);
     CHECK(widened.min < 2.0);
     CHECK(widened.max > 2.0);
     CHECK(ScalarRange{-1.0, 1.0}.normalize(0.0) == 0.5);

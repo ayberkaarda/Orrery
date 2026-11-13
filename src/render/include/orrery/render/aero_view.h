@@ -51,7 +51,7 @@ namespace orrery::render {
 struct SurfaceLayer {
     bool enabled = true;
     // Cp scale; symmetric keeps Cp = 0 at the neutral centre of the map.
-    ColorScale scale{ScaleMode::symmetric};
+    ColorScale scale{RangeMode::symmetric};
     // Interpolate Cp to the vertices (vertex_values) instead of flat
     // per-triangle colours.
     bool smooth = true;

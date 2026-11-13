@@ -164,7 +164,7 @@ render::AeroViewOptions view_options(const AeroLayers& layers, bool two_dimensio
                                      const std::vector<double>& cp) {
     render::AeroViewOptions options;
     const double range = cp_range(cp);
-    options.surface.scale.mode = render::ScaleMode::fixed;
+    options.surface.scale.mode = render::RangeMode::fixed;
     options.surface.scale.min = -range;
     options.surface.scale.max = range;
     const double size = largest_extent(body_bounds);
@@ -180,8 +180,8 @@ render::AeroViewOptions view_options(const AeroLayers& layers, bool two_dimensio
         plane.position = two_dimensional ? 0.0 : lo.y + fraction * (hi.y - lo.y);
         plane.quantity = layers.section_quantity;
         plane.scale.mode = render::is_signed(layers.section_quantity)
-                               ? render::ScaleMode::symmetric
-                               : render::ScaleMode::automatic;
+                               ? render::RangeMode::symmetric
+                               : render::RangeMode::automatic;
         plane.opacity = 0.92;
         options.sections.push_back(plane);
     }

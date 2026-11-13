@@ -106,6 +106,7 @@ target_compile_definitions(orrery_test_render PRIVATE
 target_sources(orrery_test_render PRIVATE
     render/aero/aero_test_support.h
     render/aero/test_aero_colormap.cpp
+    render/aero/test_aero_headers.cpp
     render/aero/test_aero_field.cpp
     render/aero/test_marching_cubes.cpp
     render/aero/test_streamlines.cpp

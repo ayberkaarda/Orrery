@@ -64,10 +64,10 @@ enum class Colormap : std::uint8_t { diverging, diverging_dark, sequential };
 //   automatic  [min, max] of the data
 //   symmetric  [-m, m] with m = max |value| (signed data, zero at the centre)
 //   fixed      [ColorScale::min, ColorScale::max]
-enum class ScaleMode : std::uint8_t { automatic, symmetric, fixed };
+enum class RangeMode : std::uint8_t { automatic, symmetric, fixed };
 
 struct ColorScale {
-    ScaleMode mode = ScaleMode::automatic;
+    RangeMode mode = RangeMode::automatic;
     double min = 0.0; // fixed mode only
     double max = 1.0;
     // Widen an automatic or symmetric range to the next multiple of a fifth

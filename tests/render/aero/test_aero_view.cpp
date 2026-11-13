@@ -268,7 +268,7 @@ TEST_CASE("Golden snapshots: cylinder vortex street at Re 150, three frames",
     plane.axis = Axis::z;
     plane.position = 0.0;
     plane.quantity = FieldQuantity::vorticity;
-    plane.scale = {ScaleMode::fixed, -2.5, 2.5};
+    plane.scale = {RangeMode::fixed, -2.5, 2.5};
     options.sections.push_back(plane);
     // Particle traces over the vorticity: released along the inlet and
     // carried through the street.
