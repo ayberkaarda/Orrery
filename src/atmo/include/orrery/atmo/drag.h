@@ -24,6 +24,9 @@ namespace orrery::atmo {
 //                whose drag work balance needs no frame bookkeeping).
 //   co_rotating: the atmosphere turns rigidly with the planet, wind
 //                omega x r (no winds relative to the surface).
+// APPROXIMATION (E7): no winds; the inertial default misses up to omega R
+// (465 m/s at Earth's equator) of airspeed - small against entry speeds
+// (4 percent at 11 km/s) - use co_rotating for ground-relative studies.
 enum class AtmosphereFrame : std::uint8_t { inertial, co_rotating };
 
 [[nodiscard]] std::string_view to_string(AtmosphereFrame frame) noexcept;
@@ -57,6 +60,9 @@ struct DragForce {
 // `position` and inertial velocity `velocity` (SI).
 // APPROXIMATION (ADR-012): drag only (no lift or side force), heat shield
 // always forward (no attitude dynamics), Cd a function of Mach only.
+// APPROXIMATION (E6): no Reynolds or Knudsen dependence, continuum Cd in the
+// rarefied upper atmosphere - the deceleration and heating pulses happen
+// below about 90 km - valid for ballistic bodies there.
 [[nodiscard]] DragForce drag_force(const Planet& planet, const AeroCoefficientTable& table,
                                    const core::Vec3<core::si::Length>& position,
                                    const core::Vec3<core::si::Velocity>& velocity,

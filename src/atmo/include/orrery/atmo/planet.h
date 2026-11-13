@@ -14,7 +14,9 @@ namespace orrery::atmo {
 // rotating about the +z axis of the planet-centred inertial frame at
 // `rotation_rate` (rad/s; its body-fixed frame coincides with the inertial
 // frame at time 0, see docs/atmosphere.md "Frames").
-// APPROXIMATION: spherical body, no oblateness (J2) or terrain.
+// APPROXIMATION (E4): spherical body with point-mass gravity - J2 is 1e-3
+// of g during entry - altitudes are above the mean sphere, not geodetic
+// heights (up to about 14 km apart on Earth); no terrain.
 struct Planet {
     std::string name;
     core::si::GravitationalParameter gm{};

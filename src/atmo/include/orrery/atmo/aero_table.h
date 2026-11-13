@@ -42,6 +42,8 @@ struct CdLookup {
 // Clamping policy: below the first and above the last sample the end value is
 // held constant (no extrapolation) and the lookup reports clamped = true; the
 // table never invents a trend outside the range that was sampled or measured.
+// APPROXIMATION (E5): end values held outside the sampled range - safer than
+// extrapolating a few samples - valid while Cd varies little beyond them.
 // A single sample is a constant Cd. Deterministic, no allocation in lookup().
 class AeroCoefficientTable {
 public:

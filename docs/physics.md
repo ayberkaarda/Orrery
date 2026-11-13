@@ -65,11 +65,11 @@ Notes:
 
 ## 4. Atmosphere and entry
 
-- Atmosphere models: US Standard Atmosphere 1976 (tabulated to 86 km, exponential above), a simple tabulated Mars profile, and a generic exponential rho = rho0 exp(-h/H).
-- Drag on a probe: F = 1/2 rho v^2 Cd(Mach) A, with Cd(Mach) sampled from the aero solver at several Mach numbers and linearly interpolated (ADR-012).
+- Atmosphere models: US Standard Atmosphere 1976 (the standard's layered formulation to 86 km, piecewise exponential through its tabulated values above), a simple Mars profile (NASA Glenn temperature fit, hydrostatic pressure), and a generic exponential rho = rho0 exp(-h/H).
+- Drag on a probe: F = 1/2 rho v^2 Cd(Mach) A, with Cd(Mach) sampled from the aero solver at several Mach numbers and linearly interpolated, clamped outside the sampled range (ADR-012).
 - Stagnation-point heat flux: Sutton-Graves correlation, q proportional to sqrt(rho / R_nose) v^3. Indicative only.
-- Entry runs as a chain core state -> atmosphere (density, Mach) -> drag force -> integrator (ADR-014). Validation: kinetic energy loss equals the work done by drag within 1 percent.
-- Outputs: altitude, speed, deceleration (g load), heat flux time series, ground track; outcomes are landing or skip-out.
+- Entry runs as a chain core state -> atmosphere (density, Mach) -> drag force -> integrator (ADR-014), drag applied as a split-step velocity kick around the gravity step (ADR-021). Validation: mechanical (kinetic plus potential) energy loss equals the work done by drag within 1 percent.
+- Outputs: altitude, speed, deceleration (g load), heat flux time series, ground track; outcomes are impact, skip-out or the time limit. Details in docs/atmosphere.md and "Atmosphere and entry (orrery_atmo, Phase 9a)" below.
 
 ## 5. APPROXIMATIONS
 
@@ -711,3 +711,61 @@ Every item is marked `// APPROXIMATION:` in the code.
 | V9 | Display pre-compensation by the inverse of the ACES fit | `scene_linear_for_display` (aero_colormap.cpp) | Colours with a non-negative pre-image (all map colours): exact to 8-bit rounding | More saturated colours cannot be shown through the pipeline and are not used |
 | V10 | LBM pressure as Cp from the weakly compressible lattice pressure c_s^2 (rho - 1), rho_ref = 1 | `flow_field_from` (aero_field.cpp) | Lattice Mach below 0.1 (A3) | Acoustic noise of the solver appears in the pressure |
 | V11 | Studio shading: camera-attached key light, wrapped Lambert with a 0.42 floor, weak highlight and rim; no shadows | aero_surface.frag.glsl | Colours equal the legend where the surface faces the key light | Shaded parts are darker than the legend colour |
+
+## Atmosphere and entry (orrery_atmo, Phase 9a)
+
+Atmosphere models, the Cd(Mach) bridge from the aero solvers, drag as a core
+force model and the entry experiment (docs/atmosphere.md, ADR-012, ADR-014,
+ADR-021). SI throughout.
+
+### Formulas
+
+| Quantity | Formula | Source |
+|---|---|---|
+| Geopotential altitude (US76) | H = r0 Z / (r0 + Z), r0 = 6 356 766 m | U.S. Standard Atmosphere 1976 (NOAA-S/T 76-1562) |
+| US76 layer temperature | TM = TM,b + L (H - Hb); L = -6.5, 0, 1.0, 2.8, 0, -2.8, -2.0 K/km' from 0, 11, 20, 32, 47, 51, 71 km' | US76 Table 4 |
+| US76 layer pressure | P = Pb (TM,b / TM)^(g0' M0 / (R* L)), or Pb exp(-g0' M0 (H - Hb) / (R* TM,b)) for L = 0; g0' = 9.80665, M0 = 28.9644 kg/kmol, R* = 8314.32 J/(kmol K) | US76, hydrostatic equation per layer |
+| US76 density, sound speed, kinetic temperature | rho = P M0 / (R* TM), a = sqrt(1.4 R* TM / M0), T = TM M / M0 (M/M0 from Table 8 between 80 and 86 km) | US76 |
+| US76 above 86 km | log-linear rho and P, linear T between Table I nodes (86 to 1000 km) | US76 Table I |
+| Mars temperature | T = 242.15 K - 0.998 K/km h (h < 7 km), -2.22 K/km above, isothermal above 50 km | NASA Glenn Research Center Mars atmosphere fit (Mars Global Surveyor, 1996), joined continuously |
+| Mars pressure | hydrostatic through the temperature layers from 699 Pa, R = 192.1 J/(kg K), g0 = 3.711 m/s^2, gamma = 1.29 | surface pressure and gas constant of the same fit |
+| Exponential atmosphere | rho = rho0 exp(-h / H), p = rho R T | Allen and Eggers, NACA Report 1381 (1958) |
+| Mach number | M = abs(v_rel) / a | |
+| Relative wind | v_rel = v (inertial atmosphere) or v - omega z x r (co-rotating) | |
+| Drag | F = -1/2 rho abs(v_rel) v_rel Cd(M) A | ADR-012 |
+| Cd(Mach) | linear between samples, end values held outside | ADR-012 |
+| g-load | abs(F) / (m g0), g0 = 9.80665 m/s^2 | |
+| Stagnation heat flux | q = k sqrt(rho / R_n) abs(v_rel)^3, k = 1.7415e-4 (Earth), 1.9027e-4 (Mars) kg^0.5/m | Sutton and Graves, NASA TR R-376 (1971) |
+| Split step | v += kick(dt/2); (r, v) = gravity step(dt); v += kick(dt/2); kick: RK4 on dv/dt = F(r, v) / m at fixed r | Strang (1968), ADR-021 |
+| Energy balance | E = m (v^2 / 2 - GM / r); E(t) - E(0) = integral of F . v dt | work-energy theorem |
+| Allen-Eggers peak (test reference) | n_max = V_E^2 sin(gamma) / (2 e H g0) at V = V_E exp(-1/2), rho = beta sin(gamma) / H | Allen and Eggers (1958) |
+
+### Measured (MSVC 19.44 x64 Release, /fp:precise)
+
+| Quantity | Setup | Measured | Criterion |
+|---|---|---|---|
+| US76 at the layer boundaries (and 5 km') | `sample_geopotential` against Table I | TM, P, rho, a equal to the printed values (half a unit of the last digit) | published precision |
+| US76 base pressures | computed from the constants | 101325, 22632.06, 5474.889, 868.0187, 110.9063, 66.93887, 3.956420, 0.3733836 Pa | Table 4, seven figures |
+| Apollo-like ballistic entry | 11.0 km/s, -5.7 degrees, Cd 1.3, 5560 kg, 12.02 m^2 | peak 6.78 g at 224.5 s, impact at 438.1 s, 1.47 MW/m^2 peak heat flux | 6 to 8 g |
+| Energy balance | same | relative error 2.1e-5 (dt 0.5 s), 8.5e-7 (dt 0.1 s) | below 1 percent |
+| Skip-out | -5.0 degrees | 1.07 g pass to 71.6 km, exits at 225 s, bound | leaves the atmosphere, event reported |
+| Allen-Eggers | exponential, no gravity, 10 km/s, -60 degrees | 224.6 g against 225.6 g (-0.46 percent) | within 1.5 percent |
+| Cd table from the solver | Apollo capsule, Newtonian, 20 degrees, Mach 5 to 25 | every point within 10 percent of 1.3, non-decreasing | Cd 1.3 within 10 percent |
+
+### Approximations (atmosphere and entry)
+Every item is marked `// APPROXIMATION:` in the code. A8 (Sutton-Graves), A9
+(constant mass), A10 (no attitude dynamics) and A11 (tabulated Cd) in section
+5 apply.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| E1 | US76 above 86 km by piecewise exponential interpolation of the tabulated values | `UsStandardAtmosphere1976::sample` | Exact at the Table I nodes (86, 90, 95, 100, 110, ... 1000 km); between nodes a smooth profile is reproduced to a few percent | Not the standard's diffusive-equilibrium solution; no solar-activity dependence (the real thermosphere varies by an order of magnitude) |
+| E2 | Mars: one mean profile (Glenn temperature fit, isothermal above 50 km, hydrostatic pressure from 699 Pa) | `MarsAtmosphere` | Mean conditions; within 10 percent of the fit's pressure below 10 km | Season, latitude, local time and dust storms (density varies by a factor of 2 or more); use Mars-GRAM for mission work |
+| E3 | Isothermal exponential atmosphere with an independent temperature | `ExponentialAtmosphere` | Analytic studies (Allen-Eggers); H = R T / g for hydrostatic consistency | Real profiles have a varying scale height |
+| E4 | Spherical planet (mean radius), point-mass gravity, geocentric latitude | `Planet`, `EntryExperiment` | Entry dynamics (J2 is 1e-3 of g) | Altitudes differ from geodetic heights by up to about 14 km between equator and pole on Earth; no terrain |
+| E5 | Cd held at the end values outside the sampled Mach range | `AeroCoefficientTable::lookup` | Within the sampled range; capsules whose Cd varies little below the lowest sample | A capsule table sampled at Mach 5 to 25 also drives the supersonic and subsonic tail, where real Cd differs by up to about 30 percent |
+| E6 | Drag only, Cd a function of Mach only (no Reynolds or Knudsen dependence; continuum Cd in the rarefied upper atmosphere) | `drag_force` | Ballistic bodies below about 90 km, where the heating and deceleration pulses happen | No lift (Apollo's L/D 0.3 corridor control is absent), no free-molecular drag rise above about 100 km |
+| E7 | Atmosphere at rest in the inertial frame by default; co-rotating option without winds | `AtmosphereFrame`, `air_relative_velocity` | Default: up to omega R = 465 m/s airspeed error at Earth's equator (4 percent at 11 km/s, about 6 percent in peak g) | Use `co_rotating` for ground-relative studies; winds are never modelled |
+| E8 | Strang splitting of drag (RK4 kick at fixed position) and gravity | `EntryExperiment` (ADR-021) | Second order in dt; dt 0.5 s changes peak g by at most 1e-4 relative against dt 0.1 s | Steps comparable to the deceleration time v / a (about 100 s at 7 g from 7 km/s) |
+| E9 | Event instants and the impact row by linear interpolation within the step | `detect_events` | Steps of 0.5 s (altitude curvature over a step is centimetres) | Long coast steps (up to `max_coast_step`) above the atmosphere |
+| E10 | Heat flux from the airspeed and the continuum density at every altitude | `measure` (Sutton-Graves, A8) | Indicative peak values below about 80 km | Rarefied flow; radiative heating at lunar-return speeds (a large share of the stagnation heating there) |

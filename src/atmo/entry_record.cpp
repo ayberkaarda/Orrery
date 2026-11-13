@@ -63,6 +63,9 @@ double flight_path_angle_deg(const core::Vec3<core::si::Length>& r,
     return std::asin(std::clamp(core::dot(r, v).value() / rv, -1.0, 1.0)) * kDegree;
 }
 
+// APPROXIMATION (E10, A8): Sutton-Graves convective stagnation heating from
+// the airspeed and continuum density - an indicative correlation - valid for
+// peak values below about 80 km; no radiative heating.
 double heat_flux(const Planet& planet, const EntryVehicle& vehicle, const DragForce& drag) {
     const double rho = drag.atmosphere.density.value();
     if (!(rho > 0.0) || planet.sutton_graves_k == 0.0) {
