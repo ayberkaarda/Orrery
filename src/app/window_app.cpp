@@ -170,6 +170,8 @@ private:
     AeroWorkspace aero_;
     std::optional<AeroViewport> aero_view_;
     bool aero_view_failed_ = false;
+    // The aero view's last reported problem (printed once per change).
+    std::string aero_view_problem_;
     render::UiRect aero_scene_;
 };
 
@@ -373,6 +375,12 @@ void WindowApp::draw_aero_scene(const render::FrameInfo& frame, double dt, std::
         }
         aero_view_failed_ = true;
     }
+    std::string problem = aero_view_->problem();
+    if (problem != aero_view_problem_ && !problem.empty()) {
+        err << "orrery_app: aero view: " << problem << '\n';
+    }
+    aero_view_problem_ = problem;
+    aero_.set_view_problem(std::move(problem));
 }
 
 int WindowApp::run(std::ostream& err) {

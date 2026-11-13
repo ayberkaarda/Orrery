@@ -266,6 +266,7 @@ struct AeroWorkspace::Impl {
     sim::ExperimentListing listing;
     std::vector<char> compare; // per listed experiment
     std::string notice;
+    std::string view_problem;
 
     // Scalars.
     std::uint64_t geometry_revision = 0;
@@ -1658,6 +1659,9 @@ void AeroWorkspace::Impl::draw_view_panel() {
                                       "%.3f of max Q", ImGuiSliderFlags_Logarithmic);
         }
     }
+    if (!view_problem.empty()) {
+        w::error("The scene could not show everything: " + view_problem);
+    }
     w::section("CAMERA");
     if (ImGui::Button("Frame the body (F)")) {
         reframe_pending = true;
@@ -1968,6 +1972,10 @@ bool AeroWorkspace::start_run() {
 
 std::optional<std::filesystem::path> AeroWorkspace::save() {
     return impl_->save();
+}
+
+void AeroWorkspace::set_view_problem(std::string problem) {
+    impl_->view_problem = std::move(problem);
 }
 
 void AeroWorkspace::set_conditions(const scene::AeroConditions& conditions) {

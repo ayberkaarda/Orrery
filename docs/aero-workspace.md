@@ -75,6 +75,11 @@ validation, a primitive the generators reject - opens the **problem modal**
 with a one-line title and the full detail (copyable). Nothing is dropped
 silently.
 
+The scene does the same for what it draws: a body, flow field or particle
+step the view rejects is named in the View panel (and printed once on the
+error stream), and data that failed to upload is retried on every frame,
+also when the solver publishes nothing new, until it is shown.
+
 ## 3. Flow conditions and solver choice
 
 Inputs: speed [m/s], density [kg/m3], dynamic viscosity [Pa s],

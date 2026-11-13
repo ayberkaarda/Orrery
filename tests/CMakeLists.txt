@@ -266,7 +266,8 @@ add_executable(orrery_test_app
     app/test_app_bar.cpp
     app/test_frame_stats.cpp
     app/test_config.cpp
-    app/test_aero_ui.cpp)
+    app/test_aero_ui.cpp
+    app/test_aero_viewport.cpp)
 target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"

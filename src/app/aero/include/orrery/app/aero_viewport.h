@@ -37,6 +37,13 @@ public:
     // Legends into the bound sRGB overlay target.
     void draw_overlay(const render::FrameInfo& frame);
 
+    // Why a layer is missing or stale after the latest draw (a body or flow
+    // field the view rejected, a failed particle step); empty when all are
+    // up to date. Data that failed to upload is retried on every draw until
+    // it succeeds, whether or not its revision changes.
+    [[nodiscard]] std::string problem() const;
+    [[nodiscard]] bool has_flow() const noexcept;
+
 private:
     struct Impl;
     explicit AeroViewport(std::unique_ptr<Impl> impl) noexcept;
