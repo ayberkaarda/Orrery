@@ -172,6 +172,50 @@ TEST_CASE("A failed geometry replacement leaves nothing to run or save", "[app][
     CHECK_FALSE(saved_with_result(h.workspace));
 }
 
+TEST_CASE("An edited loaded experiment is saved without its recorded result", "[app][ui][aero]") {
+    const std::filesystem::path dir = scratch("edited_record");
+    Harness h(dir);
+    scene::AeroExperiment solved;
+    solved.name = "solved section";
+    solved.geometry.shape = scene::AeroShape::naca_section;
+    solved.conditions.angle_of_attack_deg = 4.0;
+    scene::AeroResultRecord record;
+    record.cd = 0.0123;
+    record.cl = 0.456;
+    record.reference_area_m2 = 1.0;
+    record.reference_length_m = 1.0;
+    solved.result = record;
+    h.workspace.open(solved, dir);
+    REQUIRE(h.frames_until([&] { return h.workspace.geometry_ready(); }));
+    CHECK(saved_with_result(h.workspace));
+
+    const scene::AeroConditions original = h.workspace.experiment().conditions;
+    const std::vector<std::function<void(scene::AeroConditions&)>> edits{
+        [](scene::AeroConditions& c) { c.speed_m_s *= 2.0; },
+        [](scene::AeroConditions& c) { c.density_kg_m3 *= 0.5; },
+        [](scene::AeroConditions& c) { c.viscosity_pa_s *= 2.0; },
+        [](scene::AeroConditions& c) { c.temperature_k += 20.0; },
+        [](scene::AeroConditions& c) { c.angle_of_attack_deg += 2.0; },
+        [](scene::AeroConditions& c) { c.sideslip_deg += 1.0; },
+    };
+    for (std::size_t i = 0; i < edits.size(); ++i) {
+        INFO("condition edit " << i);
+        scene::AeroConditions changed = original;
+        edits[i](changed);
+        h.workspace.set_conditions(changed);
+        CHECK_FALSE(saved_with_result(h.workspace));
+        h.workspace.set_conditions(original);
+        CHECK(saved_with_result(h.workspace));
+    }
+    const scene::AeroSolverSettings settings = h.workspace.experiment().solver;
+    scene::AeroSolverSettings finer = settings;
+    finer.lbm_cells_per_length = 80.0;
+    h.workspace.set_solver_settings(finer);
+    CHECK_FALSE(saved_with_result(h.workspace));
+    h.workspace.set_solver_settings(settings);
+    CHECK(saved_with_result(h.workspace));
+}
+
 TEST_CASE("Aero experiments opened in the workspace keep their record", "[app][ui][aero]") {
     const std::filesystem::path dir = scratch("open");
     Harness h(dir);

@@ -250,8 +250,11 @@ struct AeroWorkspace::Impl {
     // Inputs of the last run started and the record it left when finished.
     std::optional<scene::AeroExperiment> run_inputs;
     std::optional<scene::AeroExperiment> run_record;
-    // A record loaded from a file, shown until a run replaces it.
+    // A record loaded from a file, shown until a run replaces it, and the
+    // inputs it was recorded with (their geometry becomes the prepared one
+    // once the build requested by the load finishes).
     std::optional<scene::AeroResultRecord> loaded_result;
+    std::optional<scene::AeroExperiment> loaded_inputs;
 
     // View.
     AeroLayers layers;
@@ -266,6 +269,11 @@ struct AeroWorkspace::Impl {
 
     // Scalars.
     std::uint64_t geometry_revision = 0;
+    // Geometry requests (every change of the geometry inputs), the one the
+    // running build serves and the one a loaded record asked for.
+    std::uint64_t geometry_request = 0;
+    std::uint64_t task_request = 0;
+    std::uint64_t loaded_request = 0;
     std::uint64_t recorded_run = 0;
     std::int64_t steps_per_frame = 100;
     double pending_scale = 1.0;
@@ -314,13 +322,20 @@ struct AeroWorkspace::Impl {
         modal_requested = true;
     }
 
+    // A new request for the geometry of the current inputs.
     void rebuild_geometry() {
+        ++geometry_request;
         if (geometry_task.started()) {
             // Never wait for the running build (joining it would stall the
             // frame): its result is dropped and the build starts again.
             rebuild_queued = true;
             return;
         }
+        start_geometry_build();
+    }
+
+    void start_geometry_build() {
+        task_request = geometry_request;
         const scene::GeometryRef ref = experiment.geometry;
         const std::filesystem::path dir = base_dir;
         geometry_task = sim::BackgroundTask<sim::PrepareResult>(
@@ -381,6 +396,7 @@ struct AeroWorkspace::Impl {
         sim::ImportedModel model = std::move(*pending_import);
         pending_import.reset();
         model.ref.license_note = w::from_buffer(license_buffer);
+        task_request = ++geometry_request;
         geometry_task = sim::BackgroundTask<sim::PrepareResult>(
             [model = std::move(model), scale, up](sim::TaskProgress& progress) {
                 progress.set_stage("repairing");
@@ -416,7 +432,7 @@ struct AeroWorkspace::Impl {
             sim::PrepareResult prepared = geometry_task.take();
             if (rebuild_queued) {
                 rebuild_queued = false;
-                rebuild_geometry();
+                start_geometry_build();
             } else if (prepared) {
                 adopt_geometry(std::move(prepared).value());
             } else {
@@ -432,6 +448,9 @@ struct AeroWorkspace::Impl {
     void adopt_geometry(sim::PreparedGeometry prepared) {
         auto ready = std::make_shared<const sim::PreparedGeometry>(std::move(prepared));
         experiment.geometry = ready->ref;
+        if (loaded_inputs && task_request == loaded_request) {
+            loaded_inputs->geometry = ready->ref;
+        }
         geometry = std::move(ready);
         ++geometry_revision;
         reframe_pending = true;
@@ -472,6 +491,7 @@ struct AeroWorkspace::Impl {
         run_inputs = spec.experiment;
         run_record.reset();
         loaded_result.reset();
+        loaded_inputs.reset();
         runner.send(sim::StartAeroRun{std::move(spec), to_convergence});
         notice.clear();
         return true;
@@ -564,6 +584,11 @@ struct AeroWorkspace::Impl {
         sync_buffers();
         pending_import.reset();
         rebuild_geometry();
+        loaded_request = geometry_request;
+        loaded_inputs.reset();
+        if (loaded_result) {
+            loaded_inputs = experiment;
+        }
         runner.send(sim::StopAeroRun{});
         run_record.reset();
         run_inputs.reset();
@@ -583,7 +608,7 @@ struct AeroWorkspace::Impl {
         if (run_record && same_inputs(*run_record, experiment)) {
             record.result = run_record->result;
             with_result = true;
-        } else if (loaded_result) {
+        } else if (loaded_result && loaded_inputs && same_inputs(*loaded_inputs, experiment)) {
             record.result = loaded_result;
             with_result = true;
         }
