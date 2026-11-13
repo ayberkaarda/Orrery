@@ -313,11 +313,23 @@ bool is_signed(FieldQuantity quantity) noexcept {
     return quantity == FieldQuantity::vorticity || quantity == FieldQuantity::pressure;
 }
 
+namespace {
+
+// True when `velocity` can be differentiated with `solid`: a valid grid, one
+// value per node and a mask that is empty or holds one flag per node.
+bool differentiable(const VectorGrid& velocity, std::span<const std::uint8_t> solid) {
+    const std::size_t count = velocity.grid.node_count();
+    return !validate(velocity.grid) && velocity.values.size() == count &&
+           (solid.empty() || solid.size() == count);
+}
+
+} // namespace
+
 VectorGrid vorticity(const VectorGrid& velocity, std::span<const std::uint8_t> solid) {
     VectorGrid result;
     result.grid = velocity.grid;
     result.values.assign(velocity.values.size(), glm::dvec3(0.0));
-    if (validate(velocity.grid) || velocity.values.size() != velocity.grid.node_count()) {
+    if (!differentiable(velocity, solid)) {
         return result;
     }
     for_each_node(velocity.grid, [&](const std::array<std::size_t, 3>& at, std::size_t node) {
@@ -334,7 +346,7 @@ ScalarGrid q_criterion(const VectorGrid& velocity, std::span<const std::uint8_t>
     ScalarGrid result;
     result.grid = velocity.grid;
     result.values.assign(velocity.values.size(), 0.0);
-    if (validate(velocity.grid) || velocity.values.size() != velocity.grid.node_count()) {
+    if (!differentiable(velocity, solid)) {
         return result;
     }
     for_each_node(velocity.grid, [&](const std::array<std::size_t, 3>& at, std::size_t node) {

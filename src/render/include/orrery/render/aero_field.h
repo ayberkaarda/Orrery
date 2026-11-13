@@ -127,7 +127,9 @@ enum class Axis : std::uint8_t { x, y, z };
 
 // Velocity gradient by central differences in the interior and one-sided
 // differences at the grid edges and next to solid nodes (derivatives along
-// z are zero on a 2D grid). Solid nodes get zero.
+// z are zero on a 2D grid). Solid nodes get zero. An invalid grid, a value
+// count other than the node count or a nonempty `solid` of another size gives
+// all zero.
 [[nodiscard]] VectorGrid vorticity(const VectorGrid& velocity, std::span<const std::uint8_t> solid);
 [[nodiscard]] ScalarGrid q_criterion(const VectorGrid& velocity,
                                      std::span<const std::uint8_t> solid);

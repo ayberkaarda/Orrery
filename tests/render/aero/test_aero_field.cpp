@@ -132,6 +132,31 @@ TEST_CASE("Derivatives are one-sided next to solid nodes", "[render][aero][field
     CHECK(w.values[u.grid.index(1, 4, 0)].z == Catch::Approx(-8.0)); // central (25 - 9) / 2
 }
 
+TEST_CASE("Derived quantities reject a solid mask of the wrong size", "[render][aero][field]") {
+    // Solid-body rotation on the smallest 2D grid: omega_z = 2 and Q = 1
+    // everywhere when the mask is empty or has one flag per node; a mask of
+    // any other size is rejected (all zero), never read past its end.
+    const VectorGrid u = vector_grid(2, 2, 1, {0.0, 0.0, 0.0}, 1.0, [](const glm::dvec3& p) {
+        return glm::dvec3(-p.y, p.x, 0.0);
+    });
+    const std::vector<std::uint8_t> exact(u.values.size(), 0);
+    const std::vector<std::uint8_t> truncated(1, 0);
+    const std::vector<std::uint8_t> longer(u.values.size() + 3, 0);
+    for (const std::vector<std::uint8_t>* mask : {&exact, &truncated, &longer}) {
+        const bool fits = mask->size() == u.values.size();
+        const VectorGrid w = vorticity(u, *mask);
+        const ScalarGrid q = q_criterion(u, *mask);
+        REQUIRE(w.values.size() == u.values.size());
+        REQUIRE(q.values.size() == u.values.size());
+        for (std::size_t n = 0; n < u.values.size(); ++n) {
+            CHECK(w.values[n].z == Catch::Approx(fits ? 2.0 : 0.0).margin(1.0e-12));
+            CHECK(q.values[n] == Catch::Approx(fits ? 1.0 : 0.0).margin(1.0e-12));
+        }
+    }
+    CHECK(vorticity(u, {}).values[0].z == Catch::Approx(2.0));
+    CHECK(q_criterion(u, {}).values[0] == Catch::Approx(1.0));
+}
+
 TEST_CASE("Section sampling interpolates along the normal", "[render][aero][field]") {
     const auto f = [](const glm::dvec3& p) { return p.x + 10.0 * p.y + 100.0 * p.z; };
     const ScalarGrid grid = scalar_grid(4, 5, 6, {0.0, 0.0, 0.0}, 1.0, f);
