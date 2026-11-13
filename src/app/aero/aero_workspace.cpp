@@ -143,7 +143,66 @@ bool same_inputs(const scene::AeroExperiment& a, const scene::AeroExperiment& b)
 // Animated ellipsis for running background work.
 std::string dots() {
     const auto phase = static_cast<int>(ImGui::GetTime() * 3.0) % 4;
-    return std::string(static_cast<std::size_t>(phase), '.');
+    std::string ellipsis(static_cast<std::size_t>(phase), '.');
+    return ellipsis;
+}
+
+constexpr std::array<aero::SolverKind, 3> kSolverKinds{
+    aero::SolverKind::panel, aero::SolverKind::newtonian, aero::SolverKind::lattice_boltzmann};
+
+int solver_index(aero::SolverKind kind) noexcept {
+    for (std::size_t i = 0; i < kSolverKinds.size(); ++i) {
+        if (kSolverKinds[i] == kind) {
+            return static_cast<int>(i);
+        }
+    }
+    return 0;
+}
+
+// The solver combo: selection 0 is the recommendation, 1 + i an override
+// with kSolverKinds[i]. Returns the entry picked this frame, or -1.
+int solver_combo(int selection, aero::SolverKind recommended_kind, bool two_d) {
+    const std::string recommended =
+        "Recommended (" + std::string(sim::solver_display_name(recommended_kind)) + ")";
+    const std::string preview = selection <= 0
+                                    ? recommended
+                                    : std::string(sim::solver_display_name(
+                                          kSolverKinds[static_cast<std::size_t>(selection - 1)]));
+    int picked = -1;
+    if (!ImGui::BeginCombo("##solver", preview.c_str())) {
+        return picked;
+    }
+    if (ImGui::Selectable(recommended.c_str(), selection == 0)) {
+        picked = 0;
+    }
+    for (std::size_t i = 0; i < kSolverKinds.size(); ++i) {
+        const bool available = sim::solver_available(kSolverKinds[i], two_d);
+        ImGui::BeginDisabled(!available);
+        if (ImGui::Selectable(std::string(sim::solver_display_name(kSolverKinds[i])).c_str(),
+                              selection == static_cast<int>(i) + 1)) {
+            picked = static_cast<int>(i) + 1;
+        }
+        ImGui::EndDisabled();
+        if (!available) {
+            w::tooltip("Needs a 3D surface mesh");
+        }
+    }
+    ImGui::EndCombo();
+    return picked;
+}
+
+// Rationale of the regime choice and the envelope warnings (never blocking).
+void regime_notes(const sim::FlowSummary& flow) {
+    w::wrapped(flow.regime.rationale, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+    if (flow.warnings.empty()) {
+        w::chip("WITHIN ENVELOPE", w::theme().accent_secondary,
+                "These conditions are inside the documented validity envelope of the solver.");
+        return;
+    }
+    for (const aero::ValidityWarning& warning : flow.warnings) {
+        w::warning(warning.message);
+    }
+    w::muted("Warnings never block a run.");
 }
 
 // The aero scene has no bodies for the camera to follow.
@@ -170,39 +229,24 @@ struct AeroWorkspace::Impl {
         rebuild_geometry();
     }
 
+    // Members are grouped by size (large objects first, scalars and text
+    // buffers last) so that the struct carries no padding to speak of.
     AeroWorkspaceOptions options;
 
     // Inputs.
     scene::AeroExperiment experiment;
     std::filesystem::path base_dir;
-    int source = 0; // 0 primitive, 1 file, 2 URL
-    bool source_tab_pending = true;
-    std::array<char, 1024> path_buffer{};
-    std::array<char, 2048> url_buffer{};
-    std::array<char, 512> license_buffer{};
-    std::array<char, 160> name_buffer{};
-    std::array<char, 8> naca_buffer{};
 
     // Geometry and background work.
     std::shared_ptr<const sim::PreparedGeometry> geometry;
-    std::uint64_t geometry_revision = 0;
-    bool rebuild_queued = false;
     sim::BackgroundTask<sim::PrepareResult> geometry_task;
     sim::BackgroundTask<sim::ImportResult> import_task;
     std::optional<sim::ImportedModel> pending_import;
-    int pending_unit = 0;
-    double pending_scale = 1.0;
-    int pending_up = 0; // 0 Z up, 1 Y up
-
     // Errors shown in the modal.
     std::optional<sim::GeometryError> modal;
-    bool modal_requested = false;
 
     // Solver.
     sim::AeroRunner runner;
-    bool to_convergence = false;
-    std::int64_t steps_per_frame = 100;
-    std::uint64_t recorded_run = 0;
     // Inputs of the last run started and the record it left when finished.
     std::optional<scene::AeroExperiment> run_inputs;
     std::optional<scene::AeroExperiment> run_record;
@@ -212,20 +256,40 @@ struct AeroWorkspace::Impl {
     // View.
     AeroLayers layers;
     render::Camera camera;
-    bool reframe_pending = true;
     render::UiRect camera_scene;
-    int camera_width = 0;
-    int camera_height = 0;
     render::CameraInput camera_input;
-    bool spin = false;
 
     // Experiments.
     sim::ExperimentListing listing;
-    bool listing_dirty = true;
     std::vector<char> compare; // per listed experiment
     std::string notice;
+
+    // Scalars.
+    std::uint64_t geometry_revision = 0;
+    std::uint64_t recorded_run = 0;
+    std::int64_t steps_per_frame = 100;
+    double pending_scale = 1.0;
+    int source = 0; // 0 primitive, 1 file, 2 URL
+    int pending_unit = 0;
+    int pending_up = 0; // 0 Z up, 1 Y up
+    int camera_width = 0;
+    int camera_height = 0;
+    bool source_tab_pending = true;
+    bool rebuild_queued = false;
+    bool modal_requested = false;
+    bool to_convergence = false;
+    bool reframe_pending = true;
+    bool spin = false;
+    bool listing_dirty = true;
     bool notice_is_error = false;
     bool layout_built = false;
+
+    // Text fields.
+    std::array<char, 1024> path_buffer{};
+    std::array<char, 2048> url_buffer{};
+    std::array<char, 512> license_buffer{};
+    std::array<char, 160> name_buffer{};
+    std::array<char, 8> naca_buffer{};
 
     // --- Inputs and background work ---------------------------------------
 
@@ -593,7 +657,32 @@ struct AeroWorkspace::Impl {
     void draw_import_inputs();
     void draw_geometry_report();
     void draw_flow_panel();
+    void draw_free_stream();
+    void draw_derived(const sim::FlowSummary& flow);
+    void draw_solver_choice(const sim::FlowSummary& flow, bool two_d);
+    void draw_lattice_settings(bool two_d);
+    void draw_run_button(bool runnable);
+    // Coefficients of the shown run and their renormalisation to the
+    // selected reference.
+    struct ShownCoefficients {
+        bool have = false;
+        double cd = 0.0;
+        double cl = 0.0;
+        double cy = 0.0;
+        double cm = 0.0;
+        double run_area = 1.0;
+        double run_length = 1.0;
+        double area_factor = 1.0;
+        double moment_factor = 1.0;
+    };
+
     void draw_results_panel();
+    void draw_run_status(const sim::AeroProgress& p, const scene::AeroResultRecord* record);
+    aero::ReferenceValues draw_reference(bool two_d);
+    void draw_coefficients(const ShownCoefficients& c, bool two_d);
+    void draw_breakdown(const aero::AeroResult& r, double area_factor, bool two_d);
+    void draw_lattice_controls(const sim::RunDiagnostics* diagnostics, double steps_per_second);
+    void draw_warnings(const aero::AeroResult* result, const scene::AeroResultRecord* record);
     void draw_convergence(const sim::RunDiagnostics* diagnostics, const aero::AeroResult* result,
                           const scene::AeroResultRecord* record);
     void draw_experiments_panel();
@@ -862,11 +951,7 @@ void AeroWorkspace::Impl::draw_geometry_report() {
 
 // --- Flow panel ----------------------------------------------------------------------
 
-void AeroWorkspace::Impl::draw_flow_panel() {
-    if (!ImGui::Begin(std::string(kFlowWindow).c_str())) {
-        ImGui::End();
-        return;
-    }
+void AeroWorkspace::Impl::draw_free_stream() {
     scene::AeroConditions& c = experiment.conditions;
     w::section("FREE STREAM");
     const auto row = [](const char* label, const char* id, double* value, const char* unit,
@@ -896,93 +981,74 @@ void AeroWorkspace::Impl::draw_flow_panel() {
         c = sim::sea_level_air(c);
     }
     w::tooltip("ISA sea level: 1.225 kg/m3, 1.789e-5 Pa s, 288.15 K");
+}
 
-    const sim::FlowSummary flow = input_flow();
+void AeroWorkspace::Impl::draw_derived(const sim::FlowSummary& flow) {
     for (const std::string& problem : flow.input_errors) {
         w::error(problem);
     }
-    if (flow.runnable()) {
-        w::section("DERIVED");
-        if (w::begin_properties("##derived", "Speed of sound")) {
-            w::property("Reynolds", w::significant(flow.reynolds, 3));
-            w::property("Mach", w::fixed(flow.mach, 3));
-            w::property("Dynamic pressure", w::significant(flow.dynamic_pressure) + " Pa");
-            w::property("Speed of sound", w::fixed(flow.speed_of_sound, 1) + " m/s");
-            w::property("Kinematic visc.", w::significant(flow.kinematic_viscosity, 3) + " m2/s");
-            w::property("Reference length", w::significant(flow.reference_length) + " m");
-            w::end_properties();
-        }
+    if (!flow.runnable()) {
+        return;
     }
+    w::section("DERIVED");
+    if (w::begin_properties("##derived", "Speed of sound")) {
+        w::property("Reynolds", w::significant(flow.reynolds, 3));
+        w::property("Mach", w::fixed(flow.mach, 3));
+        w::property("Dynamic pressure", w::significant(flow.dynamic_pressure) + " Pa");
+        w::property("Speed of sound", w::fixed(flow.speed_of_sound, 1) + " m/s");
+        w::property("Kinematic visc.", w::significant(flow.kinematic_viscosity, 3) + " m2/s");
+        w::property("Reference length", w::significant(flow.reference_length) + " m");
+        w::end_properties();
+    }
+}
 
+void AeroWorkspace::Impl::draw_solver_choice(const sim::FlowSummary& flow, bool two_d) {
     w::section("SOLVER");
-    const bool two_d = geometry && geometry->two_dimensional;
     w::row_label("Solver");
-    const std::string recommended =
-        "Recommended (" + std::string(sim::solver_display_name(flow.regime.recommended)) + ")";
-    const std::string preview =
-        experiment.solver.solver ? std::string(sim::solver_display_name(*experiment.solver.solver))
-                                 : recommended;
-    if (ImGui::BeginCombo("##solver", preview.c_str())) {
-        if (ImGui::Selectable(recommended.c_str(), !experiment.solver.solver)) {
-            experiment.solver.solver.reset();
-        }
-        for (const aero::SolverKind kind : {aero::SolverKind::panel, aero::SolverKind::newtonian,
-                                            aero::SolverKind::lattice_boltzmann}) {
-            const bool available = sim::solver_available(kind, two_d);
-            ImGui::BeginDisabled(!available);
-            if (ImGui::Selectable(std::string(sim::solver_display_name(kind)).c_str(),
-                                  experiment.solver.solver == kind)) {
-                experiment.solver.solver = kind;
-            }
-            ImGui::EndDisabled();
-            if (!available) {
-                w::tooltip("Needs a 3D surface mesh");
-            }
-        }
-        ImGui::EndCombo();
+    // The override is read and written here only; the combo and the notes
+    // work on plain values (keeps the optional-access analysis small).
+    std::optional<aero::SolverKind>& choice = experiment.solver.solver;
+    const int selection = choice.has_value() ? solver_index(*choice) + 1 : 0;
+    const int picked = solver_combo(selection, flow.regime.recommended, two_d);
+    if (picked == 0) {
+        choice.reset();
+    } else if (picked > 0) {
+        choice = kSolverKinds[static_cast<std::size_t>(picked - 1)];
     }
     if (flow.runnable()) {
-        w::wrapped(flow.regime.rationale, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        if (flow.warnings.empty()) {
-            w::chip("WITHIN ENVELOPE", w::theme().accent_secondary,
-                    "These conditions are inside the documented validity envelope of the "
-                    "solver.");
-        } else {
-            for (const aero::ValidityWarning& warning : flow.warnings) {
-                w::warning(warning.message);
-            }
-            w::muted("Warnings never block a run.");
-        }
+        regime_notes(flow);
     }
-    if (flow.solver == aero::SolverKind::lattice_boltzmann) {
-        w::section("LATTICE");
-        const double default_cells = two_d ? 40.0 : 16.0;
-        w::row_label_with_unit("Resolution", "cells/L");
-        double cells = experiment.solver.lbm_cells_per_length > 0.0
-                           ? experiment.solver.lbm_cells_per_length
-                           : default_cells;
-        if (ImGui::InputDouble("##cells", &cells, 0.0, 0.0, "%.4g") && cells > 0.0) {
-            experiment.solver.lbm_cells_per_length = cells;
-        }
-        w::unit("cells/L");
-        w::tooltip("Lattice cells per reference length. The workspace runs the CPU solver: "
-                   "3D lattices grow with the cube of this value.");
-        w::row_label_with_unit("Duration", "L/U");
-        double duration = experiment.solver.lbm_duration > 0.0 ? experiment.solver.lbm_duration
-                                                               : (two_d ? 60.0 : 30.0);
-        if (ImGui::InputDouble("##duration", &duration, 0.0, 0.0, "%.4g") && duration > 0.0) {
-            experiment.solver.lbm_duration = duration;
-        }
-        w::unit("L/U");
-        w::tooltip("Simulated time in convective times (reference length / speed).");
+}
+void AeroWorkspace::Impl::draw_lattice_settings(bool two_d) {
+    w::section("LATTICE");
+    const double default_cells = two_d ? 40.0 : 16.0;
+    w::row_label_with_unit("Resolution", "cells/L");
+    double cells = experiment.solver.lbm_cells_per_length > 0.0
+                       ? experiment.solver.lbm_cells_per_length
+                       : default_cells;
+    if (ImGui::InputDouble("##cells", &cells, 0.0, 0.0, "%.4g") && cells > 0.0) {
+        experiment.solver.lbm_cells_per_length = cells;
     }
+    w::unit("cells/L");
+    w::tooltip("Lattice cells per reference length. The workspace runs the CPU solver: "
+               "3D lattices grow with the cube of this value.");
+    w::row_label_with_unit("Duration", "L/U");
+    double duration = experiment.solver.lbm_duration > 0.0 ? experiment.solver.lbm_duration
+                                                           : (two_d ? 60.0 : 30.0);
+    if (ImGui::InputDouble("##duration", &duration, 0.0, 0.0, "%.4g") && duration > 0.0) {
+        experiment.solver.lbm_duration = duration;
+    }
+    w::unit("L/U");
+    w::tooltip("Simulated time in convective times (reference length / speed).");
+}
 
-    // Run from here as well as from the bar: the inputs are right above.
+void AeroWorkspace::Impl::draw_run_button(bool runnable) {
     ImGui::Dummy(ImVec2(0.0F, 4.0F));
     const sim::AeroRunState state = runner.latest().status.state;
     const bool busy_run = state == sim::AeroRunState::setting_up ||
                           state == sim::AeroRunState::running || state == sim::AeroRunState::paused;
-    const bool can_run = flow.runnable() && geometry != nullptr && !geometry_task.started();
+    const bool waiting = geometry == nullptr || geometry_task.started();
+    const bool can_run = runnable && !waiting;
     ImGui::BeginDisabled(!can_run);
     ImGui::PushStyleColor(ImGuiCol_Button, w::color(w::theme().accent, 0.85F));
     ImGui::PushStyleColor(ImGuiCol_ButtonHovered, w::color(w::theme().accent_hover));
@@ -994,34 +1060,44 @@ void AeroWorkspace::Impl::draw_flow_panel() {
     ImGui::PopStyleColor(4);
     ImGui::EndDisabled();
     if (!can_run) {
-        w::tooltip(geometry == nullptr || geometry_task.started()
-                       ? "Waiting for the geometry"
-                       : "Fix the inputs marked above first");
+        w::tooltip(waiting ? "Waiting for the geometry" : "Fix the inputs marked above first");
     }
+}
+
+void AeroWorkspace::Impl::draw_flow_panel() {
+    if (!ImGui::Begin(std::string(kFlowWindow).c_str())) {
+        ImGui::End();
+        return;
+    }
+    draw_free_stream();
+    const sim::FlowSummary flow = input_flow();
+    draw_derived(flow);
+    const bool two_d = geometry != nullptr && geometry->two_dimensional;
+    draw_solver_choice(flow, two_d);
+    if (flow.solver == aero::SolverKind::lattice_boltzmann) {
+        draw_lattice_settings(two_d);
+    }
+    // Run from here as well as from the bar: the inputs are right above.
+    draw_run_button(flow.runnable());
     ImGui::End();
 }
 
 // --- Results panel -------------------------------------------------------------------
 
-void AeroWorkspace::Impl::draw_results_panel() {
-    if (!ImGui::Begin(std::string(kResultsWindow).c_str())) {
-        ImGui::End();
-        return;
-    }
-    const sim::AeroProgress& p = runner.latest();
-    const bool live = p.result != nullptr && p.spec != nullptr;
-    const scene::AeroResultRecord* record = !live && loaded_result ? &*loaded_result : nullptr;
-
-    // Status line.
+void AeroWorkspace::Impl::draw_run_status(const sim::AeroProgress& p,
+                                          const scene::AeroResultRecord* record) {
     const sim::AeroRunState state = p.status.state;
+    const bool live = p.result != nullptr && p.spec != nullptr;
     if (live || state == sim::AeroRunState::setting_up || state == sim::AeroRunState::failed) {
         w::text(std::string(sim::solver_display_name(p.status.solver)) +
                 (p.status.two_dimensional ? " (2D)" : " (3D)"));
         ImGui::SameLine();
-        const render::UiColor tint = state == sim::AeroRunState::failed ? w::theme().warning
-                                     : state == sim::AeroRunState::finished
-                                         ? w::theme().accent_secondary
-                                         : w::theme().accent;
+        render::UiColor tint = w::theme().accent;
+        if (state == sim::AeroRunState::failed) {
+            tint = w::theme().warning;
+        } else if (state == sim::AeroRunState::finished) {
+            tint = w::theme().accent_secondary;
+        }
         w::chip(state_label(state), tint, nullptr);
         if (live && state == sim::AeroRunState::finished) {
             ImGui::SameLine();
@@ -1042,9 +1118,9 @@ void AeroWorkspace::Impl::draw_results_panel() {
     if (state == sim::AeroRunState::failed) {
         w::error(p.status.message);
     }
+}
 
-    // Reference area and the coefficients normalised by it.
-    const bool two_d = geometry && geometry->two_dimensional;
+aero::ReferenceValues AeroWorkspace::Impl::draw_reference(bool two_d) {
     w::section("REFERENCE");
     if (two_d) {
         w::muted("2D section: chord x 1 m, per metre of span");
@@ -1062,7 +1138,7 @@ void AeroWorkspace::Impl::draw_results_panel() {
         }
     }
     aero::ReferenceValues shown;
-    if (geometry) {
+    if (geometry != nullptr) {
         shown = sim::reference_values(*geometry, experiment.solver);
     }
     if (w::begin_properties("##refvalues", "Length")) {
@@ -1070,36 +1146,10 @@ void AeroWorkspace::Impl::draw_results_panel() {
         w::property("Length", w::significant(shown.length) + " m");
         w::end_properties();
     }
+    return shown;
+}
 
-    double cd = 0.0;
-    double cl = 0.0;
-    double cy = 0.0;
-    double cm = 0.0;
-    double run_area = shown.area;
-    double run_length = shown.length;
-    bool have = false;
-    if (live) {
-        cd = p.result->cd;
-        cl = p.result->cl;
-        cy = p.result->cy;
-        cm = p.result->cm;
-        run_area = p.reference.area;
-        run_length = p.reference.length;
-        have = true;
-    } else if (record != nullptr) {
-        cd = record->cd;
-        cl = record->cl;
-        cy = record->cy;
-        cm = record->cm;
-        run_area = record->reference_area_m2;
-        run_length = record->reference_length_m;
-        have = true;
-    }
-    // Coefficients of the run renormalised to the selected reference.
-    const double area_factor = have && shown.area > 0.0 ? run_area / shown.area : 1.0;
-    const double moment_factor = have && shown.area > 0.0 && shown.length > 0.0
-                                     ? run_area * run_length / (shown.area * shown.length)
-                                     : 1.0;
+void AeroWorkspace::Impl::draw_coefficients(const ShownCoefficients& c, bool two_d) {
     w::section("COEFFICIENTS");
     const ImGuiStyle& style = ImGui::GetStyle();
     if (ImGui::BeginTable("##coefficients", two_d ? 4 : 5, ImGuiTableFlags_SizingStretchSame)) {
@@ -1107,13 +1157,15 @@ void AeroWorkspace::Impl::draw_results_panel() {
             const char* caption;
             std::string value;
         };
-        std::vector<Tile> tiles{{"Cd", have ? w::fixed(cd * area_factor, 4) : "-"},
-                                {"Cl", have ? w::fixed(cl * area_factor, 4) : "-"},
-                                {"Cm", have ? w::fixed(cm * moment_factor, 4) : "-"}};
+        std::vector<Tile> tiles;
+        tiles.reserve(5);
+        tiles.push_back({"Cd", c.have ? w::fixed(c.cd * c.area_factor, 4) : "-"});
+        tiles.push_back({"Cl", c.have ? w::fixed(c.cl * c.area_factor, 4) : "-"});
+        tiles.push_back({"Cm", c.have ? w::fixed(c.cm * c.moment_factor, 4) : "-"});
         if (!two_d) {
-            tiles.push_back({"Cy", have ? w::fixed(cy * area_factor, 4) : "-"});
+            tiles.push_back({"Cy", c.have ? w::fixed(c.cy * c.area_factor, 4) : "-"});
         }
-        tiles.push_back({"L/D", have && cd != 0.0 ? w::fixed(cl / cd, 2) : "-"});
+        tiles.push_back({"L/D", c.have && c.cd != 0.0 ? w::fixed(c.cl / c.cd, 2) : "-"});
         ImGui::TableNextRow();
         for (std::size_t i = 0; i < tiles.size(); ++i) {
             ImGui::TableSetColumnIndex(static_cast<int>(i));
@@ -1126,87 +1178,84 @@ void AeroWorkspace::Impl::draw_results_panel() {
         }
         ImGui::EndTable();
     }
-    if (have && std::abs(area_factor - 1.0) > 1e-12) {
-        w::muted("Renormalised from the run's reference area " + w::significant(run_area) + " " +
+    if (c.have && std::abs(c.area_factor - 1.0) > 1e-12) {
+        w::muted("Renormalised from the run's reference area " + w::significant(c.run_area) + " " +
                  kSquared);
     }
-    if (live) {
-        const aero::AeroResult& r = *p.result;
-        if (w::begin_properties("##breakdown", "Stagnation heat flux")) {
-            w::property("Cd pressure", w::fixed(r.cd_pressure * area_factor, 4));
-            if (r.cd_induced != 0.0) {
-                w::property("Cd induced", w::fixed(r.cd_induced * area_factor, 4));
-            }
-            if (r.cd_friction != 0.0) {
-                w::property("Cd friction (est.)", w::fixed(r.cd_friction * area_factor, 4));
-            }
-            if (r.stagnation_heat_flux) {
-                w::property("Stagnation heat flux",
-                            w::significant(*r.stagnation_heat_flux * 1.0e-6, 3) + " MW/m2");
-            }
-            w::property("Force", w::significant(geom::norm(r.force), 4) + (two_d ? " N/m" : " N"));
-            w::end_properties();
+}
+
+void AeroWorkspace::Impl::draw_breakdown(const aero::AeroResult& r, double area_factor,
+                                         bool two_d) {
+    if (w::begin_properties("##breakdown", "Stagnation heat flux")) {
+        w::property("Cd pressure", w::fixed(r.cd_pressure * area_factor, 4));
+        if (r.cd_induced != 0.0) {
+            w::property("Cd induced", w::fixed(r.cd_induced * area_factor, 4));
         }
         if (r.cd_friction != 0.0) {
-            w::muted("Skin friction is an estimate, reported apart and not included in Cd.");
+            w::property("Cd friction (est.)", w::fixed(r.cd_friction * area_factor, 4));
         }
+        const double heat = r.stagnation_heat_flux.value_or(0.0);
+        if (heat > 0.0) {
+            w::property("Stagnation heat flux", w::significant(heat * 1.0e-6, 3) + " MW/m2");
+        }
+        w::property("Force", w::significant(geom::norm(r.force), 4) + (two_d ? " N/m" : " N"));
+        w::end_properties();
     }
+    if (r.cd_friction != 0.0) {
+        w::muted("Skin friction is an estimate, reported apart and not included in Cd.");
+    }
+}
 
-    // Lattice Boltzmann pacing and progress.
-    const sim::RunDiagnostics* diagnostics = live ? p.diagnostics.get() : nullptr;
-    const bool lbm = (live || state == sim::AeroRunState::setting_up)
-                         ? p.status.solver == aero::SolverKind::lattice_boltzmann
-                         : input_flow().solver == aero::SolverKind::lattice_boltzmann;
-    if (lbm) {
-        w::section("LATTICE BOLTZMANN");
-        w::row_label("Steps per frame");
-        if (ImGui::BeginCombo("##spf",
-                              w::grouped(static_cast<std::uint64_t>(steps_per_frame)).c_str())) {
-            for (const std::int64_t steps : kStepsPerFrame) {
-                if (ImGui::Selectable(w::grouped(static_cast<std::uint64_t>(steps)).c_str(),
-                                      steps == steps_per_frame)) {
-                    steps_per_frame = steps;
-                    runner.send(sim::SetAeroStepsPerFrame{steps});
-                }
-            }
-            ImGui::EndCombo();
-        }
-        w::tooltip("Lattice steps advanced for every rendered frame in the per-frame mode.");
-        w::row_label("Run to convergence");
-        if (ImGui::Checkbox("##toconv", &to_convergence)) {
-            runner.send(sim::SetAeroToConvergence{to_convergence});
-        }
-        w::tooltip("Step back to back until the run's duration is reached instead of pacing "
-                   "the solver with the frames.");
-        if (diagnostics != nullptr && diagnostics->planned_steps > 0) {
-            const double fraction =
-                std::min(1.0, static_cast<double>(diagnostics->lattice_steps) /
-                                  static_cast<double>(diagnostics->planned_steps));
-            const std::string overlay = w::grouped(diagnostics->lattice_steps) + " / " +
-                                        w::grouped(diagnostics->planned_steps) + " steps";
-            ImGui::ProgressBar(static_cast<float>(fraction), ImVec2(-1.0F, 0.0F), overlay.c_str());
-            if (w::begin_properties("##lattice", "Throughput")) {
-                w::property("Lattice", diagnostics->lattice);
-                w::property("Throughput",
-                            w::grouped(static_cast<std::uint64_t>(p.status.steps_per_second)) +
-                                " steps/s");
-                if (diagnostics->strouhal) {
-                    w::property("Strouhal", w::fixed(*diagnostics->strouhal, 4));
-                }
-                if (diagnostics->blockage > 0.0) {
-                    w::property("Blockage", w::fixed(diagnostics->blockage * 100.0, 1) + " %");
-                }
-                w::end_properties();
+void AeroWorkspace::Impl::draw_lattice_controls(const sim::RunDiagnostics* diagnostics,
+                                                double steps_per_second) {
+    w::section("LATTICE BOLTZMANN");
+    w::row_label("Steps per frame");
+    if (ImGui::BeginCombo("##spf",
+                          w::grouped(static_cast<std::uint64_t>(steps_per_frame)).c_str())) {
+        for (const std::int64_t steps : kStepsPerFrame) {
+            if (ImGui::Selectable(w::grouped(static_cast<std::uint64_t>(steps)).c_str(),
+                                  steps == steps_per_frame)) {
+                steps_per_frame = steps;
+                runner.send(sim::SetAeroStepsPerFrame{steps});
             }
         }
+        ImGui::EndCombo();
     }
+    w::tooltip("Lattice steps advanced for every rendered frame in the per-frame mode.");
+    w::row_label("Run to convergence");
+    if (ImGui::Checkbox("##toconv", &to_convergence)) {
+        runner.send(sim::SetAeroToConvergence{to_convergence});
+    }
+    w::tooltip("Step back to back until the run's duration is reached instead of pacing "
+               "the solver with the frames.");
+    if (diagnostics == nullptr || diagnostics->planned_steps == 0) {
+        return;
+    }
+    const double fraction = std::min(1.0, static_cast<double>(diagnostics->lattice_steps) /
+                                              static_cast<double>(diagnostics->planned_steps));
+    const std::string overlay = w::grouped(diagnostics->lattice_steps) + " / " +
+                                w::grouped(diagnostics->planned_steps) + " steps";
+    ImGui::ProgressBar(static_cast<float>(fraction), ImVec2(-1.0F, 0.0F), overlay.c_str());
+    if (w::begin_properties("##lattice", "Throughput")) {
+        w::property("Lattice", diagnostics->lattice);
+        w::property("Throughput",
+                    w::grouped(static_cast<std::uint64_t>(steps_per_second)) + " steps/s");
+        const double strouhal = diagnostics->strouhal.value_or(0.0);
+        if (strouhal > 0.0) {
+            w::property("Strouhal", w::fixed(strouhal, 4));
+        }
+        if (diagnostics->blockage > 0.0) {
+            w::property("Blockage", w::fixed(diagnostics->blockage * 100.0, 1) + " %");
+        }
+        w::end_properties();
+    }
+}
 
-    draw_convergence(diagnostics, live ? p.result.get() : nullptr, record);
-
-    const std::vector<aero::ValidityWarning>* warnings = live ? &p.result->warnings : nullptr;
-    if (warnings != nullptr && !warnings->empty()) {
+void AeroWorkspace::Impl::draw_warnings(const aero::AeroResult* result,
+                                        const scene::AeroResultRecord* record) {
+    if (result != nullptr && !result->warnings.empty()) {
         w::section("WARNINGS");
-        for (const aero::ValidityWarning& warning : *warnings) {
+        for (const aero::ValidityWarning& warning : result->warnings) {
             w::warning(warning.message);
             w::tooltip(warning.code.c_str());
         }
@@ -1216,6 +1265,58 @@ void AeroWorkspace::Impl::draw_results_panel() {
             w::warning(code);
         }
     }
+}
+
+void AeroWorkspace::Impl::draw_results_panel() {
+    if (!ImGui::Begin(std::string(kResultsWindow).c_str())) {
+        ImGui::End();
+        return;
+    }
+    const sim::AeroProgress& p = runner.latest();
+    const bool live = p.result != nullptr && p.spec != nullptr;
+    const scene::AeroResultRecord* record =
+        !live && loaded_result.has_value() ? &loaded_result.value() : nullptr;
+    draw_run_status(p, record);
+
+    const bool two_d = geometry != nullptr && geometry->two_dimensional;
+    const aero::ReferenceValues shown = draw_reference(two_d);
+    ShownCoefficients c;
+    c.run_area = shown.area;
+    c.run_length = shown.length;
+    if (live) {
+        c = ShownCoefficients{true,         p.result->cd,     p.result->cl,      p.result->cy,
+                              p.result->cm, p.reference.area, p.reference.length};
+    } else if (record != nullptr) {
+        c = ShownCoefficients{true,
+                              record->cd,
+                              record->cl,
+                              record->cy,
+                              record->cm,
+                              record->reference_area_m2,
+                              record->reference_length_m};
+    }
+    // Coefficients of the run renormalised to the selected reference.
+    if (c.have && shown.area > 0.0) {
+        c.area_factor = c.run_area / shown.area;
+        if (shown.length > 0.0) {
+            c.moment_factor = c.run_area * c.run_length / (shown.area * shown.length);
+        }
+    }
+    draw_coefficients(c, two_d);
+    if (live) {
+        draw_breakdown(*p.result, c.area_factor, two_d);
+    }
+
+    const sim::RunDiagnostics* diagnostics = live ? p.diagnostics.get() : nullptr;
+    const sim::AeroRunState state = p.status.state;
+    const bool lbm = (live || state == sim::AeroRunState::setting_up)
+                         ? p.status.solver == aero::SolverKind::lattice_boltzmann
+                         : input_flow().solver == aero::SolverKind::lattice_boltzmann;
+    if (lbm) {
+        draw_lattice_controls(diagnostics, p.status.steps_per_second);
+    }
+    draw_convergence(diagnostics, live ? p.result.get() : nullptr, record);
+    draw_warnings(live ? p.result.get() : nullptr, record);
     ImGui::End();
 }
 
