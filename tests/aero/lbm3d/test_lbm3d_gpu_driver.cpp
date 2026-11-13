@@ -179,7 +179,9 @@ TEST_CASE("The GPU D3Q19 driver checks the device memory", "[aero][lbm3d]") {
     const Lbm3DConfig config = periodic_box(16, 16, 16, 0.6);
     const SolidMask3D mask = fluid_mask_3d(16, 16, 16);
     const std::size_t population = *gpu_population_buffer_bytes(config);
-    const std::size_t total = *gpu_memory_bytes(config);
+    // No links; the one wall slot of the halfway wall.
+    const std::size_t total = *gpu_memory_bytes(config, 0, 0);
+    CHECK(total == *gpu_memory_bytes(config) + 19 * 4);
 
     backend.set_memory({std::nullopt, population - 1});
     auto binding = make_gpu_solver(backend, config, mask);
@@ -195,4 +197,50 @@ TEST_CASE("The GPU D3Q19 driver checks the device memory", "[aero][lbm3d]") {
 
     backend.set_memory({total, population});
     CHECK(make_gpu_solver(backend, config, mask));
+}
+
+TEST_CASE("The GPU D3Q19 memory check counts the boundary tables", "[aero][lbm3d]") {
+    // A periodic 32^3 checkerboard: every fluid node has 6 links (the face
+    // neighbours are solid). Besides the lattice buffers the solver
+    // allocates per link two uint32 (cell, direction) and one float (force),
+    // and for the interpolated wall 19 floats per fluid node with links
+    // (19 in all for the halfway wall).
+    for (const SolidWall wall_kind : {SolidWall::interpolated, SolidWall::halfway}) {
+        Lbm3DConfig config = periodic_box(32, 32, 32, 0.6);
+        config.solid_wall = wall_kind;
+        SolidMask3D mask = fluid_mask_3d(32, 32, 32);
+        mask.distance.assign(mask.solid.size(), 0.5);
+        std::size_t fluid = 0;
+        for (std::size_t z = 0; z < 32; ++z) {
+            for (std::size_t y = 0; y < 32; ++y) {
+                for (std::size_t x = 0; x < 32; ++x) {
+                    const std::size_t c = mask.index(x, y, z);
+                    const bool solid = (x + y + z) % 2 == 1;
+                    mask.solid[c] = solid ? 1 : 0;
+                    mask.distance[c] = solid ? -0.5 : 0.5;
+                    fluid += solid ? 0 : 1;
+                }
+            }
+        }
+        const std::size_t links = boundary_links(config, mask).size();
+        REQUIRE(links == 6 * fluid);
+        const std::size_t slots = wall_kind == SolidWall::interpolated ? fluid : 1;
+        const std::size_t base = *gpu_memory_bytes(config);
+        const std::size_t total = base + slots * 19 * 4 + links * (2 * 4 + 4);
+        INFO("base " << base << ", total " << total);
+        CHECK(gpu_memory_bytes(config, links, wall_kind == SolidWall::interpolated ? fluid : 0) ==
+              total);
+
+        compute::NullComputeBackend backend;
+        backend.set_memory({base + (total - base) / 2, std::nullopt});
+        auto between = make_gpu_solver(backend, config, mask);
+        REQUIRE_FALSE(between);
+        CHECK(between.error().find("available") != std::string::npos);
+        CHECK(backend.live_buffers() == 0);
+        backend.set_memory({total - 1, std::nullopt});
+        CHECK_FALSE(make_gpu_solver(backend, config, mask));
+        CHECK(backend.live_buffers() == 0);
+        backend.set_memory({total, std::nullopt});
+        CHECK(make_gpu_solver(backend, config, mask));
+    }
 }

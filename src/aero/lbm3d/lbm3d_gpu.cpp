@@ -127,9 +127,10 @@ std::optional<std::string> check_binary32(const Lbm3DConfig& config) {
 
 // The device must hold the lattice: one population buffer within the largest
 // binding, everything within the free memory, when the backend reports them.
-std::optional<std::string> check_memory(const IComputeBackend& backend, const Lbm3DConfig& config) {
+std::optional<std::string> check_memory(const IComputeBackend& backend, const Lbm3DConfig& config,
+                                        std::size_t links, std::size_t wall_slots) {
     const std::optional<std::size_t> buffer = gpu_population_buffer_bytes(config);
-    const std::optional<std::size_t> total = gpu_memory_bytes(config);
+    const std::optional<std::size_t> total = gpu_memory_bytes(config, links, wall_slots);
     if (!buffer || !total) {
         return std::string("lbm3d gpu: the device memory of the lattice overflows std::size_t");
     }
@@ -148,9 +149,10 @@ std::optional<std::string> check_memory(const IComputeBackend& backend, const Lb
 
 class GpuLbm3D final : public Lbm3DSolver {
 public:
-    GpuLbm3D(IComputeBackend& backend, const Lbm3DConfig& config, SolidMask3D mask)
+    GpuLbm3D(IComputeBackend& backend, const Lbm3DConfig& config, SolidMask3D mask,
+             std::vector<BoundaryLink3D> links)
         : backend_(&backend), config_(config), mask_(std::move(mask)), cells_(mask_.solid.size()),
-          links_(boundary_links(config_, mask_)) {
+          links_(std::move(links)) {
         const double c = config_.smagorinsky.enabled ? config_.smagorinsky.constant : 0.0;
         uniforms_ = {
             Uniform{"u_nx", static_cast<std::uint32_t>(config_.nx)},
@@ -186,8 +188,9 @@ public:
         };
     }
 
-    // Allocates and fills the device buffers.
-    [[nodiscard]] Status allocate() {
+    // Allocates and fills the device buffers; `walls` is the wall table of
+    // the links (make_gpu_solver counted it in the memory check).
+    [[nodiscard]] Status allocate(const detail3d::WallTable& walls) {
         const std::size_t population_bytes = q * cells_ * compute::float32_bytes;
         for (ScopedBuffer& buffer : populations_) {
             auto made = compute::make_buffer(*backend_, population_bytes);
@@ -204,7 +207,6 @@ public:
         {
             // Node classes, and 3 + slot for the nodes with wall fractions.
             const std::vector<std::uint8_t> node_class = detail3d::classify_nodes(config_, mask_);
-            const detail3d::WallTable walls = detail3d::wall_table(config_, mask_, links_);
             std::vector<std::uint32_t> codes;
             codes.reserve(cells_);
             for (std::size_t c = 0; c < cells_; ++c) {
@@ -494,11 +496,15 @@ make_gpu_solver(compute::IComputeBackend& backend, const Lbm3DConfig& config, So
     if (auto problem = check_binary32(config)) {
         return core::failure(std::move(*problem));
     }
-    if (auto problem = check_memory(backend, config)) {
+    // The boundary tables are sized by the geometry: built on the host
+    // first, so the memory check counts every buffer the solver creates.
+    std::vector<BoundaryLink3D> links = boundary_links(config, mask);
+    const detail3d::WallTable walls = detail3d::wall_table(config, mask, links);
+    if (auto problem = check_memory(backend, config, links.size(), walls.q.size() / q)) {
         return core::failure(std::move(*problem));
     }
-    auto solver = std::make_unique<GpuLbm3D>(backend, config, std::move(mask));
-    if (auto ready = solver->allocate(); !ready) {
+    auto solver = std::make_unique<GpuLbm3D>(backend, config, std::move(mask), std::move(links));
+    if (auto ready = solver->allocate(walls); !ready) {
         return core::failure(std::string(ready.error()));
     }
     return std::unique_ptr<Lbm3DSolver>(std::move(solver));

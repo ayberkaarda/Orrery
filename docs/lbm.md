@@ -424,7 +424,12 @@ GL_MAX_COMPUTE_WORK_GROUP_COUNT (a 128^3 periodic checkerboard has 6.3
 million links, 98,304 groups in one row); tested with a host emulation of
 the kernel under that limit, 4.3 million links each visited once. Before allocating, `make_gpu_solver` refuses what binary32 cannot
 carry (as in 2D), a population buffer above the largest binding and a
-lattice above the free device memory, when the backend reports them
+lattice above the free device memory, when the backend reports them. The
+memory total is every buffer the solver creates: the lattice buffers and
+the boundary tables, which grow with the geometry (12 bytes per link, 76 per
+node with wall fractions; a periodic 128^3 checkerboard with the
+interpolated wall adds 155 MB to the 361 MB of the lattice), so the links
+and the wall table are built on the host before the check
 (ADR-020; the RX 9060 XT reports 2048 MiB per binding and its free memory
 through `GL_ATI_meminfo`).
 

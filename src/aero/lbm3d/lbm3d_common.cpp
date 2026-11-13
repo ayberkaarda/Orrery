@@ -284,6 +284,21 @@ std::optional<std::size_t> gpu_memory_bytes(const Lbm3DConfig& config) noexcept 
     return result_of(plus(plus(populations, classes), plus(moments, outlet)));
 }
 
+std::optional<std::size_t> gpu_memory_bytes(const Lbm3DConfig& config, std::size_t links,
+                                            std::size_t wall_slots) noexcept {
+    // The wall fractions (19 per slot; one slot, bound but unread, for the
+    // halfway wall), and per link the packed (cell, direction) pair and the
+    // link force.
+    const Count slots{std::max<std::size_t>(wall_slots, 1), true};
+    const Count wall = times(times(slots, d3q19::q), kFloat32Bytes);
+    const Count per_link = times(Count{links, true}, 2 * sizeof(std::uint32_t) + kFloat32Bytes);
+    const std::optional<std::size_t> base = gpu_memory_bytes(config);
+    if (!base) {
+        return std::nullopt;
+    }
+    return result_of(plus(Count{*base, true}, plus(wall, per_link)));
+}
+
 std::optional<std::size_t> cpu_memory_bytes(const Lbm3DConfig& config) noexcept {
     const Count cells = cells_of(config);
     // Two population arrays (double), the mask and the node classes.

@@ -176,9 +176,17 @@ using InitialState3D = std::function<d3q19::Moments(std::size_t x, std::size_t y
 
 // Memory the solvers allocate for a lattice (populations twice, node
 // classes, moments, outlet history), checked without wrapping; empty when
-// the count does not fit in std::size_t.
+// the count does not fit in std::size_t. On the GPU these are the buffers
+// that do not depend on the geometry.
 [[nodiscard]] std::optional<std::size_t> gpu_memory_bytes(const Lbm3DConfig& config) noexcept;
 [[nodiscard]] std::optional<std::size_t> cpu_memory_bytes(const Lbm3DConfig& config) noexcept;
+// Everything the GPU solver allocates: the lattice buffers above plus the
+// boundary tables of `links` boundary links (cell, direction and force per
+// link) and of `wall_slots` nodes with wall fractions (19 binary32 values
+// each; at least one slot is allocated, also for the halfway wall). This is
+// the total make_gpu_solver checks against the free device memory.
+[[nodiscard]] std::optional<std::size_t>
+gpu_memory_bytes(const Lbm3DConfig& config, std::size_t links, std::size_t wall_slots) noexcept;
 // Bytes of one population buffer on the device (19 binary32 values per node).
 [[nodiscard]] std::optional<std::size_t>
 gpu_population_buffer_bytes(const Lbm3DConfig& config) noexcept;
@@ -232,7 +240,9 @@ make_cpu_solver(const Lbm3DConfig& config, SolidMask3D mask);
 // validate(), refuses before allocating: a real parameter outside the
 // binary32 range, a tau that rounds to 1/2 in binary32, a population buffer
 // larger than the largest buffer the device can bind, and a lattice whose
-// device memory exceeds what the backend reports as available.
+// device memory, boundary tables included (gpu_memory_bytes with the links
+// and wall slots of the mask), exceeds what the backend reports as
+// available.
 [[nodiscard]] core::Result<std::unique_ptr<Lbm3DSolver>, std::string>
 make_gpu_solver(compute::IComputeBackend& backend, const Lbm3DConfig& config, SolidMask3D mask);
 
