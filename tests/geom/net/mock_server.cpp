@@ -350,6 +350,16 @@ struct MockServer::Impl {
             return;
         }
         std::string_view body = response.body;
+        if (response.trickle_interval) {
+            while (!body.empty() && !stop.load()) {
+                if (!write_all(client, ssl, body.substr(0, 1))) {
+                    return;
+                }
+                body.remove_prefix(1);
+                pause(*response.trickle_interval);
+            }
+            return;
+        }
         if (response.stall_after_bytes) {
             const std::size_t sent = std::min(*response.stall_after_bytes, body.size());
             if (!write_all(client, ssl, body.substr(0, sent))) {

@@ -39,6 +39,10 @@ struct CliOptions {
     // Write the profiling zones of the run to this file as Chrome trace-event
     // JSON (docs/observability.md); empty: no trace.
     std::filesystem::path trace;
+    // Headless: an aero experiment whose model is not in the cache may
+    // download it from its recorded URL (docs/url-import-security.md,
+    // "Experiments"); without it such a run fails before any network access.
+    bool allow_download = false;
 };
 
 inline constexpr std::int64_t kMaxFrames = 1'000'000;
@@ -54,9 +58,9 @@ inline constexpr int kExitNoGlContext = 3; // no OpenGL 4.6 context could be cre
 // Parses the arguments after the program name. Options take their value as
 // the next argument or after '=' (--frame=10). --help and --version win over
 // everything else; otherwise every argument must be valid, no option may be
-// repeated, and the combination must make sense (--frame and --out only with
-// --headless, which requires --experiment and --out). The error is one line
-// suitable for stderr.
+// repeated, and the combination must make sense (--frame, --out and
+// --allow-download only with --headless, which requires --experiment and
+// --out). The error is one line suitable for stderr.
 [[nodiscard]] core::Result<CliOptions, std::string>
 parse_command_line(std::span<const std::string_view> args);
 

@@ -14,6 +14,7 @@
 
 #include "app_test_support.h"
 #include "orrery/atmo/planet.h"
+#include "orrery/scene/entry_experiment.h"
 #include "orrery/scene/experiment.h"
 #include "orrery/sim/entry_backend.h"
 #include "orrery/sim/entry_comparison.h"
@@ -253,11 +254,42 @@ TEST_CASE("A paced entry run keeps to its pace", "[app][entry]") {
     REQUIRE(wait_for(runner, sim::EntryRunState::stopped));
 }
 
-TEST_CASE("Stop and shutdown stay prompt with a tiny integration step", "[app][entry]") {
-    // 1e-9 s steps: one 2 s slice would be 2e9 steps if a stepper call were
-    // not bounded.
+TEST_CASE("Entry setup bounds the integration step and the run length", "[app][entry][limits]") {
+    sim::EntrySetup tiny;
+    tiny.integration.time_step_s = 1.0e-9;
+    const std::vector<std::string> errors = sim::setup_errors(tiny);
+    REQUIRE(errors.size() == 1);
+    CHECK(errors[0].find("Integration step") == 0);
+
+    // The documented minimum with a time limit inside the step limit.
+    sim::EntrySetup minimum;
+    minimum.integration.time_step_s = scene::kMinEntryTimeStepS;
+    minimum.max_time_s = scene::kMinEntryTimeStepS * static_cast<double>(scene::kMaxEntrySteps);
+    CHECK(sim::setup_errors(minimum).empty());
+
+    sim::EntrySetup long_run;
+    long_run.integration.time_step_s = 0.5;
+    long_run.max_time_s = 0.5 * static_cast<double>(scene::kMaxEntrySteps);
+    CHECK(sim::setup_errors(long_run).empty());
+    long_run.max_time_s += 0.5;
+    const std::vector<std::string> over = sim::setup_errors(long_run);
+    REQUIRE(over.size() == 1);
+    CHECK(over[0].find("Time limit") == 0);
+
+    // The solver thread refuses such a setup instead of integrating it.
+    sim::EntryRunner runner;
+    runner.send(sim::StartEntryRun{tiny});
+    REQUIRE(wait_for(runner, sim::EntryRunState::failed));
+    CHECK(runner.latest().status.message.find("Integration step") != std::string::npos);
+    CHECK(runner.latest().trace == nullptr);
+}
+
+TEST_CASE("Stop and shutdown stay prompt at the smallest integration step", "[app][entry]") {
+    // The smallest step the setup accepts, over the longest run it allows.
     sim::EntrySetup setup;
-    setup.integration.time_step_s = 1.0e-9;
+    setup.integration.time_step_s = scene::kMinEntryTimeStepS;
+    setup.max_time_s = scene::kMinEntryTimeStepS * static_cast<double>(scene::kMaxEntrySteps);
+    REQUIRE(sim::setup_errors(setup).empty());
     auto runner = std::make_unique<sim::EntryRunner>();
     const auto within = [&](const std::function<bool()>& condition) {
         const bool reached = app_test::wait_until(condition, std::chrono::seconds(5));
@@ -275,6 +307,8 @@ TEST_CASE("Stop and shutdown stay prompt with a tiny integration step", "[app][e
             return runner->latest().status.state == state;
         });
     };
+    // Paced, so that the run is still going when it is stopped.
+    runner->send(sim::SetEntryPace{10.0});
     runner->send(sim::StartEntryRun{setup});
     REQUIRE(prompt(sim::EntryRunState::running));
     REQUIRE(within([&] { return runner->slices() >= 1; }));

@@ -6,6 +6,8 @@
 
 #include <cstdlib>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -43,6 +45,20 @@ FetchedModel to_result(detail::CacheEntry entry, std::string_view url, const Fet
                         options.license_note,
                         std::move(entry.archive_member),
                         from_cache};
+}
+
+bool cancel_requested(const FetchOptions& options) {
+    return options.cancel_requested && options.cancel_requested();
+}
+
+std::string lower_hex(std::string_view text) {
+    std::string out(text);
+    for (char& c : out) {
+        if (c >= 'A' && c <= 'F') {
+            c = static_cast<char>(c - 'A' + 'a');
+        }
+    }
+    return out;
 }
 
 std::filesystem::path source_name_for(ModelFormat format) {
@@ -148,6 +164,10 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
     if (!checked) {
         return failure(copy_error(checked.error()));
     }
+    if (cancel_requested(options)) {
+        return failure(FetchError{FetchErrorKind::cancelled, "the download was cancelled"});
+    }
+    const std::string expected = lower_hex(options.expected_sha256);
     const detail::ModelCache cache{options.cache_dir.empty() ? default_model_cache_dir()
                                                              : options.cache_dir};
     if (auto problem = cache.prepare()) {
@@ -155,7 +175,10 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
     }
     if (options.use_cache) {
         auto hit = cache.lookup_url(url);
-        if (hit && hit_conforms(*hit, cache, options)) {
+        // An entry under another digest than the expected one is not
+        // served (nor extracted): the URL is downloaded and checked again.
+        if (hit && (expected.empty() || hit->sha256 == expected) &&
+            hit_conforms(*hit, cache, options)) {
             return to_result(*std::move(hit), url, options, true);
         }
     }
@@ -173,6 +196,13 @@ core::Result<FetchedModel, FetchError> fetch_model(std::string_view url,
         return failure(copy_error(download.error()));
     }
     const detail::Download& got = download.value();
+    // Before the content is sniffed or extracted: bytes that are not the
+    // expected ones are discarded unread (the staging guard removes them).
+    if (!expected.empty() && got.sha256 != expected) {
+        return failure(FetchError{FetchErrorKind::digest_mismatch,
+                                  "the download has SHA-256 " + got.sha256 + ", expected " +
+                                      expected + "; it was discarded unread"});
+    }
 
     auto detected = detect_file_format(download_file);
     if (!detected) {

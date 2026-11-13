@@ -1,9 +1,9 @@
 # Orrery Observability
 
-Profiling zones, the Tracy integration and the `--trace` output (spec
-section 10, "GOZLEMLENEBILIRLIK"; the stack table lists the Tracy client,
-off in release). Phase 10a provides the zones and the trace file; the ImGui
-overlay of the same spec node belongs to the user interface work.
+Profiling zones, the Tracy integration and the `--trace` output (the
+Tracy client is optional and off in release builds). Phase 10a provides the
+zones and the trace file; the in-window performance overlay belongs to the
+user interface work.
 
 ## 1. Build options
 

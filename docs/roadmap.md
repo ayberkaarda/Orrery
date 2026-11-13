@@ -41,6 +41,27 @@ and complete `physics.md` and `roadmap.md`; V3 opens the same way after
 | OpenGL 4.6 renderer, black-hole lensing, aero and entry views | `orrery_render` | [rendering.md](rendering.md), [aero-visualisation.md](aero-visualisation.md), ADR-005, ADR-006, ADR-017 |
 | Application, workspaces, physics thread, headless rendering | `orrery_app` | [app.md](app.md), [aero-workspace.md](aero-workspace.md), [entry-workspace.md](entry-workspace.md), ADR-011, ADR-016 |
 
+### V1 phases
+
+V1 was built in phases; the documents name them where a feature arrived
+("Phase 8a"). Each phase was merged as one pull request.
+
+| Phase | Content |
+|---|---|
+| 0 | Project skeleton, tooling, the first ADRs |
+| 1 | Units, body model, scenario format |
+| 2 | Gravity and integrators |
+| 3 (3a, 3b) | Octree (Barnes-Hut), IAS15 and the bundled scenarios; black holes, collisions and other events |
+| 4 (4a, 4b, 4c) | Render foundation; space scene visuals and the user interface layer; application loop, physics thread and headless command line |
+| 5 | Black-hole rendering |
+| 6 (6a, 6b) | Geometry pipeline; URL model loader |
+| 7 (7a, 7b, 7c) | Solver interface, panel method and Newtonian theory; compute backend and 2D lattice Boltzmann; 3D lattice Boltzmann |
+| 8 (8a, 8b) | Aero visualisation; Aero workspace |
+| 9 (9a, 9b) | Atmospheres and the entry bridge; Entry workspace |
+| 10 (10a) | Application polish and README; observability (profiling zones, trace output) |
+| 11 | Performance, link-time optimisation, CI restructuring, packaging, documentation and screenshots |
+| 12 onwards | V2 (section 5) |
+
 ## 3. Abstractions: what exists and what deliberately does not
 
 The rule (ADR-013): **an abstraction is extracted only at its second real
@@ -252,8 +273,8 @@ frame dragging (V3 relativity), 6-DOF entry and heat-shield thermal analysis
 
 ## 8. ADR numbering for V2 and V3
 
-The engineering specification numbers the V2 decisions 016 to 023 and the V3
-decisions 024 to 033. V1 has already used 016 to 021 (app loop timing, black
+The original plan reserved the numbers 016 to 023 for the V2 decisions and
+024 to 033 for the V3 decisions. V1 has already used 016 to 021 (app loop timing, black
 hole render strategy, geometry kernels, compute backend, kernel families,
 entry drag splitting; see the [ADR index](adr/README.md)). Future records
 therefore take the next free number when they are written, and each states

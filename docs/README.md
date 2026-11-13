@@ -28,7 +28,7 @@ decisions and each part of the application.
 | [entry-workspace.md](entry-workspace.md) | Entry workspace: setup, profile plots, ground track, experiments and the entry headless renderer |
 | [observability.md](observability.md) | Profiling zones, Tracy integration and the `--trace` output |
 | [screenshots.md](screenshots.md) | How the README screenshots are regenerated headlessly |
-| [performance.md](performance.md) | Benchmark method, measured results against the specification targets, and the deviations with their reasons |
+| [performance.md](performance.md) | Benchmark method, measured results against the V1 targets, and the deviations with their reasons |
 | [ci.md](ci.md) | CI jobs, caches, the time budget and the nightly workflow |
 | [packaging.md](packaging.md) | Installers (MSI, zip, AppImage, tar.gz), the install layout, versioning and releases |
 
@@ -37,7 +37,7 @@ decisions and each part of the application.
 | Document | Contents |
 |---|---|
 | [roadmap.md](roadmap.md) | The three-layer roadmap (V1, V2, V3), abstractions deliberately absent from V1, the coupling pattern, non-goals |
-| [limitations.md](limitations.md) | Specification items not implemented in V1 (or done differently), what the code does instead, and their status |
+| [limitations.md](limitations.md) | Planned items not implemented in V1 (or done differently), what the code does instead, and their status |
 
 ## Architecture decision records
 

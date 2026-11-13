@@ -4,6 +4,8 @@
 #include <cmath>
 #include <numbers>
 
+#include "orrery/scene/entry_experiment.h"
+
 namespace orrery::sim {
 
 namespace {
@@ -258,6 +260,30 @@ std::optional<double> effective_flight_path_angle(const EntrySetup& setup) noexc
     return setup.flight_path_angle_deg;
 }
 
+namespace {
+
+// The integration settings and the run size they give (the bounds of the
+// experiment record, scene::kMinEntryTimeStepS and scene::kMaxEntrySteps).
+void integration_errors(const EntrySetup& s, std::vector<std::string>& errors) {
+    const EntryIntegration& i = s.integration;
+    add_if(errors,
+           !positive(i.tolerance) || !positive(i.time_step_s) || !positive(i.max_coast_step_s),
+           "Integration tolerance and steps must be positive");
+    const bool step_usable = positive(i.time_step_s);
+    const bool step_too_small = step_usable && i.time_step_s < scene::kMinEntryTimeStepS;
+    add_if(errors, step_too_small,
+           "Integration step must be at least 0.001 s (every step adds a row to the run)");
+    add_if(errors,
+           step_usable && !step_too_small && positive(s.max_time_s) &&
+               scene::entry_run_size_problem(i.time_step_s, s.max_time_s).has_value(),
+           "Time limit allows at most 200000 integration steps: raise the step or lower the "
+           "time limit");
+    add_if(errors, i.interface_altitude_m && !positive(*i.interface_altitude_m),
+           "Entry interface altitude must be positive");
+}
+
+} // namespace
+
 std::vector<std::string> setup_errors(const EntrySetup& s) {
     std::vector<std::string> errors;
     add_if(errors, !positive(s.mass_kg), "Mass must be positive");
@@ -276,12 +302,7 @@ std::vector<std::string> setup_errors(const EntrySetup& s) {
                "Temperature of the exponential atmosphere must be positive");
     }
     add_if(errors, !positive(s.max_time_s), "Time limit must be positive");
-    const EntryIntegration& i = s.integration;
-    add_if(errors,
-           !positive(i.tolerance) || !positive(i.time_step_s) || !positive(i.max_coast_step_s),
-           "Integration tolerance and steps must be positive");
-    add_if(errors, i.interface_altitude_m && !positive(*i.interface_altitude_m),
-           "Entry interface altitude must be positive");
+    integration_errors(s, errors);
     add_if(errors,
            !std::isfinite(s.latitude_deg) || std::abs(s.latitude_deg) > 90.0 ||
                !std::isfinite(s.longitude_deg) || !std::isfinite(s.heading_deg),

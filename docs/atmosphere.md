@@ -261,7 +261,10 @@ excludes lift, and a ballistic capsule at -6.5 degrees peaks at about 15 g
 deceleration band sits on the shallow side of the Apollo entry corridor
 (about -5.5 to -5.9 degrees here); steeper is more severe, shallower skips out
 (-5.0 degrees). The test "Apollo-like ballistic entry" checks 6 to 8 g at
--5.7 degrees and that -6.5 degrees exceeds the band.
+-5.7 degrees and that -6.5 degrees exceeds the band. The peak g of this case
+is therefore a calibrated value, not a validation of the model; what it
+validates is the energy balance (below 1 percent, measured 2.1e-5) and, for
+the peak deceleration itself, the Allen-Eggers case.
 
 ## Experiment record
 
@@ -272,7 +275,7 @@ experiment schema (domain `entry`, schema version 1, no change to the schema):
 |---|---|
 | inputs | name, planet (`earth`, `mars`), atmosphere (`us76`, `mars`, `exponential`; exponential adds surface_density_kg_m3, scale_height_m, temperature_k), vehicle, mass_kg, reference_area_m2, nose_radius_m |
 | conditions | altitude_m, speed_m_s, flight_path_angle_deg, latitude_deg, longitude_deg, heading_deg, interface_altitude_m (optional), frame (`inertial`, `co_rotating`) |
-| solver | name (`ias15`, `yoshida4`, `leapfrog_kdk`), version "1", settings tolerance, time_step_s, max_coast_step_s, max_duration_s, stop_on_skip_out (0 or 1) |
+| solver | name (`ias15`, `yoshida4`, `leapfrog_kdk`), version "1", settings tolerance, time_step_s (at least 0.001 s), max_coast_step_s, max_duration_s (at most 200 000 time steps, see [Run size](#run-size)), stop_on_skip_out (0 or 1) |
 | result | outcome, duration_s, peak_g_load, peak_g_time_s, peak_heat_flux_w_m2, peak_heat_flux_time_s, peak_dynamic_pressure_pa, peak_dynamic_pressure_time_s, heat_load_j_m2, min_altitude_m, final_speed_m_s, drag_work_j, energy_change_j, energy_relative_error; entry_time_s, skip_out_time_s, impact_time_s, impact_latitude_deg, impact_longitude_deg when the event occurred |
 | series | cd_table_mach, cd_table_cd (the table, an input: parameters hold scalars only); with a result the `EntrySeries` columns under their member names |
 
@@ -285,6 +288,37 @@ exponential model takes the planet's gas (Earth: the library's air default;
 Mars: CO2 with `MarsAtmosphere`'s gamma 1.29 and R 192.1 J/(kg K)), so the
 same record has the same speed of sound, Mach number and Cd through either
 door. Fixture: `tests/scene/fixtures/entry_apollo.json`.
+
+### Run size
+
+Every step adds a row to the series, and the series is kept whole: the
+trapezoidal drag-work quadrature of the energy balance and the plots use
+every row. A record therefore bounds the size of its run instead of thinning
+the series:
+
+| Bound | Value | Constant |
+|---|---|---|
+| Smallest `time_step_s` | 0.001 s | `scene::kMinEntryTimeStepS` |
+| Most steps, `max_duration_s / time_step_s` | 200 000 | `scene::kMaxEntrySteps` |
+
+Coast steps are never shorter than `time_step_s`, so a run has at most
+200 001 rows (about 26 MB for the 15 columns and the drag power). The step
+count is compared with a relative tolerance of 1e-9, so a step that is not a
+binary fraction (0.02 s over 4000 s) is accepted at the limit. Both
+`entry_from_experiment` (and so `parse_entry_experiment`) and
+`to_entry_config` refuse a record outside the bounds with a message naming
+`solver.settings.time_step_s`; a JSON record with `time_step_s` 1e-9, which
+would otherwise grow its series until the run is stopped, is rejected when it
+is read. The defaults (0.5 s over 4000 s) take 8000 steps. The Entry
+workspace checks the same bounds on its inputs (entry-workspace.md, "Entry
+Setup"). `atmo::EntryExperiment` itself does not impose them: callers of the
+library choose their own steps (its tests use steps from 0.01 s to hundreds
+of seconds) and bound one call with `advance(duration, max_steps)`.
+
+Tests: "Entry time steps below the documented minimum are rejected", "Entry
+runs longer than the step limit are rejected" (both boundaries), and "A run
+at the step limit stays within the row cap" (200 000 one-second steps of a
+circular orbit above the atmosphere, at most 200 001 rows).
 
 ## Approximations
 

@@ -6,7 +6,7 @@
   "solver": {
     "name": "ias15",
     "version": "1",
-    "settings": { "dt_days": 2.0, "force": "auto" }
+    "settings": { "dt_days": 2.0, "force": "newtonian" }
   },
   "result": {}
 }
