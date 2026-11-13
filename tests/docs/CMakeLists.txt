@@ -6,6 +6,9 @@ find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME docs.check
         COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/tools/check_docs.py)
+    # The checker's own cases: links that must pass and links that must fail.
+    add_test(NAME docs.check_selftest
+        COMMAND Python3::Interpreter ${PROJECT_SOURCE_DIR}/tests/docs/test_check_docs.py)
 else()
     message(WARNING "Python 3 not found: docs.check test not registered")
 endif()

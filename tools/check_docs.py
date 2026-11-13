@@ -5,8 +5,9 @@ Checks:
   1. Links. Every relative link and image in README.md, README.tr.md and
      docs/**/*.md resolves to an existing file or directory. A fragment into a
      Markdown file (or into the same file) must name one of its headings, with
-     the heading anchors GitHub generates. External links (http, https,
-     mailto) are not fetched.
+     the heading anchors GitHub generates (inline code kept, fenced blocks of
+     any fence length skipped, repeated headings numbered). External links
+     (http, https, mailto) are not fetched.
   2. Physics index. docs/physics_index.json lists every implemented formula
      and model with its implementation files, the symbols each file must
      contain and the tests that verify it. docs/physics.md, section "Formula
@@ -39,8 +40,8 @@ INDEX_SECTION = "Formula index"
 LINK_RE = re.compile(r"!?\[(?:[^\[\]]|\[[^\]]*\])*\]\(\s*<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\s*\)")
 HTML_SRC_RE = re.compile(r"""<(?:img|a)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']""", re.I)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
-FENCE_RE = re.compile(r"^\s*(```|~~~)")
-INLINE_CODE_RE = re.compile(r"`[^`]*`")
+FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
+INLINE_CODE_RE = re.compile(r"(`+)(?!`).*?(?<!`)\1(?!`)")
 ROW_ID_RE = re.compile(r"^\|\s*`([a-z0-9_.]+)`\s*\|")
 REPO_PATH_RE = re.compile(r"`((?:src|tests|tools|docs|assets|cmake)/[^`\s]+)`")
 APPROX_TABLE_ROW_RE = re.compile(r"^\|\s*([A-Z]\d{1,2})\s*\|")
@@ -64,20 +65,37 @@ def read_text(path: Path, errors: list[str]) -> str | None:
         return None
 
 
-def strip_code(lines: list[str]) -> list[str]:
-    """Blank fenced blocks and inline code spans, keeping line numbers."""
+def strip_fences(lines: list[str]) -> list[str]:
+    """Blank fenced code blocks, keeping line numbers.
+
+    A fence closes only with the character that opened it, at least as many
+    times and with nothing after it, so a ```` block may contain ``` lines.
+    """
     out: list[str] = []
-    fenced = False
+    fence: tuple[str, int] | None = None
     for line in lines:
-        if FENCE_RE.match(line):
-            fenced = not fenced
-            out.append("")
+        match = FENCE_RE.match(line)
+        if fence is None:
+            if match and not (match.group(1)[0] == "`" and "`" in match.group(2)):
+                fence = (match.group(1)[0], len(match.group(1)))
+                out.append("")
+            else:
+                out.append(line)
             continue
-        out.append("" if fenced else INLINE_CODE_RE.sub("", line))
+        out.append("")
+        if (match and match.group(1)[0] == fence[0] and len(match.group(1)) >= fence[1]
+                and not match.group(2).strip()):
+            fence = None
     return out
 
 
+def strip_code(lines: list[str]) -> list[str]:
+    """Blank fenced blocks and inline code spans, keeping line numbers."""
+    return [INLINE_CODE_RE.sub("", line) for line in strip_fences(lines)]
+
+
 def github_slug(heading: str) -> str:
+    """The anchor GitHub gives a heading: the text of inline code is kept."""
     text = re.sub(r"!?\[([^\]]*)\]\([^)]*\)", r"\1", heading)
     text = text.replace("`", "").strip().lower()
     text = re.sub(r"[^\w\- ]", "", text)
@@ -87,7 +105,7 @@ def github_slug(heading: str) -> str:
 def anchors_of(text: str) -> set[str]:
     anchors: set[str] = set()
     counts: dict[str, int] = {}
-    for line in strip_code(text.splitlines()):
+    for line in strip_fences(text.splitlines()):
         match = HEADING_RE.match(line)
         if not match:
             continue
