@@ -209,7 +209,7 @@ existing file path is used as is.
 ```
 orrery_app [--experiment <name-or-path>] [--size WxH] [--benchmark <frames>]
 orrery_app --headless --experiment <name-or-path> --out <file.png> [--frame <N>] [--size WxH]
-           [--benchmark <frames>]
+           [--benchmark <frames>] [--allow-download]
 orrery_app --version | --help | --modules
 ```
 
@@ -229,6 +229,16 @@ no readback) and prints the mean wall time per frame from the first command
 until the frame's GPU timer query completes, the fps that follows, and the
 GPU median and 95th percentile. This is the measurement that never opens a
 window (`app::benchmark_headless`).
+
+`--allow-download` (headless only) lets an aero experiment whose URL model
+is no longer in the model cache download it again from its recorded `url`.
+Without the flag such a run fails before any network access with
+`orrery_app: Download not allowed: ...`, naming the host, the URL and the
+recorded SHA-256, and exits with 1. With it, the download is still checked
+against the recorded SHA-256 before the model is read (a mismatch fails with
+"The model changed at its source"). The window never takes the flag: it asks
+in a prompt instead (aero-workspace.md, "Experiments";
+url-import-security.md, "Experiments").
 
 `--trace <file>` (any mode) writes the profiling zones of the run as Chrome
 trace-event JSON with per-zone totals; zones are compiled in only by
