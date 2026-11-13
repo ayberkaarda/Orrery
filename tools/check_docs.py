@@ -3,11 +3,15 @@
 
 Checks:
   1. Links. Every relative link and image in README.md, README.tr.md and
-     docs/**/*.md resolves to an existing file or directory. Paths and
-     fragments are URL-decoded first. A fragment into a Markdown file (or into the same file) must name one of its headings, with
-     the heading anchors GitHub generates (inline code kept, fenced blocks of
-     any fence length skipped, repeated headings numbered). External links
-     (http, https, mailto) are not fetched.
+     docs/**/*.md resolves to an existing file or directory: inline links,
+     reference-style links and images (full, collapsed and shortcut; every
+     reference definition is checked, and a full or collapsed reference must
+     have one), and the src/href of HTML <img> and <a>. Paths and fragments
+     are URL-decoded first. A fragment into a Markdown file (or into the same
+     file) must name one of its headings, with the heading anchors GitHub
+     generates (inline code kept, fenced blocks of any fence length skipped,
+     repeated headings numbered). External links (http, https, mailto) are
+     not fetched.
   2. Physics index. docs/physics_index.json lists every implemented formula
      and model with its implementation files, the symbols each file must
      contain and the tests that verify it. docs/physics.md, section "Formula
@@ -41,6 +45,10 @@ INDEX_SECTION = "Formula index"
 LINK_TITLE = r"""(?:\s+(?:"[^"]*"|'[^']*'|\([^)]*\)))?"""
 LINK_RE = re.compile(r"!?\[(?:[^\[\]]|\[[^\]]*\])*\]\(\s*(?:<([^>\n]+)>|([^)\s]+))"
                      + LINK_TITLE + r"\s*\)")
+REF_LABEL = r"((?:[^\[\]\\]|\\.)+)"
+REF_DEF_RE = re.compile(r"^ {0,3}\[" + REF_LABEL + r"\]:\s*(?:<([^>\n]*)>|(\S+))"
+                        + LINK_TITLE + r"\s*$")
+REF_USE_RE = re.compile(r"!?\[" + REF_LABEL + r"\]\[((?:[^\[\]\\]|\\.)*)\]")
 HTML_SRC_RE = re.compile(r"""<(?:img|a)\b[^>]*?\b(?:src|href)\s*=\s*["']([^"']+)["']""", re.I)
 HEADING_RE = re.compile(r"^(#{1,6})\s+(.*?)\s*#*\s*$")
 FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
@@ -125,14 +133,36 @@ def markdown_files() -> list[Path]:
     return [f for f in files if f.is_file()]
 
 
-def link_targets(text: str) -> list[tuple[int, str]]:
+def reference_label(label: str) -> str:
+    return " ".join(label.split()).casefold()
+
+
+def scan_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]:
+    """Return (line, target) for every link, and (line, label) for every full or
+    collapsed reference without a definition."""
     found: list[tuple[int, str]] = []
+    uses: list[tuple[int, str]] = []
+    defined: set[str] = set()
     for number, line in enumerate(strip_code(text.splitlines()), start=1):
+        definition = REF_DEF_RE.match(line)
+        if definition and not definition.group(1).startswith("^"):
+            defined.add(reference_label(definition.group(1)))
+            found.append((number, definition.group(2) or definition.group(3) or ""))
+            continue
         for match in LINK_RE.finditer(line):
             found.append((number, match.group(1) or match.group(2)))
+        for match in REF_USE_RE.finditer(line):
+            label = match.group(2) or match.group(1)
+            if not label.startswith("^"):
+                uses.append((number, label))
         for match in HTML_SRC_RE.finditer(line):
             found.append((number, match.group(1)))
-    return found
+    undefined = [(n, label) for n, label in uses if reference_label(label) not in defined]
+    return found, undefined
+
+
+def link_targets(text: str) -> list[tuple[int, str]]:
+    return scan_links(text)[0]
 
 
 def check_link(source: Path, number: int, target: str, cache: dict[Path, set[str]],
@@ -155,17 +185,24 @@ def check_link(source: Path, number: int, target: str, cache: dict[Path, set[str
         errors.append(f"{where}: link '{target}' names no heading of {rel(resolved)}")
 
 
-def check_links(errors: list[str]) -> int:
+def check_files(files: list[Path], errors: list[str]) -> int:
     cache: dict[Path, set[str]] = {}
     checked = 0
-    for source in markdown_files():
+    for source in files:
         text = read_text(source, errors)
         if text is None:
             continue
-        for number, target in link_targets(text):
+        targets, undefined = scan_links(text)
+        for number, target in targets:
             check_link(source, number, target, cache, errors)
             checked += 1
+        for number, label in undefined:
+            errors.append(f"{rel(source)}:{number}: reference '[{label}]' has no definition")
     return checked
+
+
+def check_links(errors: list[str]) -> int:
+    return check_files(markdown_files(), errors)
 
 
 def section_lines(text: str, title: str) -> list[str]:

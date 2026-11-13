@@ -3,9 +3,9 @@
 
 Each case writes a small Markdown tree into a temporary directory and runs
 the link checker on it: links that resolve must pass, broken ones must fail.
-Covered: inline links, heading anchors with inline code, repeated headings,
-fences of mixed lengths, and URL-encoded paths and fragments (spaces,
-Turkish characters).
+Covered: inline, reference-style (full, collapsed, shortcut) links and
+images, heading anchors with inline code, repeated headings, fences of mixed
+lengths, and URL-encoded paths and fragments (spaces, Turkish characters).
 """
 
 from __future__ import annotations
@@ -63,6 +63,36 @@ class RepositoryLinks(unittest.TestCase):
         self.assert_clean("[Guide](docs/guide.md) and ![Shot](docs/shot.png)\n")
         self.assert_broken("[Guide](docs/missing.md)\n")
         self.assert_broken("![Shot](docs/missing.png)\n")
+
+    # Reference-style links and images.
+    def test_full_reference(self) -> None:
+        self.assert_clean("[Guide][g]\n\n[g]: docs/guide.md\n")
+        self.assert_clean('[Guide][g]\n\n[g]: docs/guide.md "The guide"\n')
+        self.assert_clean("[Guide][g]\n\n  [G]: <docs/guide.md#guide>\n")
+        self.assert_broken("[Guide][g]\n\n[g]: docs/missing.md\n")
+        self.assert_broken("[Guide][g]\n\n[g]: docs/guide.md#no-such-heading\n")
+        self.assert_broken("[Guide][nowhere]\n")
+
+    def test_collapsed_reference(self) -> None:
+        self.assert_clean("[Guide][]\n\n[guide]: docs/guide.md\n")
+        self.assert_broken("[Guide][]\n\n[Guide]: docs/missing.md\n")
+        self.assert_broken("[Undefined][]\n")
+
+    def test_shortcut_reference(self) -> None:
+        self.assert_clean("See [the guide].\n\n[the guide]: docs/guide.md\n")
+        self.assert_broken("See [the guide].\n\n[the guide]: docs/missing.md\n")
+
+    def test_reference_images(self) -> None:
+        self.assert_clean("![Shot][s]\n\n[s]: docs/shot.png\n")
+        self.assert_clean("![shot]\n\n[shot]: docs/shot.png\n")
+        self.assert_broken("![Shot][s]\n\n[s]: docs/none.png\n")
+        self.assert_broken("![shot]\n\n[shot]: docs/none.png\n")
+        self.assert_broken("![Shot][]\n\n[shot]: docs/none.png\n")
+
+    def test_brackets_that_are_not_links(self) -> None:
+        self.assert_clean("Index [i] of a list, a task [ ] and a footnote[^1].\n\n[^1]: A note.\n")
+        self.assert_clean("```\n[Guide][g]\n[g]: docs/missing.md\n```\n")
+        self.assert_clean("Code `[Guide][g]` is not a link.\n")
 
     # Heading anchors.
     def test_heading_with_inline_code(self) -> None:
