@@ -5,6 +5,7 @@
 #include <functional>
 #include <memory>
 #include <optional>
+#include <stdexcept>
 #include <string>
 #include <thread>
 #include <utility>
@@ -73,7 +74,12 @@ public:
         if (thread_.joinable()) {
             thread_.join();
         }
-        T value = std::move(*state_->result);
+        // Always set once the worker has run (see the constructor).
+        std::optional<T>& result = state_->result;
+        if (!result.has_value()) {
+            throw std::logic_error("BackgroundTask::take: no result");
+        }
+        T value = std::move(*result);
         state_.reset();
         return value;
     }
