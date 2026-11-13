@@ -2,6 +2,7 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -74,6 +75,17 @@ struct ComputeBackendInfo {
     bool executes_kernels = false;
 };
 
+// Device memory as far as the backend can tell (ADR-020); an empty field is
+// unknown. Solvers size their grids from it, or fall back to a conservative
+// cap of their own when it is empty.
+struct DeviceMemory {
+    // Free device memory in bytes (vendor query; drivers report it only
+    // through extensions, and only approximately).
+    std::optional<std::size_t> available_bytes;
+    // Largest buffer one kernel binding can address, bytes.
+    std::optional<std::size_t> max_binding_bytes;
+};
+
 // Ordering: dispatches run in submission order, but a dispatch only sees the
 // shader storage writes of an earlier dispatch after barrier(). upload() and
 // readback() are ordered after every dispatch submitted before them (the
@@ -90,6 +102,8 @@ public:
 
     [[nodiscard]] virtual ComputeBackendInfo info() const = 0;
     [[nodiscard]] virtual bool has_kernel(std::string_view name) const = 0;
+    // Memory limits of the device; the default knows nothing.
+    [[nodiscard]] virtual DeviceMemory memory() const { return {}; }
 
     // Zero-initialised buffer of `bytes` bytes (bytes > 0).
     [[nodiscard]] virtual core::Result<BufferId, std::string> create_buffer(std::size_t bytes) = 0;

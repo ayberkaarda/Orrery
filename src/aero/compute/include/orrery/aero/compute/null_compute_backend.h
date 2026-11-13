@@ -54,6 +54,10 @@ public:
 
     [[nodiscard]] ComputeBackendInfo info() const override;
     [[nodiscard]] bool has_kernel(std::string_view name) const override;
+    // The limits set with set_memory (unknown by default), for tests of the
+    // solvers' memory checks.
+    [[nodiscard]] DeviceMemory memory() const override { return memory_; }
+    void set_memory(const DeviceMemory& memory) noexcept { memory_ = memory; }
     [[nodiscard]] core::Result<BufferId, std::string> create_buffer(std::size_t bytes) override;
     void release_buffer(BufferId buffer) noexcept override;
     [[nodiscard]] std::size_t buffer_size(BufferId buffer) const noexcept override;
@@ -75,6 +79,7 @@ private:
     bool accept_unknown_ = true;
     std::uint32_t next_id_ = 1;
     std::size_t barriers_ = 0;
+    DeviceMemory memory_;
     std::map<std::uint32_t, std::vector<std::byte>> buffers_;
     std::map<std::string, HostKernel, std::less<>> kernels_;
     std::vector<RecordedDispatch> dispatches_;
