@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "app_test_support.h"
+#include "orrery/atmo/planet.h"
 #include "orrery/scene/experiment.h"
 #include "orrery/sim/entry_backend.h"
 #include "orrery/sim/entry_comparison.h"
@@ -252,9 +253,15 @@ TEST_CASE("Entry records round-trip through the experiment JSON", "[app][entry]"
     setup.start = sim::EntryStart::periapsis;
     setup.periapsis_altitude_m = 21'500.0;
     setup.cd_source = sim::CdSource::aero_solver;
+    setup.co_rotating_atmosphere = true;
+    setup.integration.integrator = sim::EntryIntegrator::yoshida4;
+    setup.integration.time_step_s = 0.25;
+    setup.integration.interface_altitude_m = 130'000.0;
     auto run = sim::run_entry(setup);
+    INFO((run ? std::string() : run.error()));
     REQUIRE(run.has_value());
-    const sim::EntryTrace trace{run.value().series, run.value().summary};
+    const sim::EntryTrace& trace = run.value();
+    REQUIRE(trace.record != nullptr);
 
     const scene::Experiment record = sim::entry_to_experiment(setup, &trace);
     CHECK(record.domain == scene::Domain::entry);
@@ -266,11 +273,25 @@ TEST_CASE("Entry records round-trip through the experiment JSON", "[app][entry]"
     INFO((back ? std::string() : back.error()));
     REQUIRE(back.has_value());
     const sim::StoredEntry& stored = back.value();
-    CHECK(stored.setup == setup);
+    // The periapsis form comes back as the flight-path angle the run used.
+    sim::EntrySetup resolved = setup;
+    resolved.start = sim::EntryStart::state;
+    resolved.flight_path_angle_deg = sim::effective_flight_path_angle(setup).value_or(0.0);
+    // ... with the periapsis altitude derived from it again.
+    CHECK(stored.setup.periapsis_altitude_m == Approx(setup.periapsis_altitude_m).margin(1.0e-3));
+    resolved.periapsis_altitude_m = stored.setup.periapsis_altitude_m;
+    CHECK(stored.setup == resolved);
     REQUIRE(stored.result != nullptr);
     CHECK(stored.result->series.time_s == trace.series.time_s);
     CHECK(stored.result->series.heat_flux_w_m2 == trace.series.heat_flux_w_m2);
+    CHECK(stored.result->series.downrange_m == trace.series.downrange_m);
     CHECK(stored.result->summary == trace.summary);
+    REQUIRE(stored.result->record != nullptr);
+    CHECK(*stored.result->record == *trace.record);
+    // The record runs again to the same result.
+    auto again = sim::run_entry(stored.setup);
+    REQUIRE(again.has_value());
+    CHECK(again.value().summary == trace.summary);
 
     // Inputs only: no result section, nothing recorded.
     auto inputs_only = sim::entry_from_experiment(sim::entry_to_experiment(setup, nullptr));
@@ -287,6 +308,38 @@ TEST_CASE("Entry records round-trip through the experiment JSON", "[app][entry]"
     broken.series["g_load"].pop_back();
     CHECK_FALSE(sim::entry_from_experiment(broken).has_value());
     broken = record;
+    broken.series["cd_table_cd"].clear();
+    CHECK_FALSE(sim::entry_from_experiment(broken).has_value());
+    broken = record;
     broken.domain = scene::Domain::aero;
     CHECK_FALSE(sim::entry_from_experiment(broken).has_value());
+}
+
+TEST_CASE("Entry planet constants are the physics library's presets", "[app][entry]") {
+    for (const sim::EntryPlanet planet : {sim::EntryPlanet::earth, sim::EntryPlanet::mars}) {
+        const atmo::Planet preset =
+            planet == sim::EntryPlanet::mars ? atmo::Planet::mars() : atmo::Planet::earth();
+        const sim::PlanetConstants c = sim::planet_constants(planet);
+        CHECK(c.radius_m == preset.radius.value());
+        CHECK(c.mu_m3_s2 == preset.gm.value());
+        CHECK(c.atmosphere_top_m == preset.entry_interface_altitude.value());
+    }
+}
+
+TEST_CASE("Cd(Mach) is sampled from the aero solver on a capsule", "[app][entry]") {
+    sim::CdSampling sampling;
+    sampling.reference_area_m2 = 12.02;
+    auto samples = sim::sample_cd_table(sampling);
+    INFO((samples ? std::string() : samples.error()));
+    REQUIRE(samples.has_value());
+    const std::vector<sim::MachCd>& table = samples.value().table;
+    REQUIRE(table.size() == 5);
+    for (std::size_t i = 0; i < table.size(); ++i) {
+        CHECK(table[i].cd > 1.0);
+        CHECK(table[i].cd < 1.8);
+        CHECK((i == 0 || table[i].mach > table[i - 1].mach));
+    }
+    CHECK(samples.value().label.find("capsule") != std::string::npos);
+    sampling.reference_area_m2 = 0.0;
+    CHECK_FALSE(sim::sample_cd_table(sampling).has_value());
 }

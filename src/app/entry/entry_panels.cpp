@@ -106,7 +106,12 @@ void EntryWorkspace::Impl::draw_planet_inputs() {
                          kDensity, "%.4g");
         (void)number_row("Scale height", "##scale_height", setup.exponential_scale_height_m, 1.0e-3,
                          "km", "%.2f");
+        (void)number_row("Temperature", "##temperature", setup.exponential_temperature_k, 1.0, "K",
+                         "%.1f");
     }
+    (void)ImGui::Checkbox("Air turns with the planet", &setup.co_rotating_atmosphere);
+    w::tooltip("Off: the atmosphere rests in the inertial frame. On: it co-rotates, and the "
+               "drag acts on the speed relative to the turning air.");
 }
 
 void EntryWorkspace::Impl::draw_probe_inputs() {
@@ -236,6 +241,38 @@ void EntryWorkspace::Impl::draw_initial_state() {
     (void)number_row("Longitude", "##lon", setup.longitude_deg, 1.0, kDegree, "%.2f");
     (void)number_row("Heading", "##heading", setup.heading_deg, 1.0, kDegree, "%.1f");
     (void)number_row("Time limit", "##limit", setup.max_time_s, 1.0, "s", "%.0f");
+    draw_integration_inputs();
+}
+
+void EntryWorkspace::Impl::draw_integration_inputs() {
+    w::section("INTEGRATION");
+    constexpr std::array<std::pair<sim::EntryIntegrator, const char*>, 3> kIntegrators{{
+        {sim::EntryIntegrator::ias15, "IAS15 (adaptive)"},
+        {sim::EntryIntegrator::yoshida4, "Yoshida 4th order"},
+        {sim::EntryIntegrator::leapfrog_kdk, "Leapfrog KDK"},
+    }};
+    sim::EntryIntegration& i = setup.integration;
+    const char* current = kIntegrators.front().second;
+    for (const auto& [integrator, label] : kIntegrators) {
+        if (integrator == i.integrator) {
+            current = label;
+        }
+    }
+    w::row_label("Integrator");
+    if (ImGui::BeginCombo("##integrator", current)) {
+        for (const auto& [integrator, label] : kIntegrators) {
+            if (ImGui::Selectable(label, integrator == i.integrator)) {
+                i.integrator = integrator;
+            }
+        }
+        ImGui::EndCombo();
+    }
+    w::tooltip("Gravity part of the split step; the drag acts as half kicks around it.");
+    (void)number_row("Step", "##step", i.time_step_s, 1.0, "s", "%.3f");
+    if (i.integrator == sim::EntryIntegrator::ias15) {
+        (void)number_row("Tolerance", "##tolerance", i.tolerance, 1.0, "", "%.1e");
+    }
+    (void)ImGui::Checkbox("End at skip-out", &i.stop_on_skip_out);
 }
 
 void EntryWorkspace::Impl::draw_run_controls() {

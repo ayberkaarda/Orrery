@@ -125,6 +125,7 @@ struct EntryWorkspace::Impl {
     void draw_cd_inputs();
     void draw_cd_table();
     void draw_initial_state();
+    void draw_integration_inputs();
     void draw_run_controls();
     void draw_profile_panel();
     void draw_readouts(const sim::EntryTrace* trace);

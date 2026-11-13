@@ -1,6 +1,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdio>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -324,6 +326,101 @@ void EntryWorkspace::Impl::draw_plots(const sim::EntryTrace* trace) {
 
 // --- Ground Track ----------------------------------------------------------------
 
+namespace {
+
+// Longitudes made continuous across the date line (each step taken the short
+// way round), so a track that crosses it is drawn and framed in one piece.
+std::vector<double> unwrapped_longitudes(const std::vector<double>& lon) {
+    std::vector<double> out;
+    out.reserve(lon.size());
+    for (const double l : lon) {
+        if (out.empty()) {
+            out.push_back(l);
+            continue;
+        }
+        double step = std::fmod(l - out.back(), 360.0);
+        if (step > 180.0) {
+            step -= 360.0;
+        } else if (step < -180.0) {
+            step += 360.0;
+        }
+        out.push_back(out.back() + step);
+    }
+    return out;
+}
+
+// Axis labels of unwrapped longitudes, back in (-180, 180].
+int longitude_label(double value, char* buffer, int size, void* /*data*/) {
+    double wrapped = std::fmod(value + 180.0, 360.0);
+    wrapped = (wrapped <= 0.0 ? wrapped + 360.0 : wrapped) - 180.0;
+    return std::snprintf(buffer, static_cast<std::size_t>(size), "%g\xC2\xB0", wrapped);
+}
+
+// Frames the track with a margin (at least 20 degrees across), else the
+// whole planet.
+void setup_map_axes(const std::vector<double>& lon, const std::vector<double>& lat) {
+    ImPlot::SetupAxes("longitude", "latitude");
+    ImPlot::SetupAxisFormat(ImAxis_X1, longitude_label);
+    ImPlot::SetupAxisFormat(ImAxis_Y1, "%g\xC2\xB0");
+    if (lon.size() < 2 || lon.size() != lat.size()) {
+        ImPlot::SetupAxesLimits(-180.0, 180.0, -90.0, 90.0, ImPlotCond_Always);
+        return;
+    }
+    const auto [lon_lo, lon_hi] = std::minmax_element(lon.begin(), lon.end());
+    const auto [lat_lo, lat_hi] = std::minmax_element(lat.begin(), lat.end());
+    const double cx = 0.5 * (*lon_lo + *lon_hi);
+    const double cy = 0.5 * (*lat_lo + *lat_hi);
+    const double half = std::max({0.5 * (*lon_hi - *lon_lo), *lat_hi - *lat_lo, 10.0}) * 1.25;
+    ImPlot::SetupAxesLimits(cx - half, cx + half, cy - half * 0.5, cy + half * 0.5,
+                            ImPlotCond_Always);
+}
+
+constexpr ImU32 kMapOutline = IM_COL32(4, 5, 8, 220);
+
+// The track as an outlined line coloured by `values` (in the legend's
+// units) with the shared sequential map.
+void draw_map_track(const std::vector<double>& lon, const std::vector<double>& lat,
+                    const std::vector<double>& values, double scale,
+                    const render::ScalarRange& range) {
+    ImDrawList* draw = ImPlot::GetPlotDrawList();
+    for (int pass = 0; pass < 2; ++pass) {
+        for (std::size_t i = 1; i < lon.size(); ++i) {
+            const ImVec2 a = ImPlot::PlotToPixels(lon[i - 1], lat[i - 1]);
+            const ImVec2 b = ImPlot::PlotToPixels(lon[i], lat[i]);
+            if (pass == 0) {
+                draw->AddLine(a, b, kMapOutline, 5.0F);
+            } else {
+                draw->AddLine(a, b, map_color(range, values[i] * scale), 3.0F);
+            }
+        }
+    }
+}
+
+void draw_map_marker(ImVec2 centre, ImU32 fill, float radius) {
+    ImDrawList* draw = ImPlot::GetPlotDrawList();
+    draw->AddCircleFilled(centre, radius + 1.5F, kMapOutline);
+    draw->AddCircleFilled(centre, radius, fill);
+}
+
+// Time of the track point nearest to the pointer within 24 px.
+std::optional<double> map_hover(const std::vector<double>& lon, const std::vector<double>& lat,
+                                const std::vector<double>& time) {
+    const ImVec2 mouse = ImGui::GetMousePos();
+    float best = 24.0F * 24.0F;
+    std::optional<double> hit;
+    for (std::size_t i = 0; i < lon.size(); ++i) {
+        const ImVec2 q = ImPlot::PlotToPixels(lon[i], lat[i]);
+        const float d = (q.x - mouse.x) * (q.x - mouse.x) + (q.y - mouse.y) * (q.y - mouse.y);
+        if (d < best) {
+            best = d;
+            hit = time[i];
+        }
+    }
+    return hit;
+}
+
+} // namespace
+
 void EntryWorkspace::Impl::draw_ground_track_panel() {
     if (!ImGui::Begin(std::string(kGroundTrackWindow).c_str())) {
         ImGui::End();
@@ -331,94 +428,50 @@ void EntryWorkspace::Impl::draw_ground_track_panel() {
     }
     const std::shared_ptr<const sim::EntryTrace> trace = shown();
     const bool have = trace && trace->series.consistent() && trace->series.size() >= 2;
-    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const std::vector<double> lon =
+        have ? unwrapped_longitudes(trace->series.longitude_deg) : std::vector<double>{};
+    const std::vector<double> none;
+    const std::vector<double>& lat = have ? trace->series.latitude_deg : none;
     constexpr ImPlotFlags kFlags = ImPlotFlags_NoMenus | ImPlotFlags_NoBoxSelect |
                                    ImPlotFlags_NoTitle | ImPlotFlags_NoLegend | ImPlotFlags_Equal;
-    if (!ImPlot::BeginPlot("##ground_track", avail, kFlags)) {
+    if (!ImPlot::BeginPlot("##ground_track", ImGui::GetContentRegionAvail(), kFlags)) {
         ImGui::End();
         return;
     }
-    ImPlot::SetupAxes("longitude", "latitude");
-    ImPlot::SetupAxisLimitsConstraints(ImAxis_X1, -200.0, 200.0);
-    ImPlot::SetupAxisLimitsConstraints(ImAxis_Y1, -95.0, 95.0);
-    if (have) {
-        const sim::EntrySeries& s = trace->series;
-        const auto [lon_lo, lon_hi] =
-            std::minmax_element(s.longitude_deg.begin(), s.longitude_deg.end());
-        const auto [lat_lo, lat_hi] =
-            std::minmax_element(s.latitude_deg.begin(), s.latitude_deg.end());
-        const double cx = 0.5 * (*lon_lo + *lon_hi);
-        const double cy = 0.5 * (*lat_lo + *lat_hi);
-        const double half = std::max({0.5 * (*lon_hi - *lon_lo), *lat_hi - *lat_lo, 10.0}) * 1.25;
-        ImPlot::SetupAxesLimits(cx - half, cx + half, cy - half * 0.5, cy + half * 0.5,
-                                ImPlotCond_Always);
-    } else {
-        ImPlot::SetupAxesLimits(-180.0, 180.0, -90.0, 90.0, ImPlotCond_Always);
-    }
-    ImPlot::SetupAxisFormat(ImAxis_X1, "%g\xC2\xB0");
-    ImPlot::SetupAxisFormat(ImAxis_Y1, "%g\xC2\xB0");
-    if (have) {
-        const sim::EntrySeries& s = trace->series;
-        const render::ScalarRange range = coloring_range(s, layers.coloring);
-        const std::vector<double>& values = coloring_values(s, layers.coloring);
-        const double scale = entry_quantity(layers.coloring).scale;
-        ImDrawList* draw = ImPlot::GetPlotDrawList();
-        ImPlot::PushPlotClipRect();
-        const ImU32 outline = IM_COL32(4, 5, 8, 220);
-        for (int pass = 0; pass < 2; ++pass) {
-            for (std::size_t i = 1; i < s.size(); ++i) {
-                if (std::abs(s.longitude_deg[i] - s.longitude_deg[i - 1]) > 180.0) {
-                    continue; // wraps around the date line
-                }
-                const ImVec2 a =
-                    ImPlot::PlotToPixels(s.longitude_deg[i - 1], s.latitude_deg[i - 1]);
-                const ImVec2 b = ImPlot::PlotToPixels(s.longitude_deg[i], s.latitude_deg[i]);
-                if (pass == 0) {
-                    draw->AddLine(a, b, outline, 5.0F);
-                } else {
-                    draw->AddLine(a, b, map_color(range, values[i] * scale), 3.0F);
-                }
-            }
-        }
-        const auto marker = [&](double t, ImU32 fill, float radius) {
-            const auto i = sim::nearest_index(s.time_s, t);
-            if (!i) {
-                return;
-            }
-            const ImVec2 c = ImPlot::PlotToPixels(s.longitude_deg[*i], s.latitude_deg[*i]);
-            draw->AddCircleFilled(c, radius + 1.5F, outline);
-            draw->AddCircleFilled(c, radius, fill);
-        };
-        const double peak = layers.coloring == EntryColoring::heat_flux
-                                ? trace->summary.peak_heat_flux_time_s
-                                : trace->summary.peak_g_time_s;
-        // The peak is a larger disc, so the cursor dot stays visible on it.
-        marker(peak, ImGui::GetColorU32(w::color(w::theme().accent)), 7.0F);
-        if (const std::optional<double> t = cursor()) {
-            marker(*t, IM_COL32(242, 244, 248, 255), 4.5F);
-        }
-        ImPlot::PopPlotClipRect();
-        if (ImPlot::IsPlotHovered()) {
-            // The cursor follows the nearest track point within 24 px.
-            const ImVec2 mouse = ImGui::GetMousePos();
-            float best = 24.0F * 24.0F;
-            for (std::size_t i = 0; i < s.size(); ++i) {
-                const ImVec2 q = ImPlot::PlotToPixels(s.longitude_deg[i], s.latitude_deg[i]);
-                const float d =
-                    (q.x - mouse.x) * (q.x - mouse.x) + (q.y - mouse.y) * (q.y - mouse.y);
-                if (d < best) {
-                    best = d;
-                    hover_time = s.time_s[i];
-                }
-            }
-        }
-    } else {
+    setup_map_axes(lon, lat);
+    if (!have) {
         ImPlot::PlotText("No ground track yet", 0.0, 0.0);
+        ImPlot::EndPlot();
+        ImGui::End();
+        return;
+    }
+    const sim::EntrySeries& s = trace->series;
+    ImPlot::PushPlotClipRect();
+    draw_map_track(lon, lat, coloring_values(s, layers.coloring),
+                   entry_quantity(layers.coloring).scale, coloring_range(s, layers.coloring));
+    const double peak = layers.coloring == EntryColoring::heat_flux
+                            ? trace->summary.peak_heat_flux_time_s
+                            : trace->summary.peak_g_time_s;
+    // The peak is a larger disc, so the cursor dot stays visible on it.
+    if (const auto i = sim::nearest_index(s.time_s, peak)) {
+        draw_map_marker(ImPlot::PlotToPixels(lon[*i], lat[*i]),
+                        ImGui::GetColorU32(w::color(w::theme().accent)), 7.0F);
+    }
+    if (const std::optional<double> t = cursor()) {
+        if (const auto i = sim::nearest_index(s.time_s, *t)) {
+            draw_map_marker(ImPlot::PlotToPixels(lon[*i], lat[*i]), IM_COL32(242, 244, 248, 255),
+                            4.5F);
+        }
+    }
+    ImPlot::PopPlotClipRect();
+    if (ImPlot::IsPlotHovered()) {
+        if (const std::optional<double> t = map_hover(lon, lat, s.time_s)) {
+            hover_time = t;
+        }
     }
     ImPlot::EndPlot();
     ImGui::End();
 }
-
 // --- Scene overlay ----------------------------------------------------------------
 
 void EntryWorkspace::Impl::draw_scene_overlay(const render::UiRect& scene) {

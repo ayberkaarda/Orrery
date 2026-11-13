@@ -196,8 +196,8 @@ void EntryWorkspace::Impl::open(sim::StoredEntry entry) {
 std::optional<std::filesystem::path> EntryWorkspace::Impl::save() {
     setup.name = w::from_buffer(name_buffer);
     const std::shared_ptr<const sim::EntryTrace> trace = shown();
-    // A run still in progress is not a result yet.
-    const bool with_result = trace != nullptr && !(active() && trace != loaded_trace);
+    // A run still in progress is not a result yet: it has no result record.
+    const bool with_result = trace != nullptr && trace->record != nullptr;
     const std::string name = setup.name.empty() ? std::string("entry") : setup.name;
     const std::filesystem::path path = sim::new_experiment_path(options.experiment_dir, name);
     auto saved = sim::save_entry_experiment_file(path, setup, with_result ? trace.get() : nullptr);
@@ -300,18 +300,22 @@ void EntryWorkspace::Impl::reframe() {
     }
     const EntryViewState state = view_state();
     const render::EntryFrame frame = render::make_entry_frame(state.track, state.globe);
-    const bool usable = camera_scene.width > 1.0 && camera_scene.height > 1.0;
-    const double aspect = usable ? camera_scene.width / camera_scene.height
-                                 : static_cast<double>(camera_width) / camera_height;
+    // Frame the track in the part of the scene the overlay leaves free: the
+    // outcome banner on top, the legend at the bottom.
+    const double top = std::min(40.0, 0.08 * camera_scene.height);
+    const double bottom = std::min(80.0, 0.15 * camera_scene.height);
+    const render::UiRect area{camera_scene.x, camera_scene.y + top, camera_scene.width,
+                              camera_scene.height - top - bottom};
+    const bool usable = area.width > 1.0 && area.height > 1.0;
+    const double aspect =
+        usable ? area.width / area.height : static_cast<double>(camera_width) / camera_height;
     render::TurntableMode mode = render::frame_entry(frame, aspect, camera.lens());
     if (usable) {
-        mode.distance *= std::max(1.0, static_cast<double>(camera_height) / camera_scene.height);
+        mode.distance *= std::max(1.0, static_cast<double>(camera_height) / area.height);
         const double per_pixel =
             2.0 * mode.distance * std::tan(0.5 * camera.lens().vertical_fov) / camera_height;
-        const double shift_x =
-            (camera_scene.x + 0.5 * camera_scene.width - 0.5 * camera_width) * per_pixel;
-        const double shift_up =
-            (0.5 * camera_height - (camera_scene.y + 0.5 * camera_scene.height)) * per_pixel;
+        const double shift_x = (area.x + 0.5 * area.width - 0.5 * camera_width) * per_pixel;
+        const double shift_up = (0.5 * camera_height - (area.y + 0.5 * area.height)) * per_pixel;
         const glm::dvec3 right{-std::sin(mode.yaw), std::cos(mode.yaw), 0.0};
         const glm::dvec3 up{-std::cos(mode.yaw) * std::sin(mode.pitch),
                             -std::sin(mode.yaw) * std::sin(mode.pitch), std::cos(mode.pitch)};
@@ -607,7 +611,8 @@ EntryViewState EntryWorkspace::Impl::view_state() const {
     state.planet = s.setup.planet;
     const sim::PlanetConstants planet = sim::planet_constants(s.setup.planet);
     state.globe.radius_m = planet.radius_m;
-    state.globe.atmosphere_top_m = planet.atmosphere_top_m;
+    state.globe.atmosphere_top_m =
+        s.setup.integration.interface_altitude_m.value_or(planet.atmosphere_top_m);
     state.globe.altitude_scale = std::max(1.0, s.layers.altitude_scale);
     state.trace = s.shown();
     state.revision = s.view_key();
