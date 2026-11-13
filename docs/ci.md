@@ -50,8 +50,9 @@ nothing moved to the nightly workflow.
   (`.ccache`, at most 500 MB) is restored from the newest push to `main` and
   saved only by pushes to `main`, so pull requests read it without filling the
   repository's cache quota. Windows has no ccache: MSVC caching needs a
-  separate install and object-format changes for little gain on a job that is
-  not the longest.
+  separate install and object-format changes, and the Windows build step
+  takes about 6 minutes; what makes that job the longest is its vcpkg
+  configure when the binary cache is cold (section 2).
 
 ### Parallel tests
 
@@ -67,10 +68,12 @@ hole at 1080p), whose GPU time is shared with the other GPU tests running at
 the same moment; the hosted runners have no OpenGL context and skip them. On
 a GPU machine run those two serially (`ctest -R "1080p"`).
 
-## 2. Time budget: before and after
+## 2. Time budget: measured
 
-Measured from the step timings of three recent runs (`gh run view <id>
---json jobs`):
+### Before the restructuring
+
+Measured from the step timings of three runs of the previous workflow
+(`gh run view <id> --json jobs`):
 
 | Run | Caches | Wall time (first job start to last job end) |
 |---|---|---|
@@ -88,41 +91,61 @@ Where the time went, per job (minutes, from the same runs):
 | build clang 17 | 0.9 | 0.1 (hit), 13.6 (miss) | 1.8 to 4.4 | 2.0 to 3.3 (serial) | 5 to 22 |
 | build MSVC | 0.8 to 1.3 | 0.3 to 0.4 | 4.4 to 5.0 | 3.7 to 6.8 (serial) | 10 to 13 |
 
-The two long poles were the sanitizer job (no binary cache, serial tests)
-and the uncached configure steps.
+### After: the first two runs of this workflow
 
-**After** (estimated from the same step timings; to be confirmed by the first
-runs with the new workflow). Test times come from replaying the per-test
-durations of run 43472663449 on four parallel slots in ctest's order, with
-the `RUN_SERIAL` tests added on top; the range up to 1.6 times that replay
-allows for the lattice Boltzmann and Barnes-Hut tests, which already use
-several cores and so slow down when they share the runner.
+Measured the same way on the pull request that introduced it (run
+43507843543, PR #18) and on the push to `main` that merged it (run
+43513388412). Cache state, read from the job logs:
 
-| Job | Setup + configure (cache hit) | Build | Test | Total |
+- **vcpkg, Linux: warm.** Every Linux job restored the 47 packages of the
+  manifest from the binary cache (an older entry of the same compiler line,
+  through `restore-keys`).
+- **vcpkg, Windows: cold in both runs.** The only Windows entry predated the
+  pinned vcpkg checkout, so its packages no longer matched ("Restored 0
+  package(s)") and configure built every dependency. The pull request's own
+  entry was not visible to the push to `main` (GitHub scopes a pull request's
+  caches to its merge ref), so the push rebuilt them again and saved the
+  first `main` entry with the new key (image `win22-20261112.366.7`).
+- **ccache: cold in both runs.** No entry existed yet (hit rates 0 to 1.3
+  percent); the push to `main` saved the first one.
+
+Per job, minutes (pull request / push):
+
+| Job | Configure | Build | Test | Total |
 |---|---|---|---|---|
-| asan shard 1 | 1.0 | 1.5 (ccache warm) to 4.0 | 5.0 to 8.0 | 7.5 to 13 |
-| asan shard 2 | 1.0 | 1.5 to 4.0 | 7.2 to 11.5 | 10 to 16.5 |
-| asan (result) | 0.3 after the shards | | | |
-| lint | 1.5 | 1.4 | tidy 1.4 to 4.0 | 5 to 7 |
-| build gcc 13 | 0.8 | 0.8 to 2.4 | 2.9 to 3.5 | 4.5 to 7 |
-| build clang 17 | 1.0 | 0.8 to 4.4 | 1.7 to 2.5 | 3.5 to 8 |
-| build MSVC | 1.3 | 4.4 to 5.0 | 2.0 to 3.0 | 8 to 9.5 |
+| asan shard 1/2 | 0.1 / 0.1 | 5.4 / 4.3 | 13.6 / 10.1 | **19.8 / 15.5** |
+| asan shard 2/2 | 0.1 / 0.1 | 5.1 / 3.8 | 9.7 / 5.9 | 15.7 / 10.4 |
+| asan (result) | | | | 0.1 / 0.1 |
+| lint | 0.1 (+ 0.7 to 0.8 generated headers) | | tidy 0.8 to 1.0, cppcheck 0.1 | 2.9 / 2.5 |
+| build gcc 13 | 0.1 / 0.1 | 4.3 / 4.1 | 4.0 / 5.4 | 9.4 / 10.4 |
+| build clang 17 | 0.1 / 0.1 | 2.5 / 3.2 | 2.0 / 2.5 | 5.5 / 6.8 |
+| build MSVC | **24.6 / 24.1** (cold vcpkg) | 6.3 / 6.3 | 3.9 / 3.8 | **36.2 / 35.5** |
 
-Expected wall time with warm caches: **about 10 to 17 minutes**, set by the
-second sanitizer shard; under the 20-minute target.
+Wall time: **36.2 min** (pull request) and **35.5 min** (push), both set by
+the Windows job and its cold vcpkg cache. Without the Windows job the
+longest path was 19.8 and 15.7 minutes (the first sanitizer shard). The
+sanitizer job went from 38 to 49 minutes to 16 to 20 minutes, lint from 10
+to 20 minutes to under 3.
 
-Honest limits:
+**The 20-minute target is not met yet.** It can only be met with warm caches,
+and no run with a warm Windows cache has been measured. With the configure
+time of a warm Windows cache (0.3 to 0.4 min in the runs before the
+restructuring) instead of 24 minutes, the Windows job would take about 12
+minutes and the wall time would be set by the first sanitizer shard, 15.5 to
+19.8 minutes in these runs with a cold ccache. The next pull request will be
+the first measurement with every cache warm; this section should be updated
+with it.
 
-- **Cold vcpkg cache.** A run whose `vcpkg.json` changed, or the first run on
-  a new runner image, rebuilds the affected dependencies: 9 to 14 minutes of
-  configure on Linux (as in run 43472663449) and more on Windows. Such a run
-  can exceed 20 minutes; the next one is back to the warm figures. The first
-  run of this workflow is such a run too: the pinned vcpkg checkout and the
-  new cache keys start new entries (the `restore-keys` fallback reuses what
-  still matches).
+Limits that remain:
+
+- **Cold vcpkg cache.** A run whose `vcpkg.json` changed, the first run on a
+  new runner image, and the first push to `main` after such a change rebuild
+  the affected dependencies: 9 to 14 minutes of configure on Linux (run
+  43472663449) and about 24 minutes on Windows (runs above). Such a run
+  exceeds 20 minutes.
 - **Cold ccache.** Pull requests reuse the cache of the last push to `main`;
-  the very first run, and a change to a header included everywhere, compile
-  from scratch (the upper ends of the build column).
+  the first run, and a change to a header included everywhere, compile from
+  scratch (the build column above: 2.5 to 5.4 minutes).
 - **Runner cost.** Sharding adds a second sanitizer build and a short result
   job: about 5 more runner minutes per run, traded for wall time.
 

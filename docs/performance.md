@@ -151,7 +151,7 @@ build to print their values (`ctest` hides the output of passing tests).
 | Binary + asset | < 80 MB | 17.4 MB (executable 3.5, libraries 13.9, assets 0.02) | pass | `run_benchmarks.py` |
 | Idle RAM (solar system) | < 400 MB | 172 MB peak working set (headless; peak commit 429 MB) | pass, with the caveat of section 4 | `run_benchmarks.py` |
 | Cold start to first frame | < 3 s | 0.59 s (upper bound, headless, warm file cache) | pass | `run_benchmarks.py` |
-| CI time (full, nightly excluded) | < 20 min | 38 to 49 min before; 10 to 17 min estimated after | see [ci.md](ci.md) | step logs |
+| CI time (full, nightly excluded) | < 20 min | **35.5 to 36.2 min** in the first two runs (Windows vcpkg cache cold); 15.7 to 19.8 min without the Windows job; 38 to 49 min before the restructuring | **not met yet**: no run with every cache warm measured ([ci.md](ci.md#2-time-budget-measured)) | `gh run view` job timings |
 
 Context measurements of the same run:
 
@@ -226,10 +226,14 @@ on 12 threads).
 slope it should approach is 6.86, matched within 0.5 percent, so the margin
 reflects the thickness effect, not an error.
 
-**CI time.** Before: 38 to 49 minutes. After the restructuring of
-[ci.md](ci.md): an estimate of 10 to 17 minutes with warm caches, from the
-step logs; a run with a cold vcpkg cache (manifest or runner image change)
-can still exceed 20 minutes. The first runs on `main` will confirm it.
+**CI time: not met yet.** Before the restructuring: 38 to 49 minutes.
+Measured on the first two runs of the restructured workflow (PR #18 and the
+push to `main` that merged it, [ci.md](ci.md#2-time-budget-measured)): 36.2
+and 35.5 minutes, both set by the Windows job, whose vcpkg cache was cold
+(24 minutes of configure); without it the longest job took 15.7 to 19.8
+minutes, with a cold ccache. The target can only be met with warm caches,
+and no such run has been measured yet; a run after a manifest or runner
+image change will exceed 20 minutes.
 
 ## 5. Raw data
 
