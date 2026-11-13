@@ -61,7 +61,11 @@ physics and solver thread tests of `orrery_test_sim` observe intermediate
 frames of a running thread and could miss them on a fully loaded machine
 (reproduced locally with 12 parallel tests), so `tests/CMakeLists.txt` marks
 that executable's tests `RUN_SERIAL`: they run alone, about a minute under
-ASan.
+ASan. Checked locally with 12 parallel tests: every test passes except, on a
+machine with a GPU, the two `[gl]` frame-time tests (space view and black
+hole at 1080p), whose GPU time is shared with the other GPU tests running at
+the same moment; the hosted runners have no OpenGL context and skip them. On
+a GPU machine run those two serially (`ctest -R "1080p"`).
 
 ## 2. Time budget: before and after
 
