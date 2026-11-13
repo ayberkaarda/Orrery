@@ -448,6 +448,7 @@ int WindowApp::run(std::ostream& err) {
     BenchmarkStats benchmark(kBenchmarkWarmupFrames);
 
     while (!gl_.should_close()) {
+        ORRERY_FRAME_ZONE();
         gl_.poll_events();
         const int width = gl_.framebuffer_width();
         const int height = gl_.framebuffer_height();

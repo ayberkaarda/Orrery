@@ -179,6 +179,10 @@ until the frame's GPU timer query completes, the fps that follows, and the
 GPU median and 95th percentile. This is the measurement that never opens a
 window (`app::benchmark_headless`).
 
+`--trace <file>` (any mode) writes the profiling zones of the run as Chrome
+trace-event JSON with per-zone totals; zones are compiled in only by
+`ORRERY_PROFILING` builds. Format and options: [observability.md](observability.md).
+
 ## 6. Headless rendering
 
 `app::render_headless` advances the experiment with the same `Simulation`

@@ -37,5 +37,19 @@
     "openssl",
     "tbb",
     "tomlplusplus"
-  ]
+  ],
+  "features": {
+    "profiling": {
+      "description": "Tracy profiler client for ORRERY_TRACY builds (not used by the default or CI presets)",
+      "dependencies": [
+        {
+          "name": "tracy",
+          "default-features": false,
+          "features": [
+            "on-demand"
+          ]
+        }
+      ]
+    }
+  }
 }

@@ -22,6 +22,7 @@ enum class Option : std::uint8_t {
     out,
     size,
     benchmark,
+    trace,
 };
 
 struct OptionSpec {
@@ -31,7 +32,7 @@ struct OptionSpec {
     bool takes_value = false;
 };
 
-constexpr std::array<OptionSpec, 9> kOptions{{
+constexpr std::array<OptionSpec, 10> kOptions{{
     {Option::help, "--help", "-h", false},
     {Option::version, "--version", "", false},
     {Option::modules, "--modules", "", false},
@@ -41,6 +42,7 @@ constexpr std::array<OptionSpec, 9> kOptions{{
     {Option::out, "--out", "-o", true},
     {Option::size, "--size", "", true},
     {Option::benchmark, "--benchmark", "", true},
+    {Option::trace, "--trace", "", true},
 }};
 
 const OptionSpec* find_option(std::string_view name) {
@@ -190,6 +192,9 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
                 options.benchmark_frames = *frames;
                 break;
             }
+            case Option::trace:
+                options.trace = std::filesystem::path(std::string(value));
+                break;
         }
     }
 
@@ -238,6 +243,8 @@ std::string usage_text() {
            "      --benchmark <N>   window: render N frames without vsync, print the mean\n"
            "                        frame time and exit; headless: also time N offscreen\n"
            "                        frames of the written view (GPU work included)\n"
+           "      --trace <file>    write the run's profiling zones as Chrome trace JSON\n"
+           "                        (zones need an ORRERY_PROFILING build)\n"
            "      --modules         print the linked module graph\n"
            "      --version         print the version\n"
            "  -h, --help            print this help\n"

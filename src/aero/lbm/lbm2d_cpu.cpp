@@ -10,6 +10,7 @@
 
 #include "lbm2d_internal.h"
 #include "orrery/aero/lbm/lbm2d.h"
+#include "orrery/core/profile.h"
 
 namespace orrery::aero::lbm {
 
@@ -101,6 +102,7 @@ public:
     }
 
     [[nodiscard]] Status step(std::size_t count) override {
+        ORRERY_ZONE("lbm_step");
         for (std::size_t n = 0; n < count; ++n) {
             tbb::parallel_for(tbb::blocked_range<std::size_t>(0, config_.ny),
                               [this](const tbb::blocked_range<std::size_t>& rows) {

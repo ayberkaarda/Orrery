@@ -9,6 +9,7 @@
 
 #include "linear_solve.h"
 #include "orrery/aero/panel_method.h"
+#include "orrery/core/profile.h"
 
 namespace orrery::aero {
 
@@ -181,6 +182,7 @@ void PanelSolver2D::setup(const AeroGeometry& geometry, const FlowConditions& co
 }
 
 bool PanelSolver2D::step() {
+    ORRERY_ZONE("panel_solve");
     if (!ready_) {
         throw std::logic_error("PanelSolver2D::step called before setup");
     }

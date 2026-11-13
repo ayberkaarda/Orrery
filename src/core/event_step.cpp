@@ -6,6 +6,7 @@
 
 #include "orrery/core/collision.h"
 #include "orrery/core/horizon.h"
+#include "orrery/core/profile.h"
 #include "orrery/core/tidal.h"
 
 namespace orrery::core {
@@ -85,6 +86,7 @@ void resolve_encounters(SimState& state, std::span<const Vec3<space::Length>> st
 Result<space::Time, IntegrationError> EventStepper::step(IIntegrator& integrator, SimState& state,
                                                          space::Time dt, const IForceModel& forces,
                                                          EventLog& log) {
+    ORRERY_ZONE("physics_step");
     const space::Time t_start = state.time();
     // State before the call, taken only when a stop leaves a remainder: a
     // later integrator failure restores it (strong guarantee).
