@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "orrery/core/profile.h" // ORRERY_FRAME_ZONE of the render loops
+
 // Frame timing of the window (docs/app.md, "Window"): the clamped delta that
 // drives interactive updates, and the benchmark statistics.
 namespace orrery::app {
