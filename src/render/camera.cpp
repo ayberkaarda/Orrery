@@ -242,6 +242,29 @@ template <typename Mode> void advance_angles(Mode& mode, const CameraInput& inpu
     mode.distance = std::max(mode.distance * std::exp(-input.zoom * dt), kMinDistance);
 }
 
+// Turntable: yaw turns at the input rate plus the spin rate, pitch and log
+// distance as for Orbit. The pan moves the focus at `distance` per second
+// along the horizontal right axis (-sin y, cos y, 0) = i e^{i y} (as x + i y)
+// and world +Z; with y(t) = y0 + w t and distance d0 exp(-zoom t) the
+// displacement is closed form:
+//   right: d0 move.x i e^{i y0} integral exp((-zoom + i w) t) dt
+//   up:    d0 move.y integral exp(-zoom t) dt
+// At the minimum distance the distance no longer shrinks (update() splits
+// the step where it is reached), so the pan uses zoom 0 there.
+void advance(TurntableMode& mode, const CameraInput& input, double dt) {
+    const double rate = input.yaw + mode.spin_rate;
+    const double zoom = (input.zoom > 0.0 && mode.distance <= kMinDistance) ? 0.0 : input.zoom;
+    const double d0 = mode.distance;
+    const std::complex<double> right =
+        std::complex<double>(0.0, 1.0) * std::polar(1.0, mode.yaw) * exp_integral(-zoom, rate, dt);
+    mode.focus.x += d0 * input.move.x * right.real();
+    mode.focus.y += d0 * input.move.x * right.imag();
+    mode.focus.z += d0 * input.move.y * exp_integral(-zoom, 0.0, dt).real();
+    mode.yaw += rate * dt;
+    mode.pitch = std::clamp(mode.pitch + input.pitch * dt, -kPitchLimit, kPitchLimit);
+    mode.distance = std::max(mode.distance * std::exp(-input.zoom * dt), kMinDistance);
+}
+
 // Surface: heading is linear, speed decays as exp(-zoom t) and altitude
 // follows the decaying climb rate exactly. Ground motion along the turning
 // heading is exact in the local tangent plane,
@@ -285,6 +308,16 @@ FreeMode smooth(const FreeMode& c, const FreeMode& g0, const FreeMode& g1, const
 
 OrbitMode smooth(const OrbitMode& c, const OrbitMode& g0, const OrbitMode& g1, const Blend& b) {
     OrbitMode result = g1;
+    result.focus = blend(c.focus, g0.focus, g1.focus, b);
+    result.distance = log_blend(c.distance, g0.distance, g1.distance, b);
+    result.yaw = blend(c.yaw, g0.yaw, g1.yaw, b);
+    result.pitch = blend(c.pitch, g0.pitch, g1.pitch, b);
+    return result;
+}
+
+TurntableMode smooth(const TurntableMode& c, const TurntableMode& g0, const TurntableMode& g1,
+                     const Blend& b) {
+    TurntableMode result = g1;
     result.focus = blend(c.focus, g0.focus, g1.focus, b);
     result.distance = log_blend(c.distance, g0.distance, g1.distance, b);
     result.yaw = blend(c.yaw, g0.yaw, g1.yaw, b);
@@ -395,6 +428,14 @@ bool Camera::update(double dt, const CameraInput& input, const BodyFrameLookup& 
                 integrate(
                     goal, view, dt, tau, breakpoints, kSubstep,
                     [&](SurfaceMode& mode, double step) { advance(mode, input, step, frame); });
+            } else if constexpr (std::is_same_v<T, TurntableMode>) {
+                // Substeps keep the curved pan path close to linear per piece
+                // for the smoothing, as for Free.
+                const std::array<double, 2> breakpoints{
+                    time_to_bound(goal.pitch, input.pitch, -kPitchLimit, kPitchLimit),
+                    time_to_min_distance(goal.distance, input.zoom)};
+                integrate(goal, view, dt, tau, breakpoints, kSubstep,
+                          [&](TurntableMode& mode, double step) { advance(mode, input, step); });
             } else {
                 const std::array<double, 2> breakpoints{
                     time_to_bound(goal.pitch, input.pitch, -kPitchLimit, kPitchLimit),
@@ -424,6 +465,11 @@ bool Camera::update(double dt, const CameraInput& input, const BodyFrameLookup& 
                 orientation_ = glm::normalize(mode.orientation);
             } else if constexpr (std::is_same_v<T, OrbitMode>) {
                 anchor_ = mode.target ? frame->position : mode.focus;
+                const glm::dvec3 direction = spherical(mode.yaw, mode.pitch);
+                eye_offset_ = direction * mode.distance;
+                orientation_ = look_rotation(-direction, glm::dvec3(0.0, 0.0, kWorldUpZ));
+            } else if constexpr (std::is_same_v<T, TurntableMode>) {
+                anchor_ = mode.focus;
                 const glm::dvec3 direction = spherical(mode.yaw, mode.pitch);
                 eye_offset_ = direction * mode.distance;
                 orientation_ = look_rotation(-direction, glm::dvec3(0.0, 0.0, kWorldUpZ));
