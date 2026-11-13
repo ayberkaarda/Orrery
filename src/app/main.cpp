@@ -83,11 +83,28 @@ std::optional<orrery::sim::StoredEntry> entry_experiment_at(const std::filesyste
     return std::move(typed).value();
 }
 
-int run_window_mode(const orrery::app::CliOptions& options,
-                    const std::filesystem::path& executable) {
+// The user configuration; for --capture the defaults with an empty
+// experiments folder of its own, so that a screenshot never shows the user's
+// settings or saved experiments.
+std::optional<orrery::app::AppConfig> window_config(const orrery::app::CliOptions& options,
+                                                    const std::filesystem::path& config_path) {
     using namespace orrery;
     app::AppConfig config = app::default_config();
-    const std::filesystem::path config_path = app::default_config_path();
+    if (!options.capture.empty()) {
+        std::error_code error;
+        config.experiment_dir =
+            std::filesystem::temp_directory_path(error) / "orrery_capture_experiments";
+        if (!error) {
+            std::filesystem::remove_all(config.experiment_dir, error);
+            std::filesystem::create_directories(config.experiment_dir, error);
+        }
+        if (error) {
+            std::cerr << "orrery_app: capture: no empty experiments folder: " << error.message()
+                      << '\n';
+            return std::nullopt;
+        }
+        return config;
+    }
     if (auto loaded = app::load_config(config_path)) {
         config = loaded.value().config;
         for (const std::string& warning : loaded.value().warnings) {
@@ -96,6 +113,18 @@ int run_window_mode(const orrery::app::CliOptions& options,
     } else {
         std::cerr << "orrery_app: config: " << loaded.error() << " (using the defaults)\n";
     }
+    return config;
+}
+
+int run_window_mode(const orrery::app::CliOptions& options,
+                    const std::filesystem::path& executable) {
+    using namespace orrery;
+    const std::filesystem::path config_path = app::default_config_path();
+    const std::optional<app::AppConfig> loaded_config = window_config(options, config_path);
+    if (!loaded_config) {
+        return app::kExitFailure;
+    }
+    const app::AppConfig& config = *loaded_config;
     const std::vector<std::filesystem::path> dirs = app::experiment_search_dirs(executable);
     app::WindowRequest request;
     request.config = config;
@@ -153,6 +182,10 @@ int run_window_mode(const orrery::app::CliOptions& options,
     request.width = options.width.value_or(config.window_width);
     request.height = options.height.value_or(config.window_height);
     request.benchmark_frames = options.benchmark_frames;
+    if (!options.capture.empty()) {
+        return app::capture_window(std::move(request), options.frame, options.capture, std::cout,
+                                   std::cerr);
+    }
     return app::run_window(std::move(request), std::cout, std::cerr);
 }
 #endif

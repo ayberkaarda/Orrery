@@ -1,5 +1,6 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <filesystem>
 #include <initializer_list>
 #include <string>
 #include <string_view>
@@ -115,4 +116,24 @@ TEST_CASE("Usage text lists every option", "[app][cli]") {
                                "--benchmark", "--version", "--help", "--modules"}) {
         CHECK(usage.find(option) != std::string::npos);
     }
+}
+
+TEST_CASE("Command line: capture through the hidden window", "[app][cli]") {
+    const auto capture =
+        parse({"-e", "black_hole", "--capture", "shot.png", "--frame", "120", "--size", "800x450"});
+    REQUIRE(capture.has_value());
+    CHECK(capture.value().mode == RunMode::window);
+    CHECK(capture.value().capture == std::filesystem::path("shot.png"));
+    CHECK(capture.value().frame == 120);
+    CHECK(capture.value().width == 800);
+    CHECK(parse({"--capture", "a.png"}).value().capture == std::filesystem::path("a.png"));
+    CHECK(parse({"-e", "x"}).value().capture.empty());
+
+    expect_error({"--capture", "a.jpg"}, "use a .png file name");
+    expect_error({"--headless", "-e", "x", "-o", "a.png", "--capture", "b.png"},
+                 "--capture is not valid with --headless");
+    expect_error({"--capture", "a.png", "--benchmark", "10"},
+                 "--capture is not valid with --benchmark");
+    expect_error({"--capture", "a.png", "--out", "b.png"}, "--out is only valid with --headless");
+    CHECK(usage_text().find("--capture") != std::string::npos);
 }

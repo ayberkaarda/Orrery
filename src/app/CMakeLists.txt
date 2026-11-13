@@ -156,6 +156,7 @@ target_link_libraries(orrery_app_core PRIVATE imgui::imgui implot::implot
 if(NOT ORRERY_HEADLESS)
     target_sources(orrery_app_core PRIVATE
         window_app.cpp
+        window_capture.cpp
         include/orrery/app/window_app.h)
 endif()
 

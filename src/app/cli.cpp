@@ -23,6 +23,7 @@ enum class Option : std::uint8_t {
     size,
     benchmark,
     trace,
+    capture,
 };
 
 struct OptionSpec {
@@ -32,7 +33,7 @@ struct OptionSpec {
     bool takes_value = false;
 };
 
-constexpr std::array<OptionSpec, 10> kOptions{{
+constexpr std::array<OptionSpec, 11> kOptions{{
     {Option::help, "--help", "-h", false},
     {Option::version, "--version", "", false},
     {Option::modules, "--modules", "", false},
@@ -43,6 +44,7 @@ constexpr std::array<OptionSpec, 10> kOptions{{
     {Option::size, "--size", "", true},
     {Option::benchmark, "--benchmark", "", true},
     {Option::trace, "--trace", "", true},
+    {Option::capture, "--capture", "", true},
 }};
 
 const OptionSpec* find_option(std::string_view name) {
@@ -88,6 +90,24 @@ core::Result<std::pair<int, int>, std::string> parse_size(std::string_view text)
         return bad();
     }
     return std::pair<int, int>(static_cast<int>(*width), static_cast<int>(*height));
+}
+
+core::Result<CliOptions, std::string> check_capture(const CliOptions& options,
+                                                    const std::set<Option>& seen) {
+    if (!seen.contains(Option::capture)) {
+        return options;
+    }
+    if (options.mode == RunMode::headless) {
+        return core::failure(std::string("--capture is not valid with --headless (use --out)"));
+    }
+    if (seen.contains(Option::benchmark)) {
+        return core::failure(std::string("--capture is not valid with --benchmark"));
+    }
+    if (!ends_with_png(options.capture)) {
+        return core::failure("--capture: the image is written as PNG; use a .png file name, got '" +
+                             options.capture.string() + "'");
+    }
+    return options;
 }
 
 } // namespace
@@ -195,6 +215,9 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
             case Option::trace:
                 options.trace = std::filesystem::path(std::string(value));
                 break;
+            case Option::capture:
+                options.capture = std::filesystem::path(std::string(value));
+                break;
         }
     }
 
@@ -214,14 +237,14 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
                                  options.out.string() + "'");
         }
     } else {
-        if (seen.contains(Option::frame)) {
-            return core::failure(std::string("--frame is only valid with --headless"));
+        if (seen.contains(Option::frame) && !seen.contains(Option::capture)) {
+            return core::failure(std::string("--frame is only valid with --headless or --capture"));
         }
         if (seen.contains(Option::out)) {
             return core::failure(std::string("--out is only valid with --headless"));
         }
     }
-    return options;
+    return check_capture(options, seen);
 }
 
 std::string usage_text() {
@@ -229,6 +252,8 @@ std::string usage_text() {
            "  orrery_app [--experiment <name-or-path>] [--size WxH] [--benchmark <frames>]\n"
            "  orrery_app --headless --experiment <name-or-path> --out <file.png>\n"
            "             [--frame <N>] [--size WxH] [--benchmark <frames>]\n"
+           "  orrery_app [--experiment <name-or-path>] --capture <file.png> [--frame <N>]\n"
+           "             [--size WxH]\n"
            "  orrery_app --version | --help | --modules\n"
            "\n"
            "Options:\n"
@@ -238,6 +263,11 @@ std::string usage_text() {
            "      --frame <N>       advance N frames (1/60 s each at the experiment's time\n"
            "                        warp) before rendering; default 0\n"
            "  -o, --out <file.png>  output image of --headless\n"
+           "      --capture <file.png>\n"
+           "                        open the window hidden (never shown or focused), run\n"
+           "                        --frame frames at 60 per second and the shown\n"
+           "                        workspace's run, write the window's framebuffer with\n"
+           "                        its panels to the PNG and exit\n"
            "      --size WxH        image or window size in pixels (default 1280x720 headless,\n"
            "                        1600x900 window)\n"
            "      --benchmark <N>   window: render N frames without vsync, print the mean\n"
