@@ -342,6 +342,8 @@ jobs:
           clang-format --version
       - name: Dependency boundaries (sources)
         run: python tools/check_deps.py --source-only
+      - name: Documentation links and physics index
+        run: python tools/check_docs.py
       - name: clang-format check
         run: |
           git ls-files '*.cpp' '*.hpp' '*.h' '*.cc' | xargs -r clang-format --dry-run --Werror

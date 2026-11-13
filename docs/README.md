@@ -28,6 +28,9 @@ decisions and each part of the application.
 | [entry-workspace.md](entry-workspace.md) | Entry workspace: setup, profile plots, ground track, experiments and the entry headless renderer |
 | [observability.md](observability.md) | Profiling zones, Tracy integration and the `--trace` output |
 | [screenshots.md](screenshots.md) | How the README screenshots are regenerated headlessly |
+| [performance.md](performance.md) | Benchmark method, measured results against the specification targets, and the deviations with their reasons |
+| [ci.md](ci.md) | CI jobs, caches, the time budget and the nightly workflow |
+| [packaging.md](packaging.md) | Installers (MSI, zip, AppImage, tar.gz), the install layout, versioning and releases |
 
 ## Planning
 
