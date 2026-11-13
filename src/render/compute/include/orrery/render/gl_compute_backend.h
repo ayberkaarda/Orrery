@@ -14,7 +14,9 @@
 // ADR-019). Buffers are shader storage buffers with immutable storage;
 // kernels are the GLSL 460 compute shaders embedded from
 // src/render/shaders/lbm: kernel "<name>" is the file <name>.comp.glsl,
-// composed with every snippet of that directory (files without ".comp").
+// composed with the snippets of that directory (files without ".comp") that
+// belong to it: "<family>_common.glsl" goes into the kernels named
+// "<family>_*", any other snippet into every kernel (ADR-020).
 //
 // The backend belongs to the OpenGL context that was current when it was
 // created: every call fails (or, for release_buffer, does nothing) while
@@ -37,6 +39,10 @@ public:
 
     [[nodiscard]] aero::compute::ComputeBackendInfo info() const override;
     [[nodiscard]] bool has_kernel(std::string_view name) const override;
+    // Largest shader storage block (GL_MAX_SHADER_STORAGE_BLOCK_SIZE) and,
+    // where the driver offers GL_NVX_gpu_memory_info or GL_ATI_meminfo, the
+    // free device memory (read now; empty while the context is not current).
+    [[nodiscard]] aero::compute::DeviceMemory memory() const override;
     [[nodiscard]] core::Result<aero::compute::BufferId, std::string>
     create_buffer(std::size_t bytes) override;
     void release_buffer(aero::compute::BufferId buffer) noexcept override;

@@ -35,6 +35,40 @@ bool is_kernel_file(std::string_view file) {
     return file.size() > kKernelSuffix.size() && file.ends_with(kKernelSuffix);
 }
 
+// A snippet "<family>_common.glsl" belongs to the kernels whose name starts
+// with "<family>_" (lbm_d2q9_common.glsl to the lbm_d2q9_* kernels); any
+// other snippet is composed into every kernel (ADR-020).
+constexpr std::string_view kFamilySuffix = "common.glsl";
+
+bool snippet_applies(std::string_view snippet, std::string_view kernel) {
+    if (snippet.size() <= kFamilySuffix.size() || !snippet.ends_with(kFamilySuffix)) {
+        return true;
+    }
+    const std::string_view family = snippet.substr(0, snippet.size() - kFamilySuffix.size());
+    return kernel.starts_with(family);
+}
+
+// Vendor extensions that report free device memory, in KiB (the enums are
+// not in the core profile loader).
+constexpr GLenum kGpuMemoryAvailableNvx = 0x9049; // GL_NVX_gpu_memory_info
+constexpr GLenum kVboFreeMemoryAti = 0x87FB;      // GL_ATI_meminfo, 4 values
+
+bool has_extension(std::string_view name) {
+    GLint count = 0;
+    glGetIntegerv(GL_NUM_EXTENSIONS, &count);
+    for (GLint e = 0; e < count; ++e) {
+        // GL boundary: glGetStringi returns the extension name as GLubyte text.
+        const auto* text =
+            reinterpret_cast<const char*>(glGetStringi(GL_EXTENSIONS, static_cast<GLuint>(e)));
+        if (text != nullptr && name == text) {
+            return true;
+        }
+    }
+    return false;
+}
+
+enum class MemoryQuery : std::uint8_t { none, nvx, ati };
+
 ShaderSource source_of(const lbm_shaders::EmbeddedShader& shader) {
     return {shader.name, shader.source};
 }
@@ -112,6 +146,8 @@ struct GlComputeBackend::Impl {
     std::uint32_t next_id = 1;
     std::array<GLint, 3> max_groups{0, 0, 0};
     GLint max_bindings = 0;
+    GLint64 max_block_bytes = 0;
+    MemoryQuery memory_query = MemoryQuery::none;
 
     [[nodiscard]] bool current() const noexcept {
         return context != 0 && detail::current_context_serial() == context;
@@ -126,8 +162,14 @@ struct GlComputeBackend::Impl {
             return core::failure("opengl compute backend: unknown kernel '" + std::string(name) +
                                  "'");
         }
+        std::vector<ShaderSource> includes;
+        for (const ShaderSource& snippet : snippets) {
+            if (snippet_applies(snippet.name, name)) {
+                includes.push_back(snippet);
+            }
+        }
         const std::array<StageSource, 1> stages{
-            StageSource{ShaderStage::compute, source_of(*source->second), snippets}};
+            StageSource{ShaderStage::compute, source_of(*source->second), includes}};
         auto program = Program::create(stages);
         if (!program) {
             return core::failure("opengl compute backend: kernel '" + std::string(name) +
@@ -172,7 +214,38 @@ core::Result<std::unique_ptr<GlComputeBackend>, std::string> GlComputeBackend::c
                         &impl->max_groups[static_cast<std::size_t>(d)]);
     }
     glGetIntegerv(GL_MAX_SHADER_STORAGE_BUFFER_BINDINGS, &impl->max_bindings);
+    glGetInteger64v(GL_MAX_SHADER_STORAGE_BLOCK_SIZE, &impl->max_block_bytes);
+    if (has_extension("GL_NVX_gpu_memory_info")) {
+        impl->memory_query = MemoryQuery::nvx;
+    } else if (has_extension("GL_ATI_meminfo")) {
+        impl->memory_query = MemoryQuery::ati;
+    }
     return std::unique_ptr<GlComputeBackend>(new GlComputeBackend(std::move(impl)));
+}
+
+aero::compute::DeviceMemory GlComputeBackend::memory() const {
+    aero::compute::DeviceMemory memory;
+    if (impl_->max_block_bytes > 0) {
+        memory.max_binding_bytes = static_cast<std::size_t>(impl_->max_block_bytes);
+    }
+    if (!impl_->current()) {
+        return memory;
+    }
+    std::array<GLint, 4> kib{0, 0, 0, 0};
+    switch (impl_->memory_query) {
+        case MemoryQuery::nvx:
+            glGetIntegerv(kGpuMemoryAvailableNvx, kib.data());
+            break;
+        case MemoryQuery::ati:
+            glGetIntegerv(kVboFreeMemoryAti, kib.data()); // [0]: total free in the pool
+            break;
+        case MemoryQuery::none:
+            return memory;
+    }
+    if (kib[0] > 0) {
+        memory.available_bytes = static_cast<std::size_t>(kib[0]) * std::size_t{1024};
+    }
+    return memory;
 }
 
 aero::compute::ComputeBackendInfo GlComputeBackend::info() const {
