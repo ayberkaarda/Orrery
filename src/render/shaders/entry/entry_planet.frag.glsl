@@ -41,7 +41,12 @@ void main() {
     if (u_grid_step > 0.0) {
         vec3 f = normalize(v_fixed);
         float latitude = degrees(asin(clamp(f.z, -1.0, 1.0)));
-        float longitude = degrees(atan(f.y, f.x));
+        // Two longitude branches, cut at 180 and at 0 degrees: each pixel
+        // takes the one that is continuous across its neighbours, so the
+        // derivatives (and the grid line) stay clean along the date line.
+        float east = degrees(atan(f.y, f.x));
+        float west = degrees(atan(-f.y, -f.x)) + 180.0;
+        float longitude = fwidth(east) <= fwidth(west) ? east : west;
         float line = grid_line(vec2(longitude, latitude) / u_grid_step);
         vec3 grid = u_grid_color * mix(0.28, 1.0, day);
         color = mix(color, grid, line * u_grid_strength);
