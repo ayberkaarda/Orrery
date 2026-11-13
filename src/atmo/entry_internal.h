@@ -3,6 +3,7 @@
 // Private state of EntryExperiment. Not part of the public include directory.
 
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "orrery/atmo/entry.h"
@@ -72,8 +73,8 @@ struct EntryExperiment::Impl {
     // interface.
     void start();
     // Split step of length dt (seconds): kick, gravity, kick; the clock then
-    // reads new_time_s.
-    [[nodiscard]] core::Result<bool, AtmoError> step(double dt_s, double new_time_s);
+    // reads new_time_s. Returns the error of a failed gravity step.
+    [[nodiscard]] std::optional<AtmoError> step(double dt_s, double new_time_s);
     // Velocity kick of the drag over tau seconds at fixed position (RK4).
     void kick(double tau_s);
     [[nodiscard]] core::Vec3<core::space::Acceleration>

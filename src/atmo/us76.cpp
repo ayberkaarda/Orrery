@@ -71,7 +71,7 @@ double molecular_weight_ratio(double geometric_m) noexcept {
         return 1.0;
     }
     const double position = (geometric_m - kRatioStartM) / kRatioStepM;
-    const double last = static_cast<double>(kMolecularWeightRatio.size() - 1);
+    const auto last = static_cast<double>(kMolecularWeightRatio.size() - 1);
     if (position >= last) {
         return kMolecularWeightRatio.back();
     }

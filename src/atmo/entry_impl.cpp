@@ -1,6 +1,7 @@
 #include <algorithm>
 #include <cmath>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -96,7 +97,9 @@ std::pair<Vec3L, Vec3V> initial_vectors(const Planet& planet, const EntryInitial
                   core::si::Velocity(v * dir[2])}};
 }
 
-core::Result<core::SimState, AtmoError> initial_state(const EntryConfig& c) {
+// The two-body state at time 0 in `state`; false if the store rejected a
+// body (not reachable after config_problem, kept as a guard).
+bool initial_state(const EntryConfig& c, core::SimState& state) {
     const auto [r, v] = initial_vectors(c.planet, c.initial);
     // M = GM / G in space units, so that G M reproduces GM exactly.
     const core::space::GravitationalParameter gm = core::to_space(c.planet.gm);
@@ -109,10 +112,10 @@ core::Result<core::SimState, AtmoError> initial_state(const EntryConfig& c) {
                                                  core::to_space(c.vehicle.mass),
                                                  detail::to_space_vec(r), detail::to_space_vec(v)});
     if (!planet || !probe) {
-        return core::failure(
-            AtmoError{AtmoErrorCode::invalid_parameter, "the initial bodies are not valid"});
+        return false;
     }
-    return core::SimState(core::space::Time(0.0), std::move(bodies));
+    state = core::SimState(core::space::Time(0.0), std::move(bodies));
+    return true;
 }
 
 std::unique_ptr<core::IIntegrator> make_integrator(const EntryConfig& c) {
@@ -144,19 +147,20 @@ EntryExperiment::Impl::create(EntryConfig config) {
     if (std::string problem = config_problem(config); !problem.empty()) {
         return core::failure(AtmoError{AtmoErrorCode::invalid_parameter, std::move(problem)});
     }
-    auto state = initial_state(config);
-    if (!state) {
-        return core::failure(state.error());
+    core::SimState state;
+    if (!initial_state(config, state)) {
+        return core::failure(
+            AtmoError{AtmoErrorCode::invalid_parameter, "the initial bodies are not valid"});
     }
-    auto drag = AtmosphericDrag::create(config.planet, state.value().bodies().id(kPlanetIndex),
+    auto drag = AtmosphericDrag::create(config.planet, state.bodies().id(kPlanetIndex),
                                         std::vector<AeroCoefficientTable>{config.vehicle.aero},
                                         config.frame);
     if (!drag) {
         return core::failure(drag.error());
     }
     std::unique_ptr<core::IIntegrator> integrator = make_integrator(config);
-    auto impl = std::make_unique<Impl>(std::move(config), std::move(state).value(),
-                                       std::move(integrator), std::move(drag).value());
+    auto impl = std::make_unique<Impl>(std::move(config), std::move(state), std::move(integrator),
+                                       std::move(drag).value());
     impl->start();
     return impl;
 }
@@ -175,9 +179,9 @@ core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double dura
         const double remaining = limit - time_s;
         const double next = next_step();
         const bool last = remaining <= next;
-        auto done = step(last ? remaining : next, last ? limit : time_s + next);
-        if (!done) {
-            return core::failure(done.error());
+        if (std::optional<AtmoError> failed =
+                step(last ? remaining : next, last ? limit : time_s + next)) {
+            return core::failure(std::move(*failed));
         }
     }
     if (summary.outcome == EntryOutcome::running && time_s >= limit) {
@@ -186,7 +190,7 @@ core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double dura
     return summary.outcome;
 }
 
-core::Result<bool, AtmoError> EntryExperiment::Impl::step(double dt_s, double new_time_s) {
+std::optional<AtmoError> EntryExperiment::Impl::step(double dt_s, double new_time_s) {
     const EntryRow before = last_row();
     const core::SimState backup = state;
     const double work_before = drag_work_j;
@@ -197,16 +201,15 @@ core::Result<bool, AtmoError> EntryExperiment::Impl::step(double dt_s, double ne
         state = backup;
         drag_work_j = work_before;
         summary.outcome = EntryOutcome::failed;
-        return core::failure(
-            AtmoError{AtmoErrorCode::integration_failed,
-                      "gravity step: " + std::string(core::to_string(gravity_step.error()))});
+        return AtmoError{AtmoErrorCode::integration_failed,
+                         "gravity step: " + std::string(core::to_string(gravity_step.error()))};
     }
     kick(0.5 * dt_s);
     time_s = new_time_s;
     append(measure());
     detect_events(before, last_row());
     update_summary(before, last_row());
-    return true;
+    return std::nullopt;
 }
 
 void EntryExperiment::Impl::kick(double tau_s) {

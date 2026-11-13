@@ -1,6 +1,7 @@
 #include <cmath>
 #include <exception>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -55,8 +56,10 @@ std::size_t solve(aero::IAeroSolver& solver, const CdSamplingRequest& request,
     return steps;
 }
 
-core::Result<CdSamplingPoint, AtmoError>
-sample_point(const CdSamplingRequest& request, const AeroSolverFactory& factory, double mach) {
+// Samples one Mach number into `point`; returns the error, if any.
+std::optional<AtmoError> sample_point(const CdSamplingRequest& request,
+                                      const AeroSolverFactory& factory, double mach,
+                                      CdSamplingPoint& point) {
     aero::FlowConditions flow = request.freestream;
     flow.speed = mach * flow.speed_of_sound();
     const aero::RegimeChoice choice =
@@ -64,18 +67,17 @@ sample_point(const CdSamplingRequest& request, const AeroSolverFactory& factory,
     const std::string label = "Mach " + std::to_string(mach) + ": ";
     std::unique_ptr<aero::IAeroSolver> solver = factory ? factory(choice.solver) : nullptr;
     if (!solver) {
-        return core::failure(error(AtmoErrorCode::solver_unavailable,
-                                   label + "no " + std::string(aero::solver_name(choice.solver)) +
-                                       " solver available"));
+        return error(AtmoErrorCode::solver_unavailable,
+                     label + "no " + std::string(aero::solver_name(choice.solver)) +
+                         " solver available");
     }
-    CdSamplingPoint point;
     point.mach = mach;
     point.solver = choice.solver;
     point.within_envelope = choice.within_envelope;
     try {
         point.steps = solve(*solver, request, flow);
     } catch (const std::exception& e) {
-        return core::failure(error(AtmoErrorCode::solver_failed, label + e.what()));
+        return error(AtmoErrorCode::solver_failed, label + e.what());
     }
     const aero::AeroResult& result = solver->result();
     point.cd = result.cd;
@@ -85,10 +87,10 @@ sample_point(const CdSamplingRequest& request, const AeroSolverFactory& factory,
         point.warnings.push_back(w.code);
     }
     if (!(point.cd > 0.0) || !std::isfinite(point.cd)) {
-        return core::failure(error(AtmoErrorCode::solver_failed,
-                                   label + "the solver returned Cd " + std::to_string(point.cd)));
+        return error(AtmoErrorCode::solver_failed,
+                     label + "the solver returned Cd " + std::to_string(point.cd));
     }
-    return point;
+    return std::nullopt;
 }
 
 } // namespace
@@ -104,12 +106,12 @@ core::Result<CdSamplingResult, AtmoError> sample_cd_table(const CdSamplingReques
     samples.reserve(request.mach_numbers.size());
     out.points.reserve(request.mach_numbers.size());
     for (const double mach : request.mach_numbers) {
-        auto point = sample_point(request, factory, mach);
-        if (!point) {
-            return core::failure(point.error());
+        CdSamplingPoint point;
+        if (std::optional<AtmoError> failed = sample_point(request, factory, mach, point)) {
+            return core::failure(std::move(*failed));
         }
-        samples.push_back(CdSample{mach, point.value().cd});
-        out.points.push_back(std::move(point).value());
+        samples.push_back(CdSample{mach, point.cd});
+        out.points.push_back(std::move(point));
     }
     auto table = AeroCoefficientTable::create(std::move(samples),
                                               core::si::Area(request.geometry.reference.area));

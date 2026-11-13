@@ -114,7 +114,8 @@ TEST_CASE("US76 above 86 km follows the tabulated values continuously", "[atmo][
     const double above = us76.sample(Length(86000.001)).density.value();
     CHECK(std::abs(above / below - 1.0) < 1e-6);
     double previous = std::numeric_limits<double>::infinity();
-    for (double z = -5000.0; z <= 1.0e6; z += 2500.0) {
+    for (int step = 0; step <= 402; ++step) {
+        const double z = -5000.0 + 2500.0 * step;
         const double rho = us76.sample(Length(z)).density.value();
         REQUIRE(rho < previous);
         previous = rho;
