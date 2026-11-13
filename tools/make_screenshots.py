@@ -1,19 +1,23 @@
 #!/usr/bin/env python3
-"""Regenerate the README screenshots in docs/images with the headless app.
+"""Regenerate the README screenshots in docs/images with the app itself.
 
-Each shot is rendered by `orrery_app --headless` (an offscreen OpenGL 4.6
-context; no window is shown), re-encoded losslessly as an RGB PNG at the
-highest zlib effort with Pillow, and written without any text, time or
-profile chunks, so the images carry no tool names, user names or paths.
-Without Pillow the rendered PNG is kept as it is, minus those chunks.
+Window shots are taken by `orrery_app --capture`: the real window, opened
+hidden (never shown, never focused), runs its frames and the shown
+workspace's run, and its framebuffer is written after the UI pass, docked
+panels included. Headless shots are rendered by `orrery_app --headless` (an
+offscreen OpenGL 4.6 context). Each image is re-encoded losslessly as an RGB
+PNG at the highest zlib effort with Pillow and written without any text,
+time or profile chunks, so the images carry no tool names, user names or
+paths. Without Pillow the rendered PNG is kept as it is, minus those chunks.
 Palette reduction is deliberately not used: it bands the colour maps and
 changes the colours that the legends explain.
 
 Usage:
   python tools/make_screenshots.py --app <path to orrery_app> [--only NAME ...]
 
-The list of shots, with their experiments, frames and sizes, is SHOTS below
-and in docs/screenshots.md. Exit status 0 when every shot was written.
+Window shots need a build with a window system (not ORRERY_HEADLESS). The
+list of shots, with their experiments, frames and sizes, is SHOTS below and
+in docs/screenshots.md. Exit status 0 when every shot was written.
 """
 
 from __future__ import annotations
@@ -30,15 +34,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 OUT_DIR = ROOT / "docs" / "images"
 
-# (file name, experiment name or path relative to the repository, frame, size)
+# (file name, path: "window" or "headless", experiment name or path relative
+# to the repository, frame, size). Window frames run at 60 per second of wall
+# time, so 3000 frames take 50 s.
 SHOTS = [
-    ("space-solar-system.png", "solar_system", 3000, "1600x900"),
-    ("space-black-hole.png", "black_hole", 0, "1600x900"),
-    ("space-figure-eight.png", "figure_eight", 1200, "1600x900"),
-    ("aero-naca0012-lbm.png", "aero_naca0012_lbm", 0, "1600x900"),
-    ("aero-apollo-newtonian.png", "aero_apollo_capsule", 0, "1600x900"),
-    ("aero-naca0012-stall-wake.png", "docs/screenshots/naca0012_stall_lbm.json", 0, "1600x900"),
-    ("entry-apollo.png", "entry_apollo_like", 0, "1600x900"),
+    ("space-solar-system.png", "window", "solar_system", 3000, "1600x900"),
+    ("space-black-hole.png", "window", "black_hole", 0, "1600x900"),
+    ("space-figure-eight.png", "window", "figure_eight", 1200, "1600x900"),
+    ("aero-naca0012-lbm.png", "window", "aero_naca0012_lbm", 0, "1600x900"),
+    ("aero-apollo-newtonian.png", "window", "aero_apollo_capsule", 0, "1600x900"),
+    ("aero-naca0012-stall-wake.png", "window", "docs/screenshots/naca0012_stall_lbm.json", 0,
+     "1600x900"),
+    ("entry-apollo.png", "headless", "entry_apollo_like", 0, "1600x900"),
 ]
 
 KEPT_CHUNKS = {b"IHDR", b"PLTE", b"tRNS", b"IDAT", b"IEND", b"gAMA", b"sRGB"}
@@ -87,11 +94,12 @@ def experiment_argument(experiment: str) -> str:
     return experiment
 
 
-def render(app: Path, shot: tuple[str, str, int, str], work: Path) -> Path | None:
-    name, experiment, frame, size = shot
+def render(app: Path, shot: tuple[str, str, str, int, str], work: Path) -> Path | None:
+    name, path, experiment, frame, size = shot
     raw = work / name
-    command = [str(app), "--headless", "--experiment", experiment_argument(experiment),
-               "--frame", str(frame), "--size", size, "--out", str(raw)]
+    output = ["--capture", str(raw)] if path == "window" else ["--headless", "--out", str(raw)]
+    command = [str(app), *output, "--experiment", experiment_argument(experiment),
+               "--frame", str(frame), "--size", size]
     result = subprocess.run(command, capture_output=True, text=True, check=False)
     print(result.stdout.strip())
     if result.returncode != 0 or not raw.is_file():
