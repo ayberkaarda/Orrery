@@ -1,13 +1,17 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <new>
 #include <string>
 #include <variant>
 #include <vector>
 
+#include "../core/allocation_failure_injection.h"
 #include "app_test_support.h"
+#include "orrery/core/state_hash.h"
 #include "orrery/sim/space_experiment.h"
 
 using namespace orrery;
@@ -210,4 +214,111 @@ TEST_CASE("LoadExperiment replaces the system and its settings, or nothing",
     CHECK(contains(simulation.status().message, "Cannot open experiment unknown_integrator.json"));
     CHECK(simulation.status().generation == generation + 1);
     CHECK(simulation.status().settings.integrator == SpaceIntegrator::yoshida4);
+}
+
+namespace {
+
+constexpr std::int64_t kFrameNs = 16'666'667;
+
+// The interactive setup: a warp budget and a clock that never advances
+// (every step is free, so the governor is deterministic).
+SimulationConfig governed_config() {
+    SimulationConfig config;
+    config.dt_days = 0.05;
+    config.time_warp = 1'000'000;
+    config.warp_budget = WarpBudget{};
+    config.clock = [] { return std::int64_t{0}; };
+    return config;
+}
+
+struct Observed {
+    std::uint64_t hash = 0;
+    SimStatus status;
+    SpaceIntegrator integrator = SpaceIntegrator::leapfrog_kdk;
+    ForceChoice force = ForceChoice::automatic;
+    double dt_days = 0.0;
+    double softening_au = 0.0;
+    std::int64_t time_warp = 0;
+    bool paused = false;
+    std::int64_t max_steps = 0;
+};
+
+Observed observe(Simulation& simulation) {
+    const SimulationConfig& config = simulation.config();
+    return {core::state_hash(simulation.state()),
+            simulation.status(),
+            config.integrator,
+            config.force,
+            config.dt_days,
+            config.softening_au,
+            config.time_warp,
+            config.paused,
+            config.max_steps_per_advance};
+}
+
+void check_same(const Observed& a, const Observed& b) {
+    CHECK(a.hash == b.hash);
+    CHECK(a.status == b.status);
+    CHECK(a.integrator == b.integrator);
+    CHECK(a.force == b.force);
+    CHECK(a.dt_days == b.dt_days);
+    CHECK(a.softening_au == b.softening_au);
+    CHECK(a.time_warp == b.time_warp);
+    CHECK(a.paused == b.paused);
+    CHECK(a.max_steps == b.max_steps);
+}
+
+} // namespace
+
+TEST_CASE("A LoadExperiment that fails on an allocation changes nothing",
+          "[app][sim][experiment][alloc]") {
+    const auto started = [] {
+        Simulation simulation =
+            app_test::make_simulation("sun_earth_moon.json", governed_config());
+        for (int i = 0; i < 3; ++i) {
+            REQUIRE(simulation.advance(kFrameNs).steps > 0);
+        }
+        return simulation;
+    };
+    // What an untouched simulation does next.
+    Simulation reference = started();
+    const Observed before = observe(reference);
+    for (int i = 0; i < 4; ++i) {
+        REQUIRE(reference.advance(kFrameNs).steps > 0);
+    }
+    const Observed after = observe(reference);
+
+    // Every allocation of the load fails once in turn (custom_space.json
+    // changes the integrator, force, step, warp, softening, budget and pause).
+    int failures = 0;
+    for (long long allowed = 0;; ++allowed) {
+        Simulation simulation = started();
+        bool fired = false;
+        try {
+            const test::AllocationFailureScope scope(allowed);
+            simulation.apply(LoadExperiment{fixture("custom_space.json")});
+            fired = scope.fired();
+        } catch (const std::bad_alloc&) {
+            fired = true;
+        }
+        if (!fired) {
+            // The whole load succeeded without an injected failure.
+            CHECK(simulation.config().integrator == SpaceIntegrator::rk4);
+            CHECK(simulation.status().dt_days == 0.25);
+            break;
+        }
+        ++failures;
+        INFO("allocation " << allowed << " failed");
+        Observed now = observe(simulation);
+        // A failure reported as a message is the only allowed difference.
+        now.status.message = before.status.message;
+        check_same(now, before);
+        for (int i = 0; i < 4; ++i) {
+            REQUIRE(simulation.advance(kFrameNs).steps > 0);
+        }
+        Observed later = observe(simulation);
+        later.status.message = after.status.message;
+        check_same(later, after);
+    }
+    CHECK(failures > 10);
 }

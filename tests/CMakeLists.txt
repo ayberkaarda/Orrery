@@ -263,6 +263,8 @@ catch_discover_tests(orrery_test_scene DISCOVERY_MODE PRE_TEST)
 # application bar. Bundled assets are found through ORRERY_SCENARIO_DIR.
 add_executable(orrery_test_sim
     app/app_test_support.h
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp
     app/test_triple_buffer.cpp
     app/test_command_queue.cpp
     app/test_simulation.cpp

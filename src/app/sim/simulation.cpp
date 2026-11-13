@@ -250,35 +250,57 @@ struct Simulation::Impl {
 
     void load_experiment(const std::filesystem::path& path);
 
-    // Makes `scene` the simulated system (and the target of Reset). Builds a
+    // A replacement of the simulated system, fully built: everything that
+    // can fail or throw happens while staging, so committing one only moves
+    // (strong exception guarantee for loads and resets).
+    struct Staged {
+        scene::Scene scene;
+        core::SimState state;
+        std::unique_ptr<core::IIntegrator> integrator;
+        std::unique_ptr<core::IForceModel> forces;
+        std::optional<core::ConservationDiagnostics> diagnostics;
+        std::string scenario_name;
+        std::string integrator_name;
+        std::string force_name;
+    };
+
+    // Builds `scene` with the integrator and force model of `settings`, and a
     // fresh integrator so that adaptive history never leaks across loads.
-    std::optional<std::string> start(scene::Scene scene) {
+    // Touches nothing of the running simulation.
+    static core::Result<Staged, std::string> stage(scene::Scene scene,
+                                                   const SimulationConfig& settings) {
         auto forces_built =
-            make_force_model(config.force, config.softening_au, scene.state.bodies());
+            make_force_model(settings.force, settings.softening_au, scene.state.bodies());
         if (!forces_built) {
-            return forces_built.error();
+            return core::failure(forces_built.error());
         }
-        std::unique_ptr<core::IForceModel> new_forces = std::move(forces_built).value();
-        std::unique_ptr<core::IIntegrator> new_integrator =
-            make_space_integrator(config.integrator);
-        std::optional<core::ConservationDiagnostics> new_diagnostics;
+        Staged staged;
+        staged.forces = std::move(forces_built).value();
+        staged.integrator = make_space_integrator(settings.integrator);
         if (scene.state.bodies().size() <= kDriftBodyLimit) {
-            new_diagnostics.emplace(scene.state, *new_forces);
+            staged.diagnostics.emplace(scene.state, *staged.forces);
         }
-        core::SimState new_state = scene.state;
-        // Commit (no throwing operations below except string copies, which
-        // leave the simulation consistent if they fail).
-        forces = std::move(new_forces);
-        integrator = std::move(new_integrator);
-        diagnostics = new_diagnostics;
-        state = std::move(new_state);
-        initial = std::move(scene);
+        staged.state = scene.state;
+        staged.scenario_name = scene.name;
+        staged.integrator_name = std::string(staged.integrator->name());
+        staged.force_name = std::string(staged.forces->name());
+        staged.scene = std::move(scene);
+        return staged;
+    }
+
+    // Makes the staged system the simulated one (and the target of Reset).
+    void commit(Staged&& staged) noexcept {
+        forces = std::move(staged.forces);
+        integrator = std::move(staged.integrator);
+        diagnostics = std::move(staged.diagnostics);
+        state = std::move(staged.state);
+        initial = std::move(staged.scene);
         log.clear();
         owed_ns = 0;
         drift_steps.reset();
-        status.scenario = initial.name;
-        status.integrator = std::string(integrator->name());
-        status.force_model = std::string(forces->name());
+        status.scenario = std::move(staged.scenario_name);
+        status.integrator = std::move(staged.integrator_name);
+        status.force_model = std::move(staged.force_name);
         status.steps = 0;
         status.events = 0;
         status.step_ms.reset();
@@ -292,6 +314,15 @@ struct Simulation::Impl {
             governor->restart(step_ns);
         }
         publish_governor();
+    }
+
+    // Stages `scene` with the current settings and commits it.
+    std::optional<std::string> start(scene::Scene scene) {
+        auto staged = stage(std::move(scene), config);
+        if (!staged) {
+            return staged.error();
+        }
+        commit(std::move(staged).value());
         return std::nullopt;
     }
 
@@ -323,22 +354,29 @@ void Simulation::Impl::load_experiment(const std::filesystem::path& path) {
     }
     SpaceExperiment experiment = std::move(loaded).value();
     // The experiment brings its own settings; the interactive budgets and
-    // the clock belong to the caller and stay.
-    SimulationConfig next = experiment.config;
-    next.step_time_budget_s = config.step_time_budget_s;
-    next.warp_budget = config.warp_budget;
-    next.clock = config.clock;
-    SimulationConfig previous = std::move(config);
-    config = std::move(next);
-    if (auto problem = start(std::move(experiment.scene))) {
-        config = std::move(previous);
-        status.message = "Cannot start experiment " + path.filename().string() + ": " + *problem;
+    // the clock belong to the caller and stay. Everything is built before
+    // anything changes: a failure (or an exception) leaves the running
+    // simulation, its settings and its timing as they were.
+    const SimulationConfig& next = experiment.config;
+    auto staged = stage(std::move(experiment.scene), next);
+    if (!staged) {
+        status.message =
+            "Cannot start experiment " + path.filename().string() + ": " + staged.error();
         return;
     }
-    owed_ns = 0;
+    std::filesystem::path experiment_file = path;
+    // Commit: only moves and plain values from here on.
+    config.integrator = next.integrator;
+    config.force = next.force;
+    config.softening_au = next.softening_au;
+    config.dt_days = next.dt_days;
+    config.time_warp = next.time_warp;
+    config.paused = next.paused;
+    config.max_steps_per_advance = next.max_steps_per_advance;
     apply_timing();
-    status.scenario_file = experiment.scenario_path;
-    status.experiment_file = path;
+    commit(std::move(staged).value());
+    status.scenario_file = std::move(experiment.scenario_path);
+    status.experiment_file = std::move(experiment_file);
 }
 
 Simulation::Simulation(std::unique_ptr<Impl> impl) noexcept : impl_(std::move(impl)) {}
