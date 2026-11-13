@@ -1,12 +1,14 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <filesystem>
 #include <functional>
 #include <optional>
 #include <string>
 #include <thread>
 #include <utility>
+#include <vector>
 
 #include "app_test_support.h"
 #include "orrery/app/aero_workspace.h"
@@ -135,6 +137,39 @@ TEST_CASE("Aero workspace shows geometry errors in its modal", "[app][ui][aero]"
     REQUIRE(modal.has_value()); // open, centred over the window
     CHECK(modal->x > 300.0);
     CHECK(h.workspace.view_state().geometry == nullptr);
+}
+
+namespace {
+
+// Saves the workspace's experiment and reports whether the file carries a result.
+bool saved_with_result(app::AeroWorkspace& workspace) {
+    const std::optional<std::filesystem::path> path = workspace.save();
+    REQUIRE(path.has_value());
+    auto loaded = sim::load_aero_experiment_file(path.value_or(std::filesystem::path{}));
+    REQUIRE(loaded.has_value());
+    return loaded.value().result.has_value();
+}
+
+} // namespace
+
+TEST_CASE("A failed geometry replacement leaves nothing to run or save", "[app][ui][aero]") {
+    Harness h(scratch("failed_geometry"));
+    REQUIRE(h.frames_until([&] { return h.workspace.geometry_ready(); }));
+    REQUIRE(h.workspace.start_run());
+    REQUIRE(h.frames_until(
+        [&] { return h.workspace.progress().status.state == sim::AeroRunState::finished; }));
+    // Replace the solved section by a model that cannot be loaded.
+    scene::AeroExperiment broken = h.workspace.experiment();
+    broken.geometry = scene::GeometryRef{};
+    broken.geometry.source = scene::GeometrySource::file;
+    broken.geometry.path = "missing_model.stl";
+    h.workspace.open(broken, scratch("failed_geometry_base"));
+    REQUIRE(h.frames_until([&] { return !h.workspace.busy(); }));
+    (void)h.frame();
+    CHECK_FALSE(h.workspace.geometry_ready());
+    CHECK(h.workspace.view_state().geometry == nullptr);
+    CHECK_FALSE(h.workspace.start_run());
+    CHECK_FALSE(saved_with_result(h.workspace));
 }
 
 TEST_CASE("Aero experiments opened in the workspace keep their record", "[app][ui][aero]") {

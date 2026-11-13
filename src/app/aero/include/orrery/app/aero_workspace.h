@@ -99,6 +99,13 @@ public:
     // Starts a run of the current inputs; false (with the reason in the
     // status line) when the geometry is not ready or an input is invalid.
     bool start_run();
+    // Writes the inputs to the experiments folder, like the Save button,
+    // with the result of a finished or loaded run of exactly these inputs;
+    // the file written, or nullopt (the reason in the status line).
+    std::optional<std::filesystem::path> save();
+    // Replace the flow conditions or the solver settings as their panels do.
+    void set_conditions(const scene::AeroConditions& conditions);
+    void set_solver_settings(const scene::AeroSolverSettings& settings);
 
 private:
     struct Impl;

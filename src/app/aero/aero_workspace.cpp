@@ -418,16 +418,30 @@ struct AeroWorkspace::Impl {
                 rebuild_queued = false;
                 rebuild_geometry();
             } else if (prepared) {
-                auto ready =
-                    std::make_shared<const sim::PreparedGeometry>(std::move(prepared).value());
-                experiment.geometry = ready->ref;
-                geometry = std::move(ready);
-                ++geometry_revision;
-                reframe_pending = true;
+                adopt_geometry(std::move(prepared).value());
             } else {
+                // The inputs no longer describe the body prepared before:
+                // nothing may run or be saved against it.
+                drop_geometry();
                 const sim::GeometryError& cause = prepared.error();
                 show_error({cause.title, cause.detail});
             }
+        }
+    }
+
+    void adopt_geometry(sim::PreparedGeometry prepared) {
+        auto ready = std::make_shared<const sim::PreparedGeometry>(std::move(prepared));
+        experiment.geometry = ready->ref;
+        geometry = std::move(ready);
+        ++geometry_revision;
+        reframe_pending = true;
+    }
+
+    void drop_geometry() {
+        if (geometry) {
+            geometry.reset();
+            ++geometry_revision;
+            reframe_pending = true;
         }
     }
 
@@ -561,7 +575,7 @@ struct AeroWorkspace::Impl {
         listing_dirty = false;
     }
 
-    void save() {
+    std::optional<std::filesystem::path> save() {
         experiment.name = w::from_buffer(name_buffer);
         scene::AeroExperiment record = experiment;
         record.result.reset();
@@ -578,12 +592,13 @@ struct AeroWorkspace::Impl {
         auto saved = sim::save_aero_experiment_file(path, record);
         if (!saved) {
             set_notice("Save failed: " + saved.error(), true);
-            return;
+            return std::nullopt;
         }
         set_notice("Saved " + saved.value().filename().string() +
                        (with_result ? "" : " (inputs only: no finished run of these inputs)"),
                    false);
         listing_dirty = true;
+        return saved.value();
     }
 
     void export_comparison(const sim::ComparisonTable& table) {
@@ -1412,7 +1427,7 @@ void AeroWorkspace::Impl::draw_experiments_panel() {
         experiment.name = w::from_buffer(name_buffer);
     }
     if (ImGui::Button("Save")) {
-        save();
+        (void)save();
     }
     w::tooltip("Writes the inputs and, when the last finished run used exactly these inputs, "
                "its result to the experiments folder.");
@@ -1902,6 +1917,18 @@ bool AeroWorkspace::busy() const noexcept {
 
 bool AeroWorkspace::start_run() {
     return impl_->start_run();
+}
+
+std::optional<std::filesystem::path> AeroWorkspace::save() {
+    return impl_->save();
+}
+
+void AeroWorkspace::set_conditions(const scene::AeroConditions& conditions) {
+    impl_->experiment.conditions = conditions;
+}
+
+void AeroWorkspace::set_solver_settings(const scene::AeroSolverSettings& settings) {
+    impl_->experiment.solver = settings;
 }
 
 } // namespace orrery::app
