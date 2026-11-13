@@ -688,3 +688,26 @@ fixed wake), A6 (flat-plate friction), A7 (Newtonian impact) and A8
 | P4 | Surface velocity from a least-squares doublet gradient over two rings of neighbours, sharp edges (normals over 45 degrees apart) used only as a fallback | `gradient_weights` | Smooth surfaces; first-order accurate | Cp next to sharp edges (wing tips, capsule shoulders) is smeared over one panel |
 | P5 | 2D panel method ignores sideslip | `PanelSolver2D::step` | Sections in a plane flow | Swept or yawed flow; a `panel.sideslip_ignored` warning is attached |
 | P6 | Regime boundaries Mach 0.3 (incompressible), Mach 5 (hypersonic), Re 1e5 (thin attached boundary layer), 10 degrees (attached flow) | `validity_envelope`, `select_solver` | Engineering rules of thumb, not sharp limits | Results near a boundary deserve the same caution as those just outside |
+
+## Aero visualisation (orrery_render, Phase 8a)
+
+Display of the aerodynamic results (docs/aero-visualisation.md). Nothing
+here feeds back into a solver; the approximations bound what the pictures
+show, not the computed loads.
+
+### Approximations (aero visualisation)
+Every item is marked `// APPROXIMATION:` in the code.
+
+| ID | Approximation | Where | Validity envelope | Outside the envelope |
+|---|---|---|---|---|
+| V1 | Trilinear (2D: bilinear) interpolation of nodal fields | `sample` (aero_field.cpp), `flow_velocity` (aero_vis_flow_common.glsl), section texture filtering | Exact for linear fields, second order otherwise | Structures below two grid spacings are smoothed away |
+| V2 | Streamlines by classical RK4 in arc length, fixed step (0.5 grid spacings by default); stop below 1e-3 of the peak speed | `trace_streamlines`, `aero_vis_flow_streamlines` | Fourth order in the step; 2.7e-8 m radius drift over 400 steps on a circular flow | Near stagnation points and through regions thinner than a step the line ends early; binary32 on the GPU (agrees with the CPU to 1e-4 m) |
+| V3 | Particles by the explicit midpoint rule in time on the field of the current frame, sub-stepped to half a grid spacing | `advect_particle`, `aero_vis_flow_particles` | Second order; pathlines while the field changes little between frames | In fast unsteady flow the traces are a visual aid, not pathlines |
+| V4 | Marching cubes with linear edge interpolation; face ambiguity by separating inside corners, interior ambiguity ignored | `marching_cubes`, `aero_vis_marching_cubes` | Closed, consistently oriented surfaces; area within 2 percent for a sphere of radius 6 cells or more | Topology near saddle points can differ from the trilinear interpolant's |
+| V5 | Iso-surface normals from interpolated central-difference gradients | `vertex_normal` (aero_isosurface.cpp) | Smooth shading of resolved surfaces | First order at the grid boundary |
+| V6 | Vorticity and Q by finite differences, central inside the fluid, one-sided at grid edges and walls | `vorticity`, `q_criterion` (aero_field.cpp) | Second order inside, first order next to walls | Wall vorticity is smeared over one cell |
+| V7 | Section planes sampled at grid-node resolution in the plane, linearly along the normal; solid flag of the nearer node | `sample_section` | As sharp as the grid | Lattice bodies show their staircase unless a mesh covers them |
+| V8 | Per-panel Cp averaged to the vertices (angle-weighted) for smooth colouring | `vertex_values` (aero_surface.cpp) | Display only; integrated loads unchanged | Across sharp edges the two sides share their vertices' averaged values |
+| V9 | Display pre-compensation by the inverse of the ACES fit | `scene_linear_for_display` (aero_colormap.cpp) | Colours with a non-negative pre-image (all map colours): exact to 8-bit rounding | More saturated colours cannot be shown through the pipeline and are not used |
+| V10 | LBM pressure as Cp from the weakly compressible lattice pressure c_s^2 (rho - 1), rho_ref = 1 | `flow_field_from` (aero_field.cpp) | Lattice Mach below 0.1 (A3) | Acoustic noise of the solver appears in the pressure |
+| V11 | Studio shading: camera-attached key light, wrapped Lambert with a 0.42 floor, weak highlight and rim; no shadows | aero_surface.frag.glsl | Colours equal the legend where the surface faces the key light | Shaded parts are darker than the legend colour |
