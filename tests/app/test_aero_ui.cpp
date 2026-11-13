@@ -332,3 +332,29 @@ TEST_CASE("A panel row's control never covers its label", "[app][ui][aero]") {
     ImGui::End();
     ui.end_frame();
 }
+
+TEST_CASE("The workspace strip drops its caption rather than cover a tab", "[app][ui]") {
+    // At 320 px, the narrowest window the configuration allows, the
+    // right-aligned "Orbital dynamics" was drawn over the Entry tab.
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    for (const int width : {320, 1600}) {
+        render::UiFrameInput input;
+        input.width = width;
+        input.height = 600;
+        ui.begin_frame(input);
+        (void)app::draw_workspace_strip(app::Workspace::space);
+        const ImGuiWindow* strip = ImGui::FindWindowByName("##workspaces");
+        REQUIRE(strip != nullptr);
+        const float reach = strip->DC.CursorMaxPos.x;
+        ui.end_frame();
+        INFO("width " << width << ", items reach " << reach);
+        if (width == 320) {
+            // Only the tabs: Space, Aero, Entry.
+            CHECK(reach < 0.75F * static_cast<float>(width));
+        } else {
+            CHECK(reach > 0.9F * static_cast<float>(width)); // the caption, right-aligned
+        }
+    }
+}
