@@ -119,14 +119,22 @@ advect_particles_gpu(aero::compute::IComputeBackend& backend, const VectorGrid& 
     for (const glm::dvec3& p : positions) {
         state.push_back(detail::to_index_space(velocity.grid, p));
     }
-    auto particles = detail::upload_new(backend, std::as_bytes(std::span<const glm::vec4>(state)));
+    auto particles = aero::compute::make_buffer(backend, state.size() * sizeof(glm::vec4));
     if (!particles) {
         return core::failure("particles: " + particles.error());
     }
+    if (auto up = backend.upload(particles.value().id(), 0,
+                                 std::as_bytes(std::span<const glm::vec4>(state)));
+        !up) {
+        return core::failure("particles: " + up.error());
+    }
     auto seeds = aero::compute::make_buffer(backend, sizeof(glm::vec4));
+    if (!seeds) {
+        return core::failure("particles: " + seeds.error());
+    }
     auto traces = aero::compute::make_buffer(backend, sizeof(glm::vec4));
-    if (!seeds || !traces) {
-        return core::failure(std::string("particles: could not create the buffers"));
+    if (!traces) {
+        return core::failure("particles: " + traces.error());
     }
     const std::array<Uniform, 13> uniforms{
         Uniform{"u_nx", static_cast<std::uint32_t>(velocity.grid.dims[0])},
@@ -154,9 +162,8 @@ advect_particles_gpu(aero::compute::IComputeBackend& backend, const VectorGrid& 
         return core::failure("particles: " + done.error());
     }
     backend.barrier();
-    const aero::compute::BufferId particle_id = particles.value().id();
-    if (auto read =
-            backend.readback(particle_id, 0, std::as_writable_bytes(std::span<glm::vec4>(state)));
+    if (auto read = backend.readback(particles.value().id(), 0,
+                                     std::as_writable_bytes(std::span<glm::vec4>(state)));
         !read) {
         return core::failure("particles: " + read.error());
     }
