@@ -69,6 +69,37 @@ target_compile_definitions(orrery_app_core PRIVATE
     ORRERY_SOURCE_ASSET_DIR="${PROJECT_SOURCE_DIR}/assets")
 orrery_configure_target(orrery_app_core)
 
+# Phase 8b: the Aero workspace's user interface (panels, main bar, workspace
+# strip), its scene adapter to render::AeroView, the user configuration
+# (toml++, header-only) and the terminate handler. Dear ImGui and ImPlot are
+# private here as in orrery_render: no public header of orrery_app_core
+# includes them (tools/check_deps.py THIRD_PARTY_DEPS).
+find_package(imgui CONFIG REQUIRED)
+find_package(implot CONFIG REQUIRED)
+find_package(tomlplusplus CONFIG REQUIRED)
+target_sources(orrery_app_core PRIVATE
+    config.cpp
+    error_surface.cpp
+    workspace_strip.cpp
+    include/orrery/app/config.h
+    include/orrery/app/error_surface.h
+    include/orrery/app/headless_error.h
+    include/orrery/app/workspace_strip.h
+    aero/aero_headless.cpp
+    aero/aero_scene.cpp
+    aero/aero_viewport.cpp
+    aero/aero_widgets.cpp
+    aero/aero_widgets.h
+    aero/aero_workspace.cpp
+    aero/include/orrery/app/aero_headless.h
+    aero/include/orrery/app/aero_layers.h
+    aero/include/orrery/app/aero_scene.h
+    aero/include/orrery/app/aero_viewport.h
+    aero/include/orrery/app/aero_workspace.h)
+target_include_directories(orrery_app_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/aero/include)
+target_link_libraries(orrery_app_core PRIVATE imgui::imgui implot::implot
+    tomlplusplus::tomlplusplus)
+
 add_executable(orrery_app
     main.cpp
     build_info.h)

@@ -113,6 +113,10 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
                       "implot::implot"},
+    # orrery_app_core (Phase 8b): the Aero workspace panels draw with Dear
+    # ImGui and ImPlot (private, as in orrery_render), and the user
+    # configuration is read with toml++ (MIT, header-only).
+    "orrery_app_core": {"imgui::imgui", "implot::implot", "tomlplusplus::tomlplusplus"},
 }
 
 # Imported targets created by CMake's own Find modules (FindZLIB, FindOpenSSL)
