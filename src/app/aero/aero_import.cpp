@@ -155,10 +155,10 @@ PrepareResult load_experiment_geometry(const scene::GeometryRef& ref,
     }
     if (ref.source == scene::GeometrySource::url && !ref.sha256.empty() &&
         !imported.value().ref.sha256.empty() && imported.value().ref.sha256 != ref.sha256) {
-        return core::failure(GeometryError{
-            "The model changed at its source",
-            "the download from " + ref.url + " has SHA-256 " + imported.value().ref.sha256 +
-                ", the experiment recorded " + ref.sha256});
+        return core::failure(GeometryError{"The model changed at its source",
+                                           "the download from " + ref.url + " has SHA-256 " +
+                                               imported.value().ref.sha256 +
+                                               ", the experiment recorded " + ref.sha256});
     }
     report(progress, "repairing");
     ImportedModel model = std::move(imported).value();

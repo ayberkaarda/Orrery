@@ -29,8 +29,8 @@ struct FlowSummary {
     double reference_length = 1.0; // m, for the Reynolds number
     double reynolds = 0.0;
     double mach = 0.0;
-    double speed_of_sound = 0.0;    // m/s
-    double dynamic_pressure = 0.0;  // Pa
+    double speed_of_sound = 0.0;      // m/s
+    double dynamic_pressure = 0.0;    // Pa
     double kinematic_viscosity = 0.0; // m^2/s
     // aero::select_solver for these conditions with the user's override.
     aero::RegimeChoice regime;

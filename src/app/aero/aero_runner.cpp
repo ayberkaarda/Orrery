@@ -100,9 +100,8 @@ void AeroRunner::loop(const std::stop_token& stop) {
                 } else if (frames > 0) {
                     const auto granularity =
                         static_cast<std::int64_t>(lbm_steps_per_call(run_->plan.two_dimensional));
-                    const std::int64_t calls =
-                        std::max<std::int64_t>(1, (status_.steps_per_frame + granularity - 1) /
-                                                      granularity);
+                    const std::int64_t calls = std::max<std::int64_t>(
+                        1, (status_.steps_per_frame + granularity - 1) / granularity);
                     for (std::int64_t call = 0; call < calls && !stop.stop_requested(); ++call) {
                         if (!step_once()) {
                             break;
@@ -127,8 +126,8 @@ bool AeroRunner::apply(AeroCommand& command, const std::stop_token& stop) {
         return false; // start() publishes itself
     }
     if (const auto* paused = std::get_if<SetAeroPaused>(&command)) {
-        if (run_ && (status_.state == AeroRunState::running ||
-                     status_.state == AeroRunState::paused)) {
+        if (run_ &&
+            (status_.state == AeroRunState::running || status_.state == AeroRunState::paused)) {
             status_.state = paused->paused ? AeroRunState::paused : AeroRunState::running;
         }
         return true;
@@ -142,15 +141,15 @@ bool AeroRunner::apply(AeroCommand& command, const std::stop_token& stop) {
         return true;
     }
     if (std::holds_alternative<StepAeroFrame>(command)) {
-        if (run_ && (status_.state == AeroRunState::running ||
-                     status_.state == AeroRunState::paused)) {
+        if (run_ &&
+            (status_.state == AeroRunState::running || status_.state == AeroRunState::paused)) {
             const auto granularity =
                 static_cast<std::int64_t>(lbm_steps_per_call(run_->plan.two_dimensional));
             const bool direct = run_->plan.kind != aero::SolverKind::lattice_boltzmann;
             const std::int64_t calls =
                 direct ? 1
-                       : std::max<std::int64_t>(
-                             1, (status_.steps_per_frame + granularity - 1) / granularity);
+                       : std::max<std::int64_t>(1, (status_.steps_per_frame + granularity - 1) /
+                                                       granularity);
             for (std::int64_t call = 0; call < calls && !stop.stop_requested(); ++call) {
                 if (!step_once()) {
                     break;
@@ -254,7 +253,8 @@ void AeroRunner::publish(bool with_result) {
         published_.result = std::make_shared<const aero::AeroResult>(run_->solver->result());
         published_.diagnostics = std::make_shared<const RunDiagnostics>(
             diagnostics(*run_->solver, run_->spec->experiment.solver));
-        refresh_view(status_.state != AeroRunState::running || status_.run != published_.status.run);
+        refresh_view(status_.state != AeroRunState::running ||
+                     status_.run != published_.status.run);
     }
     published_.status = status_;
     progress_.publish(published_);

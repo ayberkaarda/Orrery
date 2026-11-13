@@ -108,7 +108,8 @@ TEST_CASE("bundled space experiments still load unchanged", "[scene][experiment]
     CHECK(aero.error() == "domain: expected 'aero', found 'space'");
 }
 
-TEST_CASE("aero experiments round-trip exactly through JSON", "[scene][experiment][aero][roundtrip]") {
+TEST_CASE("aero experiments round-trip exactly through JSON",
+          "[scene][experiment][aero][roundtrip]") {
     SECTION("primitive with a finished result") {
         const scene::AeroExperiment e = naca_with_result();
         const std::string text = scene::save_aero_experiment(e);
@@ -126,11 +127,11 @@ TEST_CASE("aero experiments round-trip exactly through JSON", "[scene][experimen
         CHECK(generic.series.at("history_cd").size() == 3);
     }
     SECTION("every primitive shape without a result") {
-        const auto shape = GENERATE(
-            scene::AeroShape::sphere, scene::AeroShape::cube, scene::AeroShape::cylinder,
-            scene::AeroShape::cone, scene::AeroShape::ellipsoid, scene::AeroShape::flat_plate,
-            scene::AeroShape::wedge, scene::AeroShape::capsule, scene::AeroShape::naca_wing,
-            scene::AeroShape::naca_section);
+        const auto shape = GENERATE(scene::AeroShape::sphere, scene::AeroShape::cube,
+                                    scene::AeroShape::cylinder, scene::AeroShape::cone,
+                                    scene::AeroShape::ellipsoid, scene::AeroShape::flat_plate,
+                                    scene::AeroShape::wedge, scene::AeroShape::capsule,
+                                    scene::AeroShape::naca_wing, scene::AeroShape::naca_section);
         CAPTURE(scene::to_string(shape));
         scene::AeroExperiment e;
         e.geometry.shape = shape;
@@ -163,7 +164,8 @@ TEST_CASE("aero experiments round-trip exactly through JSON", "[scene][experimen
     }
 }
 
-TEST_CASE("aero experiment fixture loads with defaults for absent keys", "[scene][experiment][aero]") {
+TEST_CASE("aero experiment fixture loads with defaults for absent keys",
+          "[scene][experiment][aero]") {
     const auto text = scene::read_text_file(fixture_path("aero_sphere_minimal.json"));
     REQUIRE(text.has_value());
     const auto parsed = scene::parse_aero_experiment(text.value());
@@ -192,7 +194,8 @@ TEST_CASE("aero experiment errors name the offending key", "[scene][experiment][
     };
     const std::string ok_inputs = R"({"geometry": "primitive", "shape": "sphere"})";
     const std::string ok_solver = R"({"name": "auto"})";
-    CHECK(error_of(R"({"shape": "torus"})", "{}", ok_solver).starts_with("inputs.shape: unknown shape 'torus'"));
+    CHECK(error_of(R"({"shape": "torus"})", "{}", ok_solver)
+              .starts_with("inputs.shape: unknown shape 'torus'"));
     CHECK(error_of(R"({"shape": "sphere", "chord_m": 1})", "{}", ok_solver) ==
           "inputs.chord_m: unknown key (allowed: name, geometry, shape, diameter_m)");
     CHECK(error_of(R"({"shape": "naca_wing", "naca": "00x2"})", "{}", ok_solver) ==
@@ -201,7 +204,8 @@ TEST_CASE("aero experiment errors name the offending key", "[scene][experiment][
           "inputs.path: a file geometry needs a model path");
     CHECK(error_of(ok_inputs, R"({"speed_m_s": -3})", ok_solver) ==
           "conditions.speed_m_s: must be positive and finite");
-    CHECK(error_of(ok_inputs, R"({"mach": 0.3})", ok_solver).starts_with("conditions.mach: unknown key"));
+    CHECK(error_of(ok_inputs, R"({"mach": 0.3})", ok_solver)
+              .starts_with("conditions.mach: unknown key"));
     CHECK(error_of(ok_inputs, "{}", R"({"name": "rans"})") ==
           "solver.name: unknown solver 'rans' (allowed: auto, panel, newtonian, lbm)");
     CHECK(error_of(ok_inputs, "{}", R"({"name": "lbm", "settings": {"steps_per_frame": 2.5}})") ==

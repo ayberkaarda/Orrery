@@ -70,19 +70,18 @@ FlowSummary summarize_flow(const scene::AeroConditions& conditions, double refer
     out.regime = aero::select_solver(out.flow, reference_length, user_override);
     out.solver = available_substitute(out.regime.solver, two_dimensional);
     if (out.solver != out.regime.solver) {
-        out.warnings.push_back(
-            {"workspace.solver_unavailable",
-             std::string(solver_display_name(out.regime.solver)) +
-                 " needs a 3D surface; this 2D section runs with the " +
-                 std::string(solver_display_name(out.solver)) + " instead"});
+        out.warnings.push_back({"workspace.solver_unavailable",
+                                std::string(solver_display_name(out.regime.solver)) +
+                                    " needs a 3D surface; this 2D section runs with the " +
+                                    std::string(solver_display_name(out.solver)) + " instead"});
         auto substitute = aero::check_validity(out.solver, out.flow, reference_length);
         out.warnings.insert(out.warnings.end(), substitute.begin(), substitute.end());
     } else {
         out.warnings = out.regime.warnings;
     }
     if (two_dimensional && conditions.sideslip_deg != 0.0) {
-        out.warnings.push_back({"workspace.sideslip_2d",
-                                "a 2D section ignores the sideslip angle"});
+        out.warnings.push_back(
+            {"workspace.sideslip_2d", "a 2D section ignores the sideslip angle"});
     }
     return out;
 }
@@ -106,8 +105,9 @@ std::string format_significant(double value, int digits) {
     const double magnitude = std::abs(value);
     const bool scientific = magnitude != 0.0 && (magnitude < 1.0e-3 || magnitude >= 1.0e6);
     const int written =
-        scientific ? std::snprintf(buffer.data(), buffer.size(), "%.*e", std::max(digits - 1, 0), value)
-                   : std::snprintf(buffer.data(), buffer.size(), "%.*g", std::max(digits, 1), value);
+        scientific
+            ? std::snprintf(buffer.data(), buffer.size(), "%.*e", std::max(digits - 1, 0), value)
+            : std::snprintf(buffer.data(), buffer.size(), "%.*g", std::max(digits, 1), value);
     if (written <= 0) {
         return "-";
     }

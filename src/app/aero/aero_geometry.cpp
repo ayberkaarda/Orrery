@@ -123,11 +123,12 @@ PreparedGeometry build(const scene::GeometryRef& ref) {
             label += ", " + metres(d.length_m) + " long";
             break;
         case scene::AeroShape::capsule:
-            out.mesh = geom::capsule_profile(scaled_capsule(ref.capsule, d.diameter_m))
-                           .mesh(revolution());
+            out.mesh =
+                geom::capsule_profile(scaled_capsule(ref.capsule, d.diameter_m)).mesh(revolution());
             transform(out.mesh, axis_z_to_x);
-            label = (ref.capsule == "orion" ? "Orion-type capsule, d " : "Apollo-type capsule, d ") +
-                    metres(d.diameter_m);
+            label =
+                (ref.capsule == "orion" ? "Orion-type capsule, d " : "Apollo-type capsule, d ") +
+                metres(d.diameter_m);
             break;
         case scene::AeroShape::naca_wing: {
             geom::NacaWing wing = geom::naca_wing(airfoil_of(ref), d.chord_m, d.span_m,
@@ -146,9 +147,8 @@ PreparedGeometry build(const scene::GeometryRef& ref) {
             out.section = section.section;
             out.two_dimensional = true;
             out.moment_centre = section.reference.moment_centre;
-            geom::NacaWing preview = geom::naca_wing(airfoil, d.chord_m,
-                                                     kSectionPreviewSpan * d.chord_m,
-                                                     kNacaStations, 1);
+            geom::NacaWing preview = geom::naca_wing(
+                airfoil, d.chord_m, kSectionPreviewSpan * d.chord_m, kNacaStations, 1);
             out.mesh = std::move(preview.mesh);
             label = "NACA " + ref.naca + " section, chord " + metres(d.chord_m);
             break;
@@ -189,9 +189,9 @@ core::Result<PreparedGeometry, GeometryError> build_primitive(const scene::Geome
 core::Result<PreparedGeometry, GeometryError>
 prepare_user_model(const ImportedModel& model, double unit_scale, geom::UpAxis up) {
     if (!(unit_scale > 0.0) || !std::isfinite(unit_scale)) {
-        return core::failure(
-            GeometryError{"Invalid unit scale", "the scale from file units to metres must be "
-                                                "positive and finite"});
+        return core::failure(GeometryError{"Invalid unit scale",
+                                           "the scale from file units to metres must be "
+                                           "positive and finite"});
     }
     try {
         geom::TriangleMesh mesh = model.imported.mesh;
@@ -219,10 +219,10 @@ prepare_user_model(const ImportedModel& model, double unit_scale, geom::UpAxis u
         summary.orientation_conflict = repaired.orientation_conflict;
         out.repair = summary;
         if (out.mesh.triangles.empty()) {
-            return core::failure(GeometryError{
-                "Nothing left after repair",
-                "every triangle of " + out.label +
-                    " was degenerate or duplicated; the model encloses no surface"});
+            return core::failure(
+                GeometryError{"Nothing left after repair",
+                              "every triangle of " + out.label +
+                                  " was degenerate or duplicated; the model encloses no surface"});
         }
         out.trailing_edge = geom::detect_trailing_edge(out.mesh);
         out.quantities = quantities_of(out.mesh);
@@ -235,8 +235,11 @@ prepare_user_model(const ImportedModel& model, double unit_scale, geom::UpAxis u
 }
 
 std::vector<UnitChoice> unit_choices() {
-    return {{"metres", 1.0},     {"centimetres", 0.01}, {"millimetres", 0.001},
-            {"inches", 0.0254},  {"feet", 0.3048}};
+    return {{"metres", 1.0},
+            {"centimetres", 0.01},
+            {"millimetres", 0.001},
+            {"inches", 0.0254},
+            {"feet", 0.3048}};
 }
 
 aero::ReferenceValues reference_values(const PreparedGeometry& geometry,

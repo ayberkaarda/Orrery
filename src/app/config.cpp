@@ -10,8 +10,8 @@
 
 #include <toml++/toml.hpp>
 
-#include "orrery/sim/aero_import.h"
 #include "orrery/scene/scenario.h"
+#include "orrery/sim/aero_import.h"
 
 namespace orrery::app {
 
@@ -59,7 +59,8 @@ std::filesystem::path platform_dir(std::string_view kind) {
         return std::filesystem::path(*xdg) / "orrery";
     }
     if (const std::filesystem::path home = home_dir(); !home.empty()) {
-        return kind == "config" ? home / ".config" / "orrery" : home / ".local" / "share" / "orrery";
+        return kind == "config" ? home / ".config" / "orrery"
+                                : home / ".local" / "share" / "orrery";
     }
 #endif
     return fallback_dir() / std::string(kind);
@@ -153,9 +154,8 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
 
     if (const toml::table* paths = root["paths"].as_table()) {
         table_keys(*paths, "paths.", {"experiments", "model_cache"});
-        for (const auto& [key, target] :
-             {std::pair{"experiments", &out.config.experiment_dir},
-              std::pair{"model_cache", &out.config.model_cache_dir}}) {
+        for (const auto& [key, target] : {std::pair{"experiments", &out.config.experiment_dir},
+                                          std::pair{"model_cache", &out.config.model_cache_dir}}) {
             const toml::node* node = paths->get(key);
             if (node == nullptr) {
                 continue;

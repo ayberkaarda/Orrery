@@ -198,7 +198,8 @@ aero_from_experiment(const Experiment& experiment);
 
 // Parses and saves aero experiments as JSON text (parse_experiment /
 // save_experiment plus the typed mapping).
-[[nodiscard]] core::Result<AeroExperiment, std::string> parse_aero_experiment(std::string_view json);
+[[nodiscard]] core::Result<AeroExperiment, std::string>
+parse_aero_experiment(std::string_view json);
 [[nodiscard]] std::string save_aero_experiment(const AeroExperiment& experiment);
 
 } // namespace orrery::scene

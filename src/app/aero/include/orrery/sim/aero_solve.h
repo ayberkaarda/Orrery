@@ -38,8 +38,8 @@ struct SolverPlan {
 // The solver for a plan, configured from the experiment's settings (lattice
 // resolution and duration when given). Throws std::invalid_argument for a
 // plan no solver covers (Newtonian in 2D).
-[[nodiscard]] std::unique_ptr<aero::IAeroSolver> make_solver(const SolverPlan& plan,
-                                                             const scene::AeroSolverSettings& settings);
+[[nodiscard]] std::unique_ptr<aero::IAeroSolver>
+make_solver(const SolverPlan& plan, const scene::AeroSolverSettings& settings);
 
 // What a solver reports beyond AeroResult: the force history and lattice of
 // the lattice Boltzmann solvers.
@@ -47,11 +47,11 @@ struct RunDiagnostics {
     std::vector<double> history_step; // lattice step of each force sample
     std::vector<double> history_cd;   // instantaneous coefficients
     std::vector<double> history_cl;
-    std::optional<double> strouhal;   // 2D lattice Boltzmann
-    std::uint64_t lattice_steps = 0;  // advanced so far
-    std::uint64_t planned_steps = 0;  // of the whole run (0: not time-marching)
-    std::string lattice;              // "640 x 320" or "160 x 60 x 60"
-    double blockage = 0.0;            // 3D lattice Boltzmann
+    std::optional<double> strouhal;  // 2D lattice Boltzmann
+    std::uint64_t lattice_steps = 0; // advanced so far
+    std::uint64_t planned_steps = 0; // of the whole run (0: not time-marching)
+    std::string lattice;             // "640 x 320" or "160 x 60 x 60"
+    double blockage = 0.0;           // 3D lattice Boltzmann
 };
 
 [[nodiscard]] RunDiagnostics diagnostics(const aero::IAeroSolver& solver,

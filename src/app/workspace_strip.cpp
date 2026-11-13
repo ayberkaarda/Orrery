@@ -18,8 +18,7 @@ struct Tab {
 };
 
 constexpr std::array<Tab, 3> kTabs{{
-    {Workspace::space, "Space", "Space workspace: orbital dynamics and black holes (Ctrl+1)",
-     true},
+    {Workspace::space, "Space", "Space workspace: orbital dynamics and black holes (Ctrl+1)", true},
     {Workspace::aero, "Aero", "Aero workspace: geometry, flow conditions and solvers (Ctrl+2)",
      true},
     {Workspace::entry, "Entry", "Entry workspace: atmospheric entry (arrives in a later phase)",

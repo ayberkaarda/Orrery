@@ -60,8 +60,8 @@ struct ConfigLoad {
 // Defaults: experiments in data_dir()/experiments, the platform model cache.
 [[nodiscard]] AppConfig default_config();
 
-[[nodiscard]] core::Result<ConfigLoad, std::string>
-parse_config(std::string_view text, std::string_view source_name);
+[[nodiscard]] core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
+                                                                 std::string_view source_name);
 [[nodiscard]] core::Result<ConfigLoad, std::string> load_config(const std::filesystem::path& path);
 // The configuration as TOML (every key, so the file documents itself).
 [[nodiscard]] std::string config_to_toml(const AppConfig& config);

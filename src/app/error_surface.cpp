@@ -76,7 +76,8 @@ std::string crash_log_entry(std::string_view reason, std::string_view version) {
     (void)gmtime_r(&now, &utc);
 #endif
     std::array<char, 32> stamp{};
-    const std::size_t written = std::strftime(stamp.data(), stamp.size(), "%Y-%m-%dT%H:%M:%SZ", &utc);
+    const std::size_t written =
+        std::strftime(stamp.data(), stamp.size(), "%Y-%m-%dT%H:%M:%SZ", &utc);
     std::string entry(stamp.data(), written);
     entry += " Orrery ";
     entry += version;

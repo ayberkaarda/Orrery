@@ -41,8 +41,8 @@ double nose_radius(const scene::GeometryRef& ref) {
         return 0.5 * ref.dimensions.diameter_m;
     }
     if (ref.shape == scene::AeroShape::capsule) {
-        const geom::CapsuleShape shape = ref.capsule == "orion" ? geom::CapsuleShape::orion()
-                                                                : geom::CapsuleShape::apollo();
+        const geom::CapsuleShape shape =
+            ref.capsule == "orion" ? geom::CapsuleShape::orion() : geom::CapsuleShape::apollo();
         return shape.nose_radius * ref.dimensions.diameter_m / shape.max_diameter;
     }
     return 0.0;
@@ -113,8 +113,8 @@ RunDiagnostics diagnostics(const aero::IAeroSolver& solver,
         out.planned_steps = planned(lbm2->units(), true);
         if (const aero::lbm::Lbm2DSolver* lattice = lbm2->lattice()) {
             out.lattice_steps = lattice->steps();
-            out.lattice = std::to_string(lattice->config().nx) + " x " +
-                          std::to_string(lattice->config().ny);
+            out.lattice =
+                std::to_string(lattice->config().nx) + " x " + std::to_string(lattice->config().ny);
         }
     } else if (const auto* lbm3 = dynamic_cast<const aero::lbm::LbmAeroSolver3D*>(&solver)) {
         const aero::lbm::CoefficientHistory& history = lbm3->history();
@@ -178,8 +178,8 @@ scene::AeroResultRecord record_result(const aero::AeroResult& result,
     r.history_cd = diagnostics.history_cd;
     r.history_cl = diagnostics.history_cl;
     // The record keeps finite numbers only (JSON has no NaN or infinity).
-    for (double* value : {&r.cd, &r.cl, &r.cy, &r.cm, &r.cd_pressure, &r.cd_induced,
-                          &r.cd_friction}) {
+    for (double* value :
+         {&r.cd, &r.cl, &r.cy, &r.cm, &r.cd_pressure, &r.cd_induced, &r.cd_friction}) {
         if (!std::isfinite(*value)) {
             *value = 0.0;
             r.converged = false;

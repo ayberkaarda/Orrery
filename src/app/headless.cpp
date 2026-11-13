@@ -236,8 +236,8 @@ int run_aero_headless(const CliOptions& options, const std::filesystem::path& pa
     }
     const sim::SolveOutcome& o = frame.value().outcome;
     out << "wrote " << options.out.string() << " (" << request.width << 'x' << request.height
-        << "): " << frame.value().label << ", " << sim::solver_display_name(o.solver)
-        << ", AoA " << experiment.value().conditions.angle_of_attack_deg << " deg, Re "
+        << "): " << frame.value().label << ", " << sim::solver_display_name(o.solver) << ", AoA "
+        << experiment.value().conditions.angle_of_attack_deg << " deg, Re "
         << sim::format_significant(o.flow.reynolds, 3) << ", Mach "
         << sim::format_significant(o.flow.mach, 3) << ": Cd " << o.result.cd << ", Cl "
         << o.result.cl << ", Cm " << o.result.cm;

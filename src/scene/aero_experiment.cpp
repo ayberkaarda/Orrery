@@ -38,7 +38,7 @@ constexpr std::array<ShapeName, kAeroShapeCount> kShapes{{
 
 struct DimensionKey {
     std::string_view key;
-    double ShapeDimensions::*member;
+    double ShapeDimensions::* member;
 };
 
 constexpr std::array<DimensionKey, 9> kDimensionKeys{{
@@ -53,7 +53,7 @@ constexpr std::array<DimensionKey, 9> kDimensionKeys{{
     {"half_angle_deg", &ShapeDimensions::half_angle_deg},
 }};
 
-double ShapeDimensions::*dimension_member(std::string_view key) noexcept {
+double ShapeDimensions::* dimension_member(std::string_view key) noexcept {
     for (const DimensionKey& entry : kDimensionKeys) {
         if (entry.key == key) {
             return entry.member;
@@ -190,8 +190,8 @@ core::Result<GeometryRef, std::string> read_geometry(const Parameters& inputs) {
     } else if (source.value() == "url") {
         ref.source = GeometrySource::url;
     } else {
-        return core::failure(in.path("geometry") + ": unknown geometry source '" +
-                             source.value() + "' (allowed: primitive, file, url)");
+        return core::failure(in.path("geometry") + ": unknown geometry source '" + source.value() +
+                             "' (allowed: primitive, file, url)");
     }
 
     std::vector<std::string_view> allowed{"name", "geometry"};
@@ -214,7 +214,7 @@ core::Result<GeometryRef, std::string> read_geometry(const Parameters& inputs) {
         allowed.emplace_back("shape");
         for (const std::string_view key : shape_dimensions(ref.shape)) {
             allowed.push_back(key);
-            double ShapeDimensions::*member = dimension_member(key);
+            double ShapeDimensions::* member = dimension_member(key);
             auto value = in.positive(key, ref.dimensions.*member);
             if (!value) {
                 return core::failure(std::string(value.error()));
@@ -243,8 +243,8 @@ core::Result<GeometryRef, std::string> read_geometry(const Parameters& inputs) {
                 return core::failure(std::string(capsule.error()));
             }
             if (capsule.value() != "apollo" && capsule.value() != "orion") {
-                return core::failure(in.path("capsule") + ": unknown capsule '" +
-                                     capsule.value() + "' (allowed: apollo, orion)");
+                return core::failure(in.path("capsule") + ": unknown capsule '" + capsule.value() +
+                                     "' (allowed: apollo, orion)");
             }
             ref.capsule = capsule.value();
         }
@@ -317,7 +317,8 @@ core::Result<AeroConditions, std::string> read_conditions(const Parameters& para
         "gamma", c.gamma, [](double v) { return v > 1.0 && std::isfinite(v); },
         "must be above 1 and finite");
     auto gas = in.positive("gas_constant_j_kg_k", c.gas_constant_j_kg_k);
-    for (const auto* value : {&speed, &density, &viscosity, &temperature, &alpha, &beta, &gamma, &gas}) {
+    for (const auto* value :
+         {&speed, &density, &viscosity, &temperature, &alpha, &beta, &gamma, &gas}) {
         if (!*value) {
             return core::failure(std::string(value->error()));
         }
@@ -344,8 +345,9 @@ core::Result<AeroSolverSettings, std::string> read_solver(const SolverInfo& info
         s.solver = *kind;
     }
     if (!info.version.empty() && info.version != kAeroSolverVersion) {
-        return core::failure("solver.version: '" + info.version + "' is not supported (supported: " +
-                             std::string(kAeroSolverVersion) + ")");
+        return core::failure("solver.version: '" + info.version +
+                             "' is not supported (supported: " + std::string(kAeroSolverVersion) +
+                             ")");
     }
     const Reader in(info.settings, "solver.settings");
     constexpr std::array<std::string_view, 5> kKeys{"reference_area", "reference_length_m",
@@ -407,16 +409,28 @@ std::vector<std::string> split_codes(const std::string& text) {
     return codes;
 }
 
-core::Result<std::optional<AeroResultRecord>, std::string> read_result(const Experiment& experiment) {
+core::Result<std::optional<AeroResultRecord>, std::string>
+read_result(const Experiment& experiment) {
     if (experiment.result.empty() && experiment.series.empty()) {
         return std::optional<AeroResultRecord>{};
     }
     const Reader in(experiment.result, "result");
-    constexpr std::array<std::string_view, 16> kKeys{
-        "solver",      "cd",       "cl",   "cy",
-        "cm",          "cd_pressure", "cd_induced", "cd_friction",
-        "reynolds",    "mach",     "reference_area_m2", "reference_length_m",
-        "iterations",  "converged", "warnings", "strouhal"};
+    constexpr std::array<std::string_view, 16> kKeys{"solver",
+                                                     "cd",
+                                                     "cl",
+                                                     "cy",
+                                                     "cm",
+                                                     "cd_pressure",
+                                                     "cd_induced",
+                                                     "cd_friction",
+                                                     "reynolds",
+                                                     "mach",
+                                                     "reference_area_m2",
+                                                     "reference_length_m",
+                                                     "iterations",
+                                                     "converged",
+                                                     "warnings",
+                                                     "strouhal"};
     if (auto problem = in.unknown_key(kKeys)) {
         return core::failure(std::move(*problem));
     }
@@ -437,7 +451,7 @@ core::Result<std::optional<AeroResultRecord>, std::string> read_result(const Exp
     const auto any = [](double) { return true; };
     struct Field {
         std::string_view key;
-        double AeroResultRecord::*member;
+        double AeroResultRecord::* member;
     };
     constexpr std::array<Field, 11> kFields{{
         {"cd", &AeroResultRecord::cd},
@@ -489,8 +503,8 @@ core::Result<std::optional<AeroResultRecord>, std::string> read_result(const Exp
                                                       "history_cl"};
     for (const auto& entry : experiment.series) {
         if (std::find(kSeries.begin(), kSeries.end(), entry.first) == kSeries.end()) {
-            return core::failure("series." + entry.first + ": unknown key (allowed: " +
-                                 join(kSeries) + ")");
+            return core::failure("series." + entry.first +
+                                 ": unknown key (allowed: " + join(kSeries) + ")");
         }
     }
     const auto series = [&](std::string_view key) {
@@ -501,9 +515,11 @@ core::Result<std::optional<AeroResultRecord>, std::string> read_result(const Exp
     r.history_step = series("history_step");
     r.history_cd = series("history_cd");
     r.history_cl = series("history_cl");
-    if (r.history_cd.size() != r.history_step.size() || r.history_cl.size() != r.history_step.size()) {
-        return core::failure(std::string("series: history_step, history_cd and history_cl must have "
-                                         "the same length"));
+    if (r.history_cd.size() != r.history_step.size() ||
+        r.history_cl.size() != r.history_step.size()) {
+        return core::failure(
+            std::string("series: history_step, history_cd and history_cl must have "
+                        "the same length"));
     }
     return std::optional<AeroResultRecord>(std::move(r));
 }

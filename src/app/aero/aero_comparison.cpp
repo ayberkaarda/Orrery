@@ -87,7 +87,8 @@ std::string geometry_label(const scene::GeometryRef& ref) {
     return "Geometry";
 }
 
-std::vector<ComparisonTable> compare_by_geometry(std::span<const scene::AeroExperiment> experiments) {
+std::vector<ComparisonTable>
+compare_by_geometry(std::span<const scene::AeroExperiment> experiments) {
     std::vector<ComparisonTable> tables;
     for (const scene::AeroExperiment& e : experiments) {
         if (!e.result) {

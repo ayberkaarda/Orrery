@@ -40,17 +40,17 @@ public:
     template <typename Work, typename OnException>
     BackgroundTask(Work work, OnException on_exception) : state_(std::make_shared<State>()) {
         std::shared_ptr<State> state = state_;
-        thread_ = std::jthread([state, work = std::move(work),
-                                on_exception = std::move(on_exception)]() mutable {
-            try {
-                state->result.emplace(work(state->progress));
-            } catch (const std::exception& error) {
-                state->result.emplace(on_exception(std::string(error.what())));
-            } catch (...) {
-                state->result.emplace(on_exception(std::string("unexpected error")));
-            }
-            state->done.store(true, std::memory_order_release);
-        });
+        thread_ = std::jthread(
+            [state, work = std::move(work), on_exception = std::move(on_exception)]() mutable {
+                try {
+                    state->result.emplace(work(state->progress));
+                } catch (const std::exception& error) {
+                    state->result.emplace(on_exception(std::string(error.what())));
+                } catch (...) {
+                    state->result.emplace(on_exception(std::string("unexpected error")));
+                }
+                state->done.store(true, std::memory_order_release);
+            });
     }
 
     BackgroundTask(BackgroundTask&&) noexcept = default;

@@ -32,8 +32,7 @@ std::filesystem::path scratch(const char* name) {
 }
 
 struct Harness {
-    explicit Harness(const std::filesystem::path& dir)
-        : ui(make_ui()), workspace(options(dir)) {}
+    explicit Harness(const std::filesystem::path& dir) : ui(make_ui()), workspace(options(dir)) {}
 
     static render::UiContext make_ui() {
         auto created = render::UiContext::create_headless();
@@ -83,8 +82,8 @@ TEST_CASE("Aero workspace lays out its panels around the scene", "[app][ui][aero
     for (int i = 0; i < 4; ++i) {
         CHECK_FALSE(h.frame().has_value()); // no clicks: no workspace switch
     }
-    for (const std::string_view name : {app::kGeometryWindow, app::kFlowWindow,
-                                        app::kResultsWindow, app::kExperimentsWindow}) {
+    for (const std::string_view name :
+         {app::kGeometryWindow, app::kFlowWindow, app::kResultsWindow, app::kExperimentsWindow}) {
         INFO(name);
         CHECK(h.ui.window_rect(name).has_value());
         CHECK(h.ui.window_docked(name));
@@ -111,9 +110,8 @@ TEST_CASE("Aero workspace builds its geometry off the UI thread and runs a solve
     CHECK(before.result == nullptr);
 
     REQUIRE(h.workspace.start_run());
-    REQUIRE(h.frames_until([&] {
-        return h.workspace.progress().status.state == sim::AeroRunState::finished;
-    }));
+    REQUIRE(h.frames_until(
+        [&] { return h.workspace.progress().status.state == sim::AeroRunState::finished; }));
     const app::AeroViewState after = h.workspace.view_state();
     REQUIRE(after.result != nullptr);
     CHECK(after.result->cl > 0.3); // 4 degrees
@@ -142,8 +140,8 @@ TEST_CASE("Aero workspace shows geometry errors in its modal", "[app][ui][aero]"
 TEST_CASE("Aero experiments opened in the workspace keep their record", "[app][ui][aero]") {
     const std::filesystem::path dir = scratch("open");
     Harness h(dir);
-    auto loaded = sim::load_aero_experiment_file(app_test::experiment_dir() /
-                                                 "aero_naca2412_wing.json");
+    auto loaded =
+        sim::load_aero_experiment_file(app_test::experiment_dir() / "aero_naca2412_wing.json");
     REQUIRE(loaded.has_value());
     h.workspace.open(loaded.value(), app_test::experiment_dir());
     REQUIRE(h.frames_until([&] {
