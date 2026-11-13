@@ -12,6 +12,7 @@ add_executable(orrery_test_geom_net
     fs_links.cpp
     mock_server.h
     mock_server.cpp
+    test_ca_certificates.cpp
     test_sha256.cpp
     test_url_policy.cpp
     test_model_format.cpp
