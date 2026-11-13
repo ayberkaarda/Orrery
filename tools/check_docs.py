@@ -166,10 +166,6 @@ def scan_links(text: str) -> tuple[list[tuple[int, str]], list[tuple[int, str]]]
     return found, undefined
 
 
-def link_targets(text: str) -> list[tuple[int, str]]:
-    return scan_links(text)[0]
-
-
 def check_link(source: Path, number: int, target: str, cache: dict[Path, set[str]],
                errors: list[str], tree: Path | None = None) -> None:
     if target.startswith(EXTERNAL_PREFIXES):
