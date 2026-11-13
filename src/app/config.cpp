@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
@@ -370,8 +371,11 @@ std::string config_to_toml(const AppConfig& config) {
 
 namespace {
 
-// A temporary file removed when it goes out of scope, unless it was renamed
-// into place (or never created).
+// A temporary file removed when it goes out of scope, on every path but the
+// rename into place: also when opening or writing it threw after the file
+// was created (libstdc++ can create the file and then fail to allocate the
+// stream's buffer). Only a regular file is removed, so a directory in its
+// way stays.
 class TemporaryFile {
 public:
     explicit TemporaryFile(std::filesystem::path path) : path_(std::move(path)) {}
@@ -380,31 +384,35 @@ public:
     TemporaryFile(TemporaryFile&&) = delete;
     TemporaryFile& operator=(TemporaryFile&&) = delete;
     ~TemporaryFile() {
-        if (created_) {
-            std::error_code ignored;
+        std::error_code ignored;
+        if (!renamed_ && std::filesystem::is_regular_file(path_, ignored)) {
             std::filesystem::remove(path_, ignored);
         }
     }
 
     [[nodiscard]] const std::filesystem::path& path() const noexcept { return path_; }
-    void created() noexcept { created_ = true; }
-    void renamed() noexcept { created_ = false; }
+    void renamed() noexcept { renamed_ = true; }
 
 private:
     std::filesystem::path path_;
-    bool created_ = false;
+    bool renamed_ = false;
 };
 
-// Writes `text` to the temporary file; false when it cannot.
-bool write_whole(TemporaryFile& file, const std::string& text) {
+// Writes `text` to the temporary file; true only when the stream stayed good
+// through the write and the close and the file holds exactly the text.
+bool write_whole(const TemporaryFile& file, const std::string& text) {
     std::ofstream out(file.path(), std::ios::binary | std::ios::trunc);
     if (!out) {
         return false;
     }
-    file.created();
     out.write(text.data(), static_cast<std::streamsize>(text.size()));
     out.close();
-    return static_cast<bool>(out);
+    if (out.fail()) {
+        return false;
+    }
+    std::error_code error;
+    const std::uintmax_t size = std::filesystem::file_size(file.path(), error);
+    return !error && size == text.size();
 }
 
 } // namespace
