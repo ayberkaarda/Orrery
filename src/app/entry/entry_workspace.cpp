@@ -192,10 +192,17 @@ bool EntryWorkspace::Impl::start_run() {
     return true;
 }
 
+void EntryWorkspace::Impl::replace_setup(const sim::EntrySetup& inputs) {
+    setup = inputs;
+    w::set_buffer(name_buffer, setup.name);
+    ++inputs_generation;
+}
+
 void EntryWorkspace::Impl::open(sim::StoredEntry entry) {
     runner.send(sim::StopEntryRun{});
     run_setup.reset();
     setup = std::move(entry.setup);
+    ++inputs_generation;
     w::set_buffer(name_buffer, setup.name);
     loaded_trace = std::move(entry.result);
     loaded_setup.reset();
@@ -285,10 +292,12 @@ void EntryWorkspace::Impl::start_cd_sampling() {
     sim::CdSampling sampling;
     sampling.body = cd_body;
     sampling.reference_area_m2 = setup.reference_area_m2;
+    cd_generation = inputs_generation;
+    cd_area_m2 = setup.reference_area_m2;
     cd_task = sim::BackgroundTask<CdTaskResult>(
-        [sampling](sim::TaskProgress& progress) -> CdTaskResult {
+        [sampling, sampler = options.cd_sampler](sim::TaskProgress& progress) -> CdTaskResult {
             progress.set_stage("Sampling Cd(Mach)");
-            return sim::sample_cd_table(sampling);
+            return sampler(sampling);
         },
         [](std::string message) -> CdTaskResult { return core::failure(std::move(message)); });
 }
@@ -298,6 +307,13 @@ void EntryWorkspace::Impl::poll_cd_task() {
         return;
     }
     CdTaskResult result = cd_task.take();
+    if (cd_generation != inputs_generation || cd_area_m2 != setup.reference_area_m2) {
+        // Other inputs were loaded, or the area the coefficients are
+        // normalised by changed, while it ran: the table belongs to none of
+        // the current inputs.
+        set_notice("Cd(Mach) sampling discarded: the inputs changed while it ran", true);
+        return;
+    }
     if (!result) {
         show_problem("Cd(Mach) sampling failed", result.error());
         return;
@@ -686,8 +702,7 @@ const sim::EntrySetup& EntryWorkspace::setup() const noexcept {
 }
 
 void EntryWorkspace::set_setup(const sim::EntrySetup& setup) {
-    impl_->setup = setup;
-    w::set_buffer(impl_->name_buffer, setup.name);
+    impl_->replace_setup(setup);
 }
 
 std::shared_ptr<const sim::EntryTrace> EntryWorkspace::shown_trace() const {
@@ -743,6 +758,15 @@ void EntryWorkspace::set_compared(std::size_t index, bool compared) {
 
 std::optional<std::filesystem::path> EntryWorkspace::export_comparison() {
     return impl_->export_comparison();
+}
+
+void EntryWorkspace::sample_cd(sim::CdBody body) {
+    impl_->cd_body = body;
+    impl_->start_cd_sampling();
+}
+
+bool EntryWorkspace::sampling_cd() const noexcept {
+    return impl_->cd_task.started();
 }
 
 EntryLayers& EntryWorkspace::layers() noexcept {

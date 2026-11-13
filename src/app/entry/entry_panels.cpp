@@ -60,8 +60,7 @@ void EntryWorkspace::Impl::draw_setup_panel() {
     if (ImGui::BeginCombo("##preset", "Load a preset...")) {
         for (const sim::EntryPreset& preset : sim::entry_presets()) {
             if (ImGui::Selectable(preset.label)) {
-                setup = preset.setup;
-                w::set_buffer(name_buffer, setup.name);
+                replace_setup(preset.setup);
                 cd_label.clear();
                 cd_warnings.clear();
             }

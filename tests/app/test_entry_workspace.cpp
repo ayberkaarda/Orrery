@@ -1,12 +1,16 @@
 #include <catch2/catch_test_macros.hpp>
 
+#include <atomic>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iterator>
 #include <optional>
 #include <string>
+#include <thread>
 #include <utility>
+#include <vector>
 
 #include "app_test_support.h"
 #include "orrery/app/entry_workspace.h"
@@ -34,6 +38,7 @@ std::filesystem::path scratch(const char* name) {
 struct Harness {
     explicit Harness(const std::filesystem::path& dir, double pace = 0.0)
         : ui(make_ui()), workspace(options(dir, pace)) {}
+    explicit Harness(const app::EntryWorkspaceOptions& o) : ui(make_ui()), workspace(o) {}
 
     static render::UiContext make_ui() {
         auto created = render::UiContext::create_headless();
@@ -266,6 +271,43 @@ TEST_CASE("Entry experiments save, load and compare through the workspace", "[ap
     REQUIRE(h.workspace.shown_trace() != nullptr);
     CHECK(h.workspace.shows_record());
     CHECK(h.workspace.setup() == first.setup);
+}
+
+TEST_CASE("A late Cd sampling result does not overwrite other inputs", "[app][ui][entry]") {
+    // Declared before the workspace: the sampler thread reads it until the
+    // workspace (and its task) is gone.
+    std::atomic<bool> release{false};
+    const std::vector<sim::MachCd> sampled{{5.0, 1.55}, {25.0, 1.62}};
+    app::EntryWorkspaceOptions o = Harness::options(scratch("cd_late"), 0.0);
+    o.cd_sampler = [&release,
+                    sampled](const sim::CdSampling&) -> core::Result<sim::CdSamples, std::string> {
+        while (!release.load()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        sim::CdSamples samples;
+        samples.table = sampled;
+        samples.label = "late sphere";
+        return samples;
+    };
+    Harness h(o);
+    (void)h.frame();
+    h.workspace.sample_cd(sim::CdBody::sphere);
+    CHECK(h.workspace.sampling_cd());
+    // Another experiment is opened while the sampling still runs.
+    sim::StoredEntry other;
+    other.setup = sim::entry_presets().back().setup; // Mars, its own table
+    h.workspace.open(other);
+    release.store(true);
+    REQUIRE(h.frames_until([&] { return !h.workspace.sampling_cd(); }));
+    CHECK(h.workspace.setup().cd_table == other.setup.cd_table);
+    CHECK(h.workspace.setup().cd_source == sim::CdSource::table);
+    CHECK(h.workspace.setup() == other.setup);
+
+    // A sampling for the inputs still loaded lands in them.
+    h.workspace.sample_cd(sim::CdBody::sphere);
+    REQUIRE(h.frames_until([&] { return !h.workspace.sampling_cd(); }));
+    CHECK(h.workspace.setup().cd_table == sampled);
+    CHECK(h.workspace.setup().cd_source == sim::CdSource::aero_solver);
 }
 
 TEST_CASE("An invalid entry setup is refused before it reaches the solver", "[app][ui][entry]") {

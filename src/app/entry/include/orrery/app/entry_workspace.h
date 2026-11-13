@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <filesystem>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
@@ -38,11 +39,17 @@ inline constexpr std::string_view kEntryExperimentsWindow = "Experiments##entry"
 inline constexpr std::string_view kEntryViewWindow = "View##entry";
 inline constexpr std::string_view kEntryErrorModal = "Problem##entry";
 
+using EntryCdSampler =
+    std::function<core::Result<sim::CdSamples, std::string>(const sim::CdSampling&)>;
+
 struct EntryWorkspaceOptions {
     // Saved experiments are listed from and written to this directory.
     std::filesystem::path experiment_dir;
     // Simulated seconds per wall-clock second (0: as fast as possible).
     double pace = 100.0;
+    // Samples Cd(Mach) from the aero solver on the background task (tests
+    // replace it to control when it finishes).
+    EntryCdSampler cd_sampler = sim::sample_cd_table;
 };
 
 // What the ribbon is coloured by.
@@ -128,6 +135,12 @@ public:
     void set_compared(std::size_t index, bool compared);
     // Writes the comparison CSV next to the experiments; the file or nullopt.
     std::optional<std::filesystem::path> export_comparison();
+    // Samples the Cd(Mach) table of `body` at the current reference area on
+    // the background task (the panel's Sample button); the table replaces
+    // the inputs' table when it arrives, if those inputs are still loaded.
+    void sample_cd(sim::CdBody body);
+    // True from sample_cd() until its result has been taken by update().
+    [[nodiscard]] bool sampling_cd() const noexcept;
     [[nodiscard]] EntryLayers& layers() noexcept;
     // What the scene could not show (EntryViewport::problem()).
     void set_view_problem(std::string problem);

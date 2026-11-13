@@ -47,7 +47,9 @@ Space runs or pauses.
   Apollo-type or Orion-type capsule or a sphere whose frontal area is the
   reference area, so the coefficients need no renormalisation. Sampling runs
   as a background task; its warnings are listed, a failure opens the problem
-  modal. The chip says which source the table has.
+  modal. A result that arrives after other inputs were loaded (an experiment,
+  a preset) or the reference area changed is discarded with a notice, so it
+  never replaces another experiment's table. The chip says which source the table has.
 - **Initial state**: altitude, inertial speed and flight-path angle, or the
   **vacuum periapsis** of the approach orbit (the flight-path angle at the
   start altitude follows from energy and angular momentum and is shown);

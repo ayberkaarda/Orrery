@@ -54,6 +54,12 @@ struct EntryWorkspace::Impl {
     std::uint64_t run_number = 0;
     std::uint64_t starts_sent = 0;
     std::uint64_t framed_key = 0;
+    // Bumped whenever other inputs replace the setup (open, a preset,
+    // set_setup); a Cd sampling result applies only to the generation and
+    // reference area it was requested for.
+    std::uint64_t inputs_generation = 0;
+    std::uint64_t cd_generation = 0;
+    double cd_area_m2 = 0.0;
     double pace = 100.0;
     // The record loaded from a file (its inputs in loaded_setup).
     std::shared_ptr<const sim::EntryTrace> loaded_trace;
@@ -104,6 +110,9 @@ struct EntryWorkspace::Impl {
     // Key of what the camera frames (trace revision, planet, exaggeration).
     [[nodiscard]] std::uint64_t view_key() const;
     bool start_run();
+    // Replaces the inputs (a preset, set_setup): a pending Cd sampling no
+    // longer applies.
+    void replace_setup(const sim::EntrySetup& inputs);
     void open(sim::StoredEntry entry);
     std::optional<std::filesystem::path> save();
     void refresh_listing();
