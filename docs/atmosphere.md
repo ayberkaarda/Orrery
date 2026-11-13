@@ -168,7 +168,12 @@ mass); its potential energy is zero (drag is dissipative). Mass is constant
 
 Core force models are functions of positions only, so drag enters through a
 Strang splitting (ADR-021): a drag kick over dt/2 at fixed position (RK4 on the
-velocity, each stage through `AtmosphericDrag::accelerations`), a gravity step
+velocity, each stage through `AtmosphericDrag::accelerations`, in substeps of
+at most 0.05 of the drag time |v_air| / |a_drag| so that stiff drag - dense
+air, a low ballistic coefficient - stays stable and dissipative; the substep
+count grows only with the logarithm of dt over the drag time, and a non-finite
+stage fails the step with `integration_failed` instead of being skipped), a
+gravity step
 over dt with an unchanged core integrator (IAS15 recommended and default;
 Yoshida4 or leapfrog selectable) and `NewtonianGravity` on a two-body SimState
 (planet at the origin as body 0 with mass GM / G in space units, probe as body
@@ -237,6 +242,7 @@ time step 0.5 s, US76, inertial atmosphere, unless stated otherwise.
 | Co-rotating atmosphere (Apollo-like at -6.5 degrees) | 14.4 g (airspeed 10.53 km/s at the interface) |
 | Allen-Eggers check (exponential atmosphere, no gravity, 10 km/s at -60 degrees, beta 300 kg/m^2, dt 0.01 s) | peak 224.6 g against 225.6 g from the formula (-0.46 percent); speed and density at the peak within 1.5 and 5 percent of V_E exp(-1/2) and beta sin(gamma) / H |
 | Mars, Pathfinder-like (585 kg, 2.65 m, Cd 1.7, 7.48 km/s at 125 km, -14 degrees) | impact; peak 17.4 g; energy balance within 1 percent |
+| Stiff quadratic drag (uniform air rho 1.2, Cd A / m = 1 m^2/kg, no gravity, 100 m/s, dt 0.5 s) | speed equals v0 / (1 + k v0 t), k = 0.6 /m, to the six printed figures at every step (test bound 1e-4) |
 
 Why -5.7 degrees for the Apollo-like case: Apollo entered at about -6.5 degrees
 and held 6 to 7 g with lift (L/D about 0.3, bank-angle modulation). ADR-012

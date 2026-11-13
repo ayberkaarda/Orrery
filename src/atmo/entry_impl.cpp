@@ -194,17 +194,12 @@ std::optional<AtmoError> EntryExperiment::Impl::step(double dt_s, double new_tim
     const EntryRow before = last_row();
     const core::SimState backup = state;
     const double work_before = drag_work_j;
-    kick(0.5 * dt_s);
-    const auto gravity_step =
-        integrator->step(state, core::to_space(core::si::Time(dt_s)), gravity);
-    if (!gravity_step) {
+    if (std::optional<AtmoError> failed = split_step(dt_s)) {
         state = backup;
         drag_work_j = work_before;
         summary.outcome = EntryOutcome::failed;
-        return AtmoError{AtmoErrorCode::integration_failed,
-                         "gravity step: " + std::string(core::to_string(gravity_step.error()))};
+        return failed;
     }
-    kick(0.5 * dt_s);
     time_s = new_time_s;
     append(measure());
     detect_events(before, last_row());
@@ -212,35 +207,124 @@ std::optional<AtmoError> EntryExperiment::Impl::step(double dt_s, double new_tim
     return std::nullopt;
 }
 
-void EntryExperiment::Impl::kick(double tau_s) {
-    const core::space::Time tau = core::to_space(core::si::Time(tau_s));
+std::optional<AtmoError> EntryExperiment::Impl::split_step(double dt_s) {
+    if (std::optional<AtmoError> failed = kick(0.5 * dt_s)) {
+        return failed;
+    }
+    const auto gravity_step =
+        integrator->step(state, core::to_space(core::si::Time(dt_s)), gravity);
+    if (!gravity_step) {
+        return AtmoError{AtmoErrorCode::integration_failed,
+                         "gravity step: " + std::string(core::to_string(gravity_step.error()))};
+    }
+    return kick(0.5 * dt_s);
+}
+
+namespace {
+
+// Longest RK4 substep of a drag kick as a fraction of the drag timescale
+// |v_air| / |a_drag| (the time in which the drag alone would stop the
+// vehicle at its present deceleration). For quadratic drag the relative
+// local error of a substep is then of order 0.05^5; the substep count of a
+// kick grows only with log(1 + tau / timescale).
+constexpr double kDragSubstepFraction = 0.05;
+// A kick that needs more substeps than this is reported as failed (no
+// finite drag law gets there: see the logarithmic count above).
+constexpr int kMaxDragSubsteps = 100000;
+
+AtmoError drag_failure(std::string what) {
+    return AtmoError{AtmoErrorCode::integration_failed, "drag kick: " + std::move(what)};
+}
+
+} // namespace
+
+std::optional<AtmoError> EntryExperiment::Impl::kick(double tau_s) {
     const core::BodyStore& bodies = state.bodies();
     stage_positions[kPlanetIndex] = bodies.position(kPlanetIndex);
     stage_positions[kProbeIndex] = bodies.position(kProbeIndex);
     const core::Vec3<core::space::Velocity> v0 = bodies.velocity(kProbeIndex);
-    const auto k1 = drag_acceleration(v0);
-    if (k1 == core::Vec3<core::space::Acceleration>{}) {
-        return; // above the atmosphere: nothing to integrate
+    core::Vec3<core::space::Velocity> v = v0;
+    double remaining = tau_s;
+    for (int substep = 0; remaining > 0.0; ++substep) {
+        if (substep == kMaxDragSubsteps) {
+            return drag_failure("the drag is too stiff to integrate");
+        }
+        const std::optional<core::Vec3<core::space::Acceleration>> k1 = drag_acceleration(v);
+        if (!k1) {
+            return drag_failure("the drag deceleration is not finite");
+        }
+        if (*k1 == core::Vec3<core::space::Acceleration>{}) {
+            break; // above the atmosphere: nothing to integrate
+        }
+        const double limit = drag_substep_limit(v, *k1);
+        if (!(limit > 0.0)) {
+            return drag_failure("the drag timescale is not positive");
+        }
+        const bool last = limit >= remaining;
+        const double h = last ? remaining : limit;
+        if (!rk4_drag(v, *k1, h)) {
+            return drag_failure("a drag stage is not finite");
+        }
+        remaining = last ? 0.0 : remaining - h;
     }
-    const auto k2 = drag_acceleration(v0 + k1 * (0.5 * tau));
-    const auto k3 = drag_acceleration(v0 + k2 * (0.5 * tau));
-    const auto k4 = drag_acceleration(v0 + k3 * tau);
-    const core::Vec3<core::space::Velocity> v1 = v0 + (k1 + 2.0 * k2 + 2.0 * k3 + k4) * (tau / 6.0);
-    if (!state.bodies().set_velocity(kProbeIndex, v1)) {
-        return; // non-finite drag: the velocity is left unchanged
+    if (!state.bodies().set_velocity(kProbeIndex, v)) {
+        return drag_failure("the velocity after the kick is not finite");
     }
     const double speed0 = core::to_si(core::norm(v0)).value();
-    const double speed1 = core::to_si(core::norm(v1)).value();
+    const double speed1 = core::to_si(core::norm(v)).value();
     drag_work_j += 0.5 * mass_kg * (speed1 * speed1 - speed0 * speed0);
+    return std::nullopt;
 }
 
-core::Vec3<core::space::Acceleration>
+bool EntryExperiment::Impl::rk4_drag(core::Vec3<core::space::Velocity>& v,
+                                     const core::Vec3<core::space::Acceleration>& k1, double h_s) {
+    const core::space::Time h = core::to_space(core::si::Time(h_s));
+    const auto k2 = drag_acceleration(v + k1 * (0.5 * h));
+    if (!k2) {
+        return false;
+    }
+    const auto k3 = drag_acceleration(v + *k2 * (0.5 * h));
+    if (!k3) {
+        return false;
+    }
+    const auto k4 = drag_acceleration(v + *k3 * h);
+    if (!k4) {
+        return false;
+    }
+    const core::Vec3<core::space::Velocity> next =
+        v + (k1 + 2.0 * *k2 + 2.0 * *k3 + *k4) * (h / 6.0);
+    if (!std::isfinite(next.x.value()) || !std::isfinite(next.y.value()) ||
+        !std::isfinite(next.z.value())) {
+        return false;
+    }
+    v = next;
+    return true;
+}
+
+double EntryExperiment::Impl::drag_substep_limit(
+    const core::Vec3<core::space::Velocity>& velocity,
+    const core::Vec3<core::space::Acceleration>& acceleration) const {
+    const core::BodyStore& bodies = state.bodies();
+    const auto r = detail::to_si_vec(stage_positions[kProbeIndex] - stage_positions[kPlanetIndex]);
+    const auto v = detail::to_si_vec(velocity - bodies.velocity(kPlanetIndex));
+    const Planet& planet = drag.planet();
+    const double airspeed =
+        core::norm(air_relative_velocity(r, v, planet.rotation_rate, drag.frame())).value();
+    const double deceleration = core::to_si(core::norm(acceleration)).value();
+    return kDragSubstepFraction * airspeed / deceleration;
+}
+
+std::optional<core::Vec3<core::space::Acceleration>>
 EntryExperiment::Impl::drag_acceleration(const core::Vec3<core::space::Velocity>& velocity) {
     if (!stage_bodies.set_velocity(kProbeIndex, velocity)) {
-        return core::Vec3<core::space::Acceleration>{};
+        return std::nullopt;
     }
     drag.accelerations(stage_bodies, stage_positions, stage_accelerations);
-    return stage_accelerations[kProbeIndex];
+    const core::Vec3<core::space::Acceleration>& a = stage_accelerations[kProbeIndex];
+    if (!std::isfinite(a.x.value()) || !std::isfinite(a.y.value()) || !std::isfinite(a.z.value())) {
+        return std::nullopt;
+    }
+    return a;
 }
 
 double EntryExperiment::Impl::next_step() const {

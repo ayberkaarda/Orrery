@@ -73,11 +73,25 @@ struct EntryExperiment::Impl {
     // interface.
     void start();
     // Split step of length dt (seconds): kick, gravity, kick; the clock then
-    // reads new_time_s. Returns the error of a failed gravity step.
+    // reads new_time_s. On a failed kick or gravity step the state is the one
+    // before the step, the outcome is failed and the error is returned.
     [[nodiscard]] std::optional<AtmoError> step(double dt_s, double new_time_s);
-    // Velocity kick of the drag over tau seconds at fixed position (RK4).
-    void kick(double tau_s);
-    [[nodiscard]] core::Vec3<core::space::Acceleration>
+    [[nodiscard]] std::optional<AtmoError> split_step(double dt_s);
+    // Velocity kick of the drag over tau seconds at fixed position: RK4 in
+    // substeps of at most kDragSubstepFraction of the drag timescale. Fails
+    // on a non-finite stage instead of leaving the velocity unchanged.
+    [[nodiscard]] std::optional<AtmoError> kick(double tau_s);
+    // One RK4 substep of h seconds from v (first stage k1); false on a
+    // non-finite stage.
+    [[nodiscard]] bool rk4_drag(core::Vec3<core::space::Velocity>& v,
+                                const core::Vec3<core::space::Acceleration>& k1, double h_s);
+    // Longest substep [s] at `velocity` under drag deceleration `acceleration`.
+    [[nodiscard]] double
+    drag_substep_limit(const core::Vec3<core::space::Velocity>& velocity,
+                       const core::Vec3<core::space::Acceleration>& acceleration) const;
+    // Drag acceleration of the probe at the staged position; nullopt when it
+    // or the velocity is not finite.
+    [[nodiscard]] std::optional<core::Vec3<core::space::Acceleration>>
     drag_acceleration(const core::Vec3<core::space::Velocity>& velocity);
     [[nodiscard]] double next_step() const;
 

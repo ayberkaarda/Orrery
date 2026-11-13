@@ -158,6 +158,81 @@ TEST_CASE("Steep entry through an exponential atmosphere matches Allen-Eggers", 
     CHECK(std::abs(series.density_kg_m3[peak] / rho_peak - 1.0) < 0.05);
 }
 
+// Quadratic drag dv/dt = -k v|v| in a uniform atmosphere without gravity:
+// v(t) = v0 / (1 + k v0 t). With rho 1.2, Cd 1, A 1 m^2 and m 1 kg, k is
+// 0.6 per metre, so at 100 m/s the drag timescale 1 / (k v) is 1/60 s, far
+// shorter than the 0.25 s half-step kick.
+TEST_CASE("Stiff drag follows the analytic quadratic-drag solution", "[atmo][entry]") {
+    orrery::atmo::ExponentialAtmosphereParameters params;
+    params.surface_density = si::Density(1.2);
+    params.scale_height = si::Length(1.0e12); // uniform over the run
+    params.top = si::Length(1.0e6);
+    auto atmosphere = orrery::atmo::ExponentialAtmosphere::create(params);
+    REQUIRE(atmosphere);
+    EntryConfig c;
+    c.planet.atmosphere =
+        std::make_shared<const orrery::atmo::ExponentialAtmosphere>(atmosphere.value());
+    c.planet.gm = si::GravitationalParameter(1.0);
+    c.vehicle.mass = si::Mass(1.0);
+    auto table = orrery::atmo::AeroCoefficientTable::constant(1.0, si::Area(1.0));
+    REQUIRE(table);
+    c.vehicle.aero = table.value();
+    c.initial.altitude = si::Length(1000.0);
+    c.initial.speed = si::Velocity(100.0);
+    c.initial.flight_path_angle = Angle::from_degrees(0.0);
+    c.max_duration = si::Time(5.0);
+    EntryExperiment run = make(c);
+    auto outcome = run.run();
+    REQUIRE(outcome);
+    CHECK(outcome.value() == EntryOutcome::time_limit);
+    const auto& series = run.series();
+    REQUIRE(series.size() == 11);
+    const double k = 0.6;
+    for (std::size_t i = 0; i < series.size(); ++i) {
+        const double t = series.time_s[i];
+        const double exact = 100.0 / (1.0 + k * 100.0 * t);
+        INFO("t " << t << " s: speed " << series.speed_m_s[i] << " m/s, exact " << exact);
+        REQUIRE(std::isfinite(series.speed_m_s[i]));
+        CHECK(std::abs(series.speed_m_s[i] / exact - 1.0) < 1e-4);
+        if (i > 0) {
+            CHECK(series.speed_m_s[i] < series.speed_m_s[i - 1]);
+        }
+    }
+    // The kicks' bookkeeping matches the kinetic energy actually removed.
+    const orrery::atmo::EntryEnergyBalance b = run.energy_balance();
+    CHECK(b.energy_change_j < 0.0);
+    CHECK(std::abs(b.drag_work_j / b.energy_change_j - 1.0) < 1e-9);
+}
+
+TEST_CASE("A low ballistic coefficient deep in the atmosphere stays dissipative", "[atmo][entry]") {
+    // A 10 g, 1 m^2 sheet at 1 km on the US76 atmosphere: beta = 0.01 kg/m^2.
+    EntryConfig c;
+    c.vehicle.mass = si::Mass(0.01);
+    auto table = orrery::atmo::AeroCoefficientTable::constant(1.0, si::Area(1.0));
+    REQUIRE(table);
+    c.vehicle.aero = table.value();
+    c.vehicle.nose_radius = si::Length(0.5);
+    c.initial.altitude = si::Length(1000.0);
+    c.initial.speed = si::Velocity(1000.0);
+    c.initial.flight_path_angle = Angle::from_degrees(-10.0);
+    c.max_duration = si::Time(20.0);
+    EntryExperiment run = make(c);
+    auto outcome = run.run();
+    REQUIRE(outcome);
+    CHECK(outcome.value() != EntryOutcome::failed);
+    const auto& series = run.series();
+    REQUIRE(series.size() > 2);
+    for (std::size_t i = 1; i < series.size(); ++i) {
+        INFO("row " << i << ": speed " << series.speed_m_s[i] << " m/s");
+        REQUIRE(std::isfinite(series.speed_m_s[i]));
+        REQUIRE(std::isfinite(series.energy_j[i]));
+        // Drag only removes energy (gravity's own error is far smaller).
+        CHECK(series.energy_j[i] <= series.energy_j[i - 1] + 1e-6 * std::abs(series.energy_j[0]));
+    }
+    // Falls at about its terminal speed sqrt(2 m g / (rho Cd A)) ~ 0.42 m/s.
+    CHECK(series.speed_m_s.back() < 1.0);
+}
+
 TEST_CASE("Ground track on the rotating planet", "[atmo][entry]") {
     // Heading north from the equator: the path stays in the x-z plane, so
     // the longitude is the planet's rotation only.
