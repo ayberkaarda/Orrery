@@ -64,7 +64,7 @@ jobs:
       CCACHE_DIR: ${{ github.workspace }}/.ccache
       CCACHE_BASEDIR: ${{ github.workspace }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install Linux toolchain
         if: runner.os == 'Linux'
         run: |
@@ -120,7 +120,7 @@ jobs:
               }
             }
           }
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install CMake and Ninja
@@ -136,7 +136,7 @@ jobs:
         # every binary package; a new image starts a new cache entry.
         run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vcpkg-cache
           key: vcpkg-${{ matrix.name }}-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
@@ -145,7 +145,7 @@ jobs:
             vcpkg-${{ matrix.name }}-
       - name: Restore ccache
         if: runner.os == 'Linux'
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ccache
           key: ccache-${{ matrix.name }}-${{ github.run_id }}
@@ -186,7 +186,7 @@ jobs:
           if [ "$RUNNER_OS" = "Linux" ]; then ccache --show-stats; fi
       - name: Save ccache
         if: runner.os == 'Linux' && github.event_name == 'push'
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .ccache
           key: ccache-${{ matrix.name }}-${{ github.run_id }}
@@ -216,7 +216,7 @@ jobs:
       CC: gcc-13
       CXX: g++-13
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - name: Install toolchain
         run: |
           APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
@@ -228,7 +228,7 @@ jobs:
             retry $APT update
             retry $APT install -y $LINUX_DEPS ccache gcc-13 g++-13
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install CMake and Ninja
@@ -242,7 +242,7 @@ jobs:
       # triplet as in build (ubuntu-24.04-gcc-13), whatever the project's
       # build type and sanitizer flags: the binary cache is shared.
       - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vcpkg-cache
           key: vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
@@ -250,7 +250,7 @@ jobs:
             vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-
             vcpkg-ubuntu-24.04-gcc-13-
       - name: Restore ccache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v6
         with:
           path: .ccache
           key: ccache-asan-${{ github.run_id }}
@@ -273,7 +273,7 @@ jobs:
           ccache --show-stats
       - name: Save ccache
         if: github.event_name == 'push' && matrix.shard == 1
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v6
         with:
           path: .ccache
           key: ccache-asan-${{ github.run_id }}
@@ -311,7 +311,7 @@ jobs:
       CC: clang-17
       CXX: clang++-17
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
       - name: Install tools
@@ -332,7 +332,7 @@ jobs:
             retry $APT update
             retry $APT install -y clang-17 clang-tidy-17
           fi
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - name: Install CMake, Ninja and clang-format
@@ -353,7 +353,7 @@ jobs:
       # Same compiler and triplet as build (ubuntu-22.04-clang-17): the
       # vcpkg binary cache is shared with it.
       - name: Cache vcpkg binaries
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: .vcpkg-cache
           key: vcpkg-ubuntu-22.04-clang-17-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
