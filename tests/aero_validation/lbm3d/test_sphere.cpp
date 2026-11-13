@@ -117,7 +117,7 @@ TEST_CASE("Sphere and plate resolution study (GPU)", "[.study][aero][lbm3d][gl]"
     };
     constexpr SolidWall halfway = SolidWall::halfway;
     constexpr SolidWall interpolated = SolidWall::interpolated;
-    for (const Row row : {
+    for (const Row& row : {
              Row{false, 10.0, 16.0, 4.0, 8.0, 6.0, 30.0, 10.0, false, interpolated},
              Row{false, 10.0, 16.0, 6.0, 10.0, 10.0, 30.0, 10.0, false, interpolated},
              Row{false, 100.0, 16.0, 4.0, 8.0, 6.0, 30.0, 10.0, false, halfway},
