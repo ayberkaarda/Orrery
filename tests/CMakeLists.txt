@@ -103,6 +103,11 @@ target_sources(orrery_test_render PRIVATE
     render/test_black_hole.cpp
     render/test_black_hole_render.cpp)
 target_link_libraries(orrery_test_render PRIVATE orrery_scene)
+# test_ui.cpp reads Dear ImGui's and ImPlot's layout state after a frame
+# (window clip rectangles, plot axes and tick labels).
+find_package(imgui CONFIG REQUIRED)
+find_package(implot CONFIG REQUIRED)
+target_link_libraries(orrery_test_render PRIVATE imgui::imgui implot::implot)
 target_compile_definitions(orrery_test_render PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
 
