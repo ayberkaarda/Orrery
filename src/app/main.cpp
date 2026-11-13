@@ -170,7 +170,7 @@ int main(int argc, char** argv) {
     // No silent crash: std::terminate reports its reason on stderr and in
     // the crash log (docs/app.md, "Error surface").
     orrery::app::install_terminate_handler(orrery::app::default_crash_log(),
-                                           std::string(orrery::core::version_string()));
+                                           orrery::core::version_string());
     try {
         return run(argc, argv);
     } catch (const std::exception& error) {
