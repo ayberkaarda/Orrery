@@ -240,6 +240,7 @@ add_executable(orrery_test_scene
     scene/test_scenario_roundtrip.cpp
     scene/test_experiment.cpp
     scene/test_aero_experiment.cpp
+    scene/test_entry_experiment.cpp
     scene/test_scene_limits.cpp)
 target_link_libraries(orrery_test_scene PRIVATE orrery_scene Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_scene PRIVATE

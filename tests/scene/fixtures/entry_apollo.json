@@ -1,0 +1,35 @@
+{
+  "version": 1,
+  "domain": "entry",
+  "inputs": {
+    "name": "Apollo-like lunar return (ballistic)",
+    "planet": "earth",
+    "atmosphere": "us76",
+    "vehicle": "apollo_cm",
+    "mass_kg": 5560,
+    "reference_area_m2": 12.019532,
+    "nose_radius_m": 4.694
+  },
+  "conditions": {
+    "altitude_m": 121920,
+    "speed_m_s": 11000,
+    "flight_path_angle_deg": -5.7,
+    "latitude_deg": 0,
+    "longitude_deg": 0,
+    "heading_deg": 90,
+    "frame": "inertial"
+  },
+  "solver": {
+    "name": "ias15",
+    "version": "1",
+    "settings": {
+      "tolerance": 1e-9,
+      "time_step_s": 0.5,
+      "max_coast_step_s": 30,
+      "max_duration_s": 4000,
+      "stop_on_skip_out": 1
+    }
+  },
+  "result": {},
+  "series": { "cd_table_mach": [0], "cd_table_cd": [1.3] }
+}
