@@ -140,8 +140,9 @@ check. Both jobs restore the vcpkg binary cache of the pull-request workflow
 
 Why these run nightly and not per pull request:
 
-- The large lattice Boltzmann cases take about 10 to 60 minutes each on the
-  CPU of a hosted runner (the pull-request suite has the small CPU cases:
+- The large lattice Boltzmann cases took 4 to 8 minutes each, 28 minutes for
+  the five, on a 12-thread desktop CPU; a four-core hosted runner needs
+  roughly three times that (the pull-request suite has the small CPU cases:
   cylinder Re 100 at D = 20, sphere Re 100 at 12 cells per diameter). The GPU
   validation at Re 10, 100, 300 and 1000 needs an OpenGL 4.6 context, which
   hosted runners lack; the nightly job runs those grids on the CPU solvers
