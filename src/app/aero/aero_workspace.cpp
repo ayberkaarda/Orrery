@@ -176,6 +176,7 @@ struct AeroWorkspace::Impl {
     scene::AeroExperiment experiment;
     std::filesystem::path base_dir;
     int source = 0; // 0 primitive, 1 file, 2 URL
+    bool source_tab_pending = true;
     std::array<char, 1024> path_buffer{};
     std::array<char, 2048> url_buffer{};
     std::array<char, 512> license_buffer{};
@@ -229,6 +230,7 @@ struct AeroWorkspace::Impl {
     // --- Inputs and background work ---------------------------------------
 
     void sync_buffers() {
+        source_tab_pending = true;
         w::set_buffer(name_buffer, experiment.name);
         w::set_buffer(naca_buffer, experiment.geometry.naca);
         w::set_buffer(license_buffer, experiment.geometry.license_note);
@@ -608,15 +610,22 @@ void AeroWorkspace::Impl::draw_geometry_panel() {
     }
     if (ImGui::BeginTabBar("##source")) {
         const std::array<const char*, 3> labels{"Primitive", "File", "URL"};
+        // An opened experiment selects the tab of its geometry source once;
+        // afterwards the tab bar decides.
+        int shown = source;
         for (int i = 0; i < 3; ++i) {
             const ImGuiTabItemFlags flags =
-                source == i && ImGui::GetFrameCount() <= 2 ? ImGuiTabItemFlags_SetSelected : 0;
+                source_tab_pending && source == i ? ImGuiTabItemFlags_SetSelected : 0;
             if (ImGui::BeginTabItem(labels[static_cast<std::size_t>(i)], nullptr, flags)) {
-                source = i;
+                shown = i;
                 ImGui::EndTabItem();
             }
         }
         ImGui::EndTabBar();
+        if (!source_tab_pending) {
+            source = shown;
+        }
+        source_tab_pending = false;
     }
     if (source == 0) {
         draw_primitive_inputs();
@@ -966,6 +975,28 @@ void AeroWorkspace::Impl::draw_flow_panel() {
         }
         w::unit("L/U");
         w::tooltip("Simulated time in convective times (reference length / speed).");
+    }
+
+    // Run from here as well as from the bar: the inputs are right above.
+    ImGui::Dummy(ImVec2(0.0F, 4.0F));
+    const sim::AeroRunState state = runner.latest().status.state;
+    const bool busy_run = state == sim::AeroRunState::setting_up ||
+                          state == sim::AeroRunState::running || state == sim::AeroRunState::paused;
+    const bool can_run = flow.runnable() && geometry != nullptr && !geometry_task.started();
+    ImGui::BeginDisabled(!can_run);
+    ImGui::PushStyleColor(ImGuiCol_Button, w::color(w::theme().accent, 0.85F));
+    ImGui::PushStyleColor(ImGuiCol_ButtonHovered, w::color(w::theme().accent_hover));
+    ImGui::PushStyleColor(ImGuiCol_ButtonActive, w::color(w::theme().accent_active));
+    ImGui::PushStyleColor(ImGuiCol_Text, w::color(w::theme().title));
+    if (ImGui::Button(busy_run ? "Restart run" : "Run", ImVec2(-1.0F, 0.0F))) {
+        (void)start_run();
+    }
+    ImGui::PopStyleColor(4);
+    ImGui::EndDisabled();
+    if (!can_run) {
+        w::tooltip(geometry == nullptr || geometry_task.started()
+                       ? "Waiting for the geometry"
+                       : "Fix the inputs marked above first");
     }
     ImGui::End();
 }
