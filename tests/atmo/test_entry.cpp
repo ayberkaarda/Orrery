@@ -7,6 +7,7 @@
 #include <variant>
 
 #include "orrery/atmo/entry.h"
+#include "orrery/core/units.h"
 
 using orrery::atmo::EntryConfig;
 using orrery::atmo::EntryExperiment;
@@ -384,6 +385,31 @@ TEST_CASE("A pass through the atmosphere inside one long step is still detected"
     REQUIRE(std::holds_alternative<orrery::atmo::ImpactEvent>(crash_events[1]));
     CHECK(std::get<orrery::atmo::ImpactEvent>(crash_events[1]).time_s < dive.periapsis_time_s);
     CHECK(crash.series().altitude_m.back() == 0.0);
+}
+
+TEST_CASE("An impact leaves the state and the clock at the impact instant", "[atmo][entry]") {
+    EntryExperiment run = make(orrery::atmo::apollo_like_entry());
+    run_to_end(run);
+    REQUIRE(run.outcome() == EntryOutcome::impact);
+    REQUIRE(std::holds_alternative<orrery::atmo::ImpactEvent>(run.events().back()));
+    const auto& impact = std::get<orrery::atmo::ImpactEvent>(run.events().back());
+    // Between two 0.5 s steps.
+    REQUIRE(std::fmod(impact.time_s, 0.5) != 0.0);
+    CHECK(run.time().value() == impact.time_s);
+    CHECK(run.series().time_s.back() == impact.time_s);
+    CHECK(run.summary().duration_s == impact.time_s);
+    CHECK(run.series().altitude_m.back() == 0.0);
+    // The public state is the one of that instant: on the ground, not below it.
+    const orrery::core::BodyStore& bodies = run.state().bodies();
+    const double radius =
+        orrery::core::to_si(orrery::core::norm(bodies.position(1) - bodies.position(0))).value();
+    const double speed =
+        orrery::core::to_si(orrery::core::norm(bodies.velocity(1) - bodies.velocity(0))).value();
+    INFO("state altitude " << radius - run.config().planet.radius.value() << " m, speed " << speed
+                           << " m/s against " << impact.speed_m_s);
+    CHECK(std::abs(radius - run.config().planet.radius.value()) < 0.01);
+    CHECK(std::abs(speed / impact.speed_m_s - 1.0) < 1e-3);
+    CHECK(std::abs(orrery::core::to_si(run.state().time()).value() - impact.time_s) < 1e-6);
 }
 
 TEST_CASE("A step-bounded advance takes at most the given number of steps", "[atmo][entry]") {

@@ -227,7 +227,30 @@ std::optional<AtmoError> EntryExperiment::Impl::step(double dt_s, double new_tim
     append(measure());
     detect_events(before, last_row());
     update_summary(before, last_row());
+    if (summary.outcome == EntryOutcome::impact) {
+        commit_impact(backup, before.time_s);
+    }
     return std::nullopt;
+}
+
+void EntryExperiment::Impl::commit_impact(const core::SimState& before, double before_time_s) {
+    // The last row is the interpolated impact row; move the state, the clock
+    // and the drag work back to that instant, by the same linear
+    // interpolation within the step.
+    const EntryRow impact = last_row();
+    const double f = (impact.time_s - before_time_s) / (time_s - before_time_s);
+    core::BodyStore& bodies = state.bodies();
+    const core::BodyStore& start = before.bodies();
+    for (std::size_t i = 0; i < bodies.size(); ++i) {
+        const auto r = start.position(i) + (bodies.position(i) - start.position(i)) * f;
+        const auto v = start.velocity(i) + (bodies.velocity(i) - start.velocity(i)) * f;
+        // Finite interpolations of finite states: the guards cannot fire.
+        (void)bodies.set_position(i, r);
+        (void)bodies.set_velocity(i, v);
+    }
+    state.set_time(core::to_space(core::si::Time(impact.time_s)));
+    time_s = impact.time_s;
+    drag_work_j = impact.drag_work_j;
 }
 
 std::optional<AtmoError> EntryExperiment::Impl::split_step(double dt_s) {

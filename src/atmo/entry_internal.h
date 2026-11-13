@@ -84,6 +84,9 @@ struct EntryExperiment::Impl {
     // before the step, the outcome is failed and the error is returned.
     [[nodiscard]] std::optional<AtmoError> step(double dt_s, double new_time_s);
     [[nodiscard]] std::optional<AtmoError> split_step(double dt_s);
+    // After an impact inside the step from `before` (at before_time_s): the
+    // state, clock and drag work at the impact row's instant.
+    void commit_impact(const core::SimState& before, double before_time_s);
     // Velocity kick of the drag over tau seconds at fixed position: RK4 in
     // substeps of at most kDragSubstepFraction of the drag timescale. Fails
     // on a non-finite stage instead of leaving the velocity unchanged.
