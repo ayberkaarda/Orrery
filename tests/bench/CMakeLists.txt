@@ -1,4 +1,4 @@
-# Benchmarks (docs/performance.md).
+# Benchmarks and the nightly validation (docs/performance.md, docs/ci.md).
 # Built with the tests so every CI build compiles them with the project's
 # warnings, but never registered with ctest:
 #   - orrery_bench_<suite>: the section 8 measurements, one executable per
@@ -6,6 +6,8 @@
 #     results as JSON with --json <file>). run_benchmarks.py runs them all,
 #     adds the application measurements (cold start, memory, size, frame
 #     rate) and merges the JSON; make_report.py turns it into a table.
+#   - orrery_nightly_lbm_validation: the large CPU lattice Boltzmann cases of
+#     the nightly workflow.
 find_package(nlohmann_json CONFIG REQUIRED)
 
 function(orrery_add_bench target suite)
@@ -36,3 +38,8 @@ target_link_libraries(orrery_bench_aero PRIVATE orrery_aero orrery_geom
 orrery_add_bench(orrery_bench_lbm_gpu lbm_gpu aero/bench_lbm_gpu.cpp)
 target_link_libraries(orrery_bench_lbm_gpu PRIVATE orrery_render
     Catch2::Catch2 nlohmann_json::nlohmann_json)
+
+add_executable(orrery_nightly_lbm_validation nightly/nightly_lbm_validation.cpp)
+target_link_libraries(orrery_nightly_lbm_validation PRIVATE orrery_aero orrery_geom
+    Catch2::Catch2WithMain)
+orrery_configure_target(orrery_nightly_lbm_validation)
