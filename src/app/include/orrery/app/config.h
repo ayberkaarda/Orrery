@@ -6,6 +6,8 @@
 #include <string>
 #include <vector>
 
+#include "orrery/app/shortcuts.h"
+#include "orrery/app/workspace.h"
 #include "orrery/core/result.h"
 
 // User configuration of orrery_app (docs/app.md, "Configuration"): a TOML
@@ -17,17 +19,21 @@
 //   [window]
 //   width = 1600               # [px], 320 .. 8192
 //   height = 900
-//   workspace = "space"        # first workspace: "space" or "aero"
+//   workspace = "space"        # first workspace: "space", "aero" or "entry"
 //   [aero]
 //   steps_per_frame = 100      # lattice steps per frame, 1 .. 100000
+//   [space]
+//   physics_budget = 0.6       # share of wall time for physics, 0.05 .. 0.95
+//   [shortcuts]
+//   save = "Ctrl+S"            # an action: one chord, a list, or [] (unbound)
+//   help = ["F1", "?"]
 //
 // A missing file means the defaults. Unknown keys and invalid values are
-// reported as warnings and ignored (the rest of the file still applies); a
-// file that is not valid TOML is an error, and the caller falls back to the
-// defaults with that error shown.
+// reported as warnings and ignored (the rest of the file still applies; a
+// rejected shortcut keeps its default, also when it conflicts with another
+// action); a file that is not valid TOML is an error, and the caller falls
+// back to the defaults with that error shown.
 namespace orrery::app {
-
-enum class Workspace : std::uint8_t { space, aero, entry };
 
 struct AppConfig {
     std::filesystem::path experiment_dir;
@@ -36,6 +42,11 @@ struct AppConfig {
     int window_height = 900;
     Workspace start_workspace = Workspace::space;
     std::int64_t steps_per_frame = 100;
+    // Share of wall-clock time the space simulation may spend stepping
+    // before the time warp is lowered (sim::WarpBudget::load_limit).
+    double physics_budget = 0.6;
+    // Keyboard shortcuts after the [shortcuts] overrides (conflict-free).
+    ShortcutTable shortcuts = default_shortcuts();
 
     friend bool operator==(const AppConfig&, const AppConfig&) = default;
 };
