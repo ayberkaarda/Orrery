@@ -200,6 +200,50 @@ TEST_CASE("Marching cubes rejects non-finite samples and interpolates extreme on
     }
 }
 
+TEST_CASE("Marching cubes counts zero-area triangles at level-valued corners",
+          "[render][aero][marching_cubes]") {
+    // One cube, corner 0 exactly at the level (outside), the seven others
+    // inside: the triangle around corner 0 has three distinct vertices that
+    // all sit on that corner.
+    ScalarGrid cube =
+        scalar_grid(2, 2, 2, {0.0, 0.0, 0.0}, 1.0, [](const glm::dvec3&) { return 1.0; });
+    cube.values[0] = 0.0;
+    const IsoSurface s = marching_cubes(cube, 0.0);
+    REQUIRE(s.triangle_count() == 1);
+    CHECK(s.indices[0] != s.indices[1]);
+    CHECK(s.indices[1] != s.indices[2]);
+    CHECK(surface_area(s) == 0.0);
+    CHECK(topology(s).degenerate_triangles == 1);
+    // The output keeps them (each vertex stays the one of its grid edge, so
+    // closed surfaces stay closed): a field with many level-valued nodes is
+    // still closed, and only its zero-area triangles are counted.
+    // Integer values in [-1, 2] inside, -1 on the boundary: many nodes sit
+    // exactly at level 0 and the surface is closed.
+    std::mt19937 random(7);
+    std::uniform_int_distribution<int> pick(-1, 2);
+    ScalarGrid steps =
+        scalar_grid(12, 12, 12, {0.0, 0.0, 0.0}, 1.0, [](const glm::dvec3&) { return -1.0; });
+    for (std::size_t k = 1; k + 1 < 12; ++k) {
+        for (std::size_t j = 1; j + 1 < 12; ++j) {
+            for (std::size_t i = 1; i + 1 < 12; ++i) {
+                steps.values[steps.grid.index(i, j, k)] = static_cast<double>(pick(random));
+            }
+        }
+    }
+    const IsoSurface b = marching_cubes(steps, 0.0);
+    const MeshTopology t = topology(b);
+    CHECK(t.closed());
+    std::size_t flat = 0;
+    for (std::size_t i = 0; i + 2 < b.indices.size(); i += 3) {
+        const glm::dvec3& p0 = b.positions[b.indices[i]];
+        const glm::dvec3 n = glm::cross(b.positions[b.indices[i + 1]] - p0,
+                                        b.positions[b.indices[i + 2]] - p0);
+        flat += glm::length(n) == 0.0 ? 1 : 0;
+    }
+    CHECK(flat > 0);
+    CHECK(t.degenerate_triangles == flat);
+}
+
 TEST_CASE("Marching cubes on the GPU stays finite for extreme samples",
           "[render][aero][marching_cubes][gl]") {
     auto gl = aero_compute_or_skip();

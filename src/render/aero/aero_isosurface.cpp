@@ -318,6 +318,22 @@ bool usable(const ScalarGrid& field, double level) {
            std::ranges::all_of(field.values, [](double v) { return std::isfinite(v); });
 }
 
+// Position of node `n` of the grid.
+glm::dvec3 node_point(const GridGeometry& g, std::size_t n) noexcept {
+    return g.node_position(n % g.dims[0], (n / g.dims[0]) % g.dims[1], n / (g.dims[0] * g.dims[1]));
+}
+
+// Vertex of edge `e` at fraction t: exactly on a node at t = 0 or 1, so the
+// vertices of the edges meeting at a level-valued node coincide exactly.
+glm::dvec3 edge_point(const GridGeometry& g, std::uint64_t e, double t) noexcept {
+    if (t >= 1.0) {
+        return node_point(g, neighbour_of_edge(g, e));
+    }
+    glm::dvec3 p = node_point(g, node_of_edge(e));
+    p[static_cast<glm::length_t>(e % 3U)] += t * g.spacing;
+    return p;
+}
+
 // The kernel's values: (v - level) in binary32, scaled down (by a positive
 // factor, which keeps every sign and edge fraction) when the field would
 // overflow binary32 or the kernel's differences. Computed from halves so that
@@ -382,11 +398,7 @@ IsoSurface marching_cubes(const ScalarGrid& field, double level) {
         const std::size_t a = node_of_edge(e);
         const std::size_t b = neighbour_of_edge(g, e);
         const double t = edge_fraction(field.values[a], field.values[b], level);
-        const auto axis = static_cast<glm::length_t>(e % 3U);
-        glm::dvec3 p = g.node_position(a % g.dims[0], (a / g.dims[0]) % g.dims[1],
-                                       a / (g.dims[0] * g.dims[1]));
-        p[axis] += t * g.spacing;
-        return EdgeVertex{p, vertex_normal(field, e, t)};
+        return EdgeVertex{edge_point(g, e, t), vertex_normal(field, e, t)};
     });
 }
 
@@ -509,6 +521,29 @@ double surface_area(const IsoSurface& surface) {
     return area;
 }
 
+namespace {
+
+// A repeated index, or no area: the cross product of two sides vanishes
+// against the square of the longest side (zero when all three coincide).
+bool degenerate(const IsoSurface& surface, const std::array<std::uint32_t, 3>& v) {
+    if (v[0] == v[1] || v[1] == v[2] || v[0] == v[2]) {
+        return true;
+    }
+    const std::size_t n = surface.positions.size();
+    if (v[0] >= n || v[1] >= n || v[2] >= n) {
+        return false;
+    }
+    const glm::dvec3& a = surface.positions[v[0]];
+    const glm::dvec3 ab = surface.positions[v[1]] - a;
+    const glm::dvec3 ac = surface.positions[v[2]] - a;
+    const glm::dvec3 bc = ac - ab;
+    const double longest = std::max({glm::dot(ab, ab), glm::dot(ac, ac), glm::dot(bc, bc)});
+    constexpr double kRelativeArea = 1.0e-12;
+    return glm::length(glm::cross(ab, ac)) <= kRelativeArea * longest;
+}
+
+} // namespace
+
 MeshTopology topology(const IsoSurface& surface) {
     // Directed edge (from, to) -> uses.
     std::map<std::pair<std::uint32_t, std::uint32_t>, std::size_t> directed;
@@ -516,7 +551,7 @@ MeshTopology topology(const IsoSurface& surface) {
     for (std::size_t t = 0; t + 2 < surface.indices.size(); t += 3) {
         const std::array<std::uint32_t, 3> v{surface.indices[t], surface.indices[t + 1],
                                              surface.indices[t + 2]};
-        if (v[0] == v[1] || v[1] == v[2] || v[0] == v[2]) {
+        if (degenerate(surface, v)) {
             ++result.degenerate_triangles;
         }
         for (std::size_t e = 0; e < 3; ++e) {

@@ -43,7 +43,11 @@ struct IsoSurface {
 
 // Empty for a 2D grid, one without values, or one with a NaN or infinite
 // value or level (rejected: such a sample would yield NaN vertices). Vertices
-// are interpolated without overflow for any finite values.
+// are interpolated without overflow for any finite values. A node exactly at
+// the level is outside; the vertices of its edges then coincide on it, and
+// the triangles between them have zero area: they are kept (each vertex
+// stays the one of its grid edge, so a closed surface stays closed) and
+// counted by topology().degenerate_triangles.
 [[nodiscard]] IsoSurface marching_cubes(const ScalarGrid& field, double level);
 
 // The same surface from the GPU kernel: identical vertices (edges) and
@@ -65,7 +69,9 @@ struct MeshTopology {
     std::size_t boundary_edges = 0;       // in one triangle
     std::size_t non_manifold_edges = 0;   // in more than two
     std::size_t misoriented_edges = 0;    // in two triangles with the same direction
-    std::size_t degenerate_triangles = 0; // a repeated vertex index
+    // A repeated vertex index, or (near) zero area: twice the area at most
+    // 1e-12 of the longest side squared.
+    std::size_t degenerate_triangles = 0;
 
     [[nodiscard]] bool closed() const noexcept {
         return boundary_edges == 0 && non_manifold_edges == 0 && misoriented_edges == 0;
