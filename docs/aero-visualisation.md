@@ -1,7 +1,6 @@
 # Aero Visualisation
 
-The aero view of `orrery_render` (Phase 8a, spec sections 7.1, 7.4, 7.6 and
-7.7) draws the results of the aerodynamic solvers: the body coloured by its
+The aero view of `orrery_render` (Phase 8a) draws the results of the aerodynamic solvers: the body coloured by its
 surface pressure coefficient, section planes through a flow field,
 streamlines and particle traces, the Q-criterion iso-surface and the force
 vectors, with colour legends in the overlay.
@@ -110,7 +109,8 @@ caps of an extruded section) take the neutral body colour.
 Lighting (V11) is a key light attached to the camera (up and to the left of
 the view direction, so whatever side the turntable shows is lit), a wrapped
 Lambert term that never falls below 0.42, a weak highlight and a faint cool
-rim against the backdrop. Bloom is off in the aero view (spec 7.6): nothing
+rim against the backdrop. Bloom is off in the aero view (V1 has no bloom pass,
+[limitations.md](limitations.md)): nothing
 adds glow, and `aero_hdr_settings()` gives exposure 1 and 4x MSAA.
 
 ## 4. Section planes

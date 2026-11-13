@@ -261,7 +261,10 @@ excludes lift, and a ballistic capsule at -6.5 degrees peaks at about 15 g
 deceleration band sits on the shallow side of the Apollo entry corridor
 (about -5.5 to -5.9 degrees here); steeper is more severe, shallower skips out
 (-5.0 degrees). The test "Apollo-like ballistic entry" checks 6 to 8 g at
--5.7 degrees and that -6.5 degrees exceeds the band.
+-5.7 degrees and that -6.5 degrees exceeds the band. The peak g of this case
+is therefore a calibrated value, not a validation of the model; what it
+validates is the energy balance (below 1 percent, measured 2.1e-5) and, for
+the peak deceleration itself, the Allen-Eggers case.
 
 ## Experiment record
 

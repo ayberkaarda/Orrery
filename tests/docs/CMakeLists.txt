@@ -1,7 +1,8 @@
 # Documentation checks (tools/check_docs.py): relative links and heading
 # anchors in README.md, README.tr.md and docs/, the physics formula index
 # (docs/physics_index.json against docs/physics.md and the sources), and the
-# coverage of every APPROXIMATION marker under src/. No build output is read.
+# coverage of every APPROXIMATION marker under src/, and no numbered reference
+# to the specification, which is not in the repository. No build output is read.
 find_package(Python3 COMPONENTS Interpreter)
 if(Python3_Interpreter_FOUND)
     add_test(NAME docs.check

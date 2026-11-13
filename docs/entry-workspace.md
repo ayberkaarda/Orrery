@@ -1,7 +1,7 @@
 # Entry Workspace
 
-The Entry workspace of `orrery_app` (spec 6 "Atmosphere and entry bridge",
-spec 7 "Render: entry ground track", spec 8 "Entry Profile"; Phase 9b) puts
+The Entry workspace of `orrery_app` (Phase 9b: the Entry Profile panel, the
+ground track and the entry experiments) puts
 the entry physics of `orrery_atmo` (Phase 9a, [atmosphere.md](atmosphere.md))
 behind one user interface and records every run as an experiment. Sources:
 the graphics-free side in `src/app/entry/*.cpp` compiled into `orrery_sim`

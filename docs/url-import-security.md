@@ -1,6 +1,6 @@
 # URL model import: security
 
-Orrery can load a model from a URL (spec section 4.3, ADR-010). The download
+Orrery can load a model from a URL (ADR-010). The download
 is untrusted input from an unknown server. This page describes what the
 loader (`orrery_geom_net`, `src/geom/net`) defends against, the limits it
 enforces, and how the tests prove it.
