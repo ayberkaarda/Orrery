@@ -94,7 +94,9 @@ orrery_app --headless --experiment solar_system --frame 600 --out a.png --trace 
 sink is independent of Tracy. The capture starts after the command line is
 parsed and stops when the run ends; the file is then written even when the
 run failed (exit code 3, no OpenGL context, still leaves the physics zones of
-a headless run). A trace that cannot be written is reported as
+a headless run) or ended in an exception, which then goes on to `main`'s
+report unchanged (`run_guard.h`, tested with a zone recorded before an
+injected exception). A trace that cannot be written is reported as
 `orrery_app: cannot write the trace <file>: <reason>` and turns a successful
 run into exit code 1. Without `ORRERY_PROFILING` the file is a valid trace
 with no zones (`otherData.zones_compiled` is `"false"`).

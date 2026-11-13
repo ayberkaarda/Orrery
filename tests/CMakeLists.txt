@@ -296,8 +296,12 @@ add_executable(orrery_test_app
     app/test_workspace_journeys.cpp
     app/test_workspace_render.cpp
     app/test_aero_ui.cpp
-    app/test_aero_viewport.cpp)
-target_link_libraries(orrery_test_app PRIVATE orrery_app_core imgui::imgui Catch2::Catch2WithMain)
+    app/test_aero_viewport.cpp
+    app/test_run_guard.cpp)
+# nlohmann_json parses the traces written by run_traced (test_run_guard.cpp).
+find_package(nlohmann_json CONFIG REQUIRED)
+target_link_libraries(orrery_test_app PRIVATE orrery_app_core imgui::imgui
+    nlohmann_json::nlohmann_json Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")

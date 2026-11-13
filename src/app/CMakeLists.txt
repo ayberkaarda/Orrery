@@ -73,10 +73,12 @@ add_library(orrery_app_core STATIC
     cli.cpp
     frame_stats.cpp
     headless.cpp
+    run_guard.cpp
     space_view.cpp
     include/orrery/app/cli.h
     include/orrery/app/frame_stats.h
     include/orrery/app/headless.h
+    include/orrery/app/run_guard.h
     include/orrery/app/space_view.h)
 add_library(orrery::app_core ALIAS orrery_app_core)
 target_include_directories(orrery_app_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)

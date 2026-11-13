@@ -16,8 +16,8 @@
 #include "orrery/app/config.h"
 #include "orrery/app/error_surface.h"
 #include "orrery/app/headless.h"
+#include "orrery/app/run_guard.h"
 #include "orrery/app/space_view.h"
-#include "orrery/core/trace_capture.h"
 #include "orrery/scene/aero_experiment.h"
 #include "orrery/scene/experiment.h"
 #include "orrery/scene/scenario.h"
@@ -160,7 +160,6 @@ int run_window_mode(const orrery::app::CliOptions& options,
 #endif
 
 int dispatch(const orrery::app::CliOptions& options, const std::filesystem::path& executable);
-int run_traced(const orrery::app::CliOptions& options, const std::filesystem::path& executable);
 
 int run(int argc, char** argv) {
     using namespace orrery;
@@ -179,24 +178,11 @@ int run(int argc, char** argv) {
     }
     const app::CliOptions& options = parsed.value();
     if (!options.trace.empty()) {
-        return run_traced(options, executable);
+        // The trace is written however the run ends (docs/observability.md).
+        return app::run_traced(
+            options.trace, [&] { return dispatch(options, executable); }, std::cerr);
     }
     return dispatch(options, executable);
-}
-
-// Runs the command with the trace sink capturing, then writes the trace
-// (docs/observability.md); a trace that cannot be written fails the run.
-int run_traced(const orrery::app::CliOptions& options, const std::filesystem::path& executable) {
-    using namespace orrery;
-    profile::start_capture();
-    const int code = dispatch(options, executable);
-    profile::stop_capture();
-    if (const auto error = profile::write_chrome_trace(options.trace, "orrery_app")) {
-        std::cerr << "orrery_app: cannot write the trace " << options.trace.string() << ": "
-                  << *error << '\n';
-        return code == app::kExitOk ? app::kExitFailure : code;
-    }
-    return code;
 }
 
 int dispatch(const orrery::app::CliOptions& options, const std::filesystem::path& executable) {
