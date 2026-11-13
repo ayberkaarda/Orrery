@@ -6,9 +6,12 @@
 #include <limits>
 #include <map>
 #include <set>
+#include <span>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "../gl_context_internal.h"
 #include "../gl_loader.h"
@@ -139,7 +142,7 @@ Status failed(std::string message) {
 struct GlComputeBackend::Impl {
     std::uint64_t context = 0;
     std::string device;
-    std::map<std::string, const lbm_shaders::EmbeddedShader*, std::less<>> kernel_sources;
+    std::map<std::string, ShaderSource, std::less<>> kernel_sources;
     std::vector<ShaderSource> snippets;
     std::map<std::string, Kernel, std::less<>> kernels;
     std::map<std::uint32_t, Buffer> buffers;
@@ -169,7 +172,7 @@ struct GlComputeBackend::Impl {
             }
         }
         const std::array<StageSource, 1> stages{
-            StageSource{ShaderStage::compute, source_of(*source->second), includes}};
+            StageSource{ShaderStage::compute, source->second, includes}};
         auto program = Program::create(stages);
         if (!program) {
             return core::failure("opengl compute backend: kernel '" + std::string(name) +
@@ -192,6 +195,11 @@ GlComputeBackend::GlComputeBackend(std::unique_ptr<Impl> impl) noexcept : impl_(
 GlComputeBackend::~GlComputeBackend() = default;
 
 core::Result<std::unique_ptr<GlComputeBackend>, std::string> GlComputeBackend::create() {
+    return create(std::span<const ShaderSource>{});
+}
+
+core::Result<std::unique_ptr<GlComputeBackend>, std::string>
+GlComputeBackend::create(std::span<const ShaderSource> extra) {
     const std::uint64_t context = detail::current_context_serial();
     if (context == 0) {
         return core::failure(
@@ -202,11 +210,22 @@ core::Result<std::unique_ptr<GlComputeBackend>, std::string> GlComputeBackend::c
     // GL boundary: glGetString returns the renderer name as GLubyte text.
     const auto* renderer = reinterpret_cast<const char*>(glGetString(GL_RENDERER));
     impl->device = renderer != nullptr ? renderer : "unknown OpenGL device";
+    std::vector<ShaderSource> sources;
+    sources.reserve(lbm_shaders::all.size() + extra.size());
     for (const lbm_shaders::EmbeddedShader* shader : lbm_shaders::all) {
-        if (is_kernel_file(shader->name)) {
-            impl->kernel_sources.emplace(kernel_name_of(shader->name), shader);
+        sources.push_back(source_of(*shader));
+    }
+    sources.insert(sources.end(), extra.begin(), extra.end());
+    std::set<std::string_view, std::less<>> names;
+    for (const ShaderSource& source : sources) {
+        if (!names.insert(source.name).second) {
+            return core::failure("opengl compute backend: two sources are named '" +
+                                 std::string(source.name) + "'");
+        }
+        if (is_kernel_file(source.name)) {
+            impl->kernel_sources.emplace(kernel_name_of(source.name), source);
         } else {
-            impl->snippets.push_back(source_of(*shader));
+            impl->snippets.push_back(source);
         }
     }
     for (GLuint d = 0; d < 3; ++d) {
@@ -309,6 +328,11 @@ void GlComputeBackend::release_buffer(BufferId buffer) noexcept {
     if (impl_->current()) {
         impl_->buffers.erase(buffer.value);
     }
+}
+
+std::uint32_t GlComputeBackend::buffer_name(BufferId buffer) const noexcept {
+    const auto found = impl_->buffers.find(buffer.value);
+    return found == impl_->buffers.end() ? 0U : found->second.id();
 }
 
 std::size_t GlComputeBackend::buffer_size(BufferId buffer) const noexcept {
