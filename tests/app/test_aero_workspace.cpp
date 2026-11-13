@@ -329,7 +329,7 @@ TEST_CASE("Pause and Stop take effect between the solver calls of one frame",
     };
     sim::AeroRunSpec spec;
     spec.experiment = tiny_lbm_experiment();
-    spec.experiment.solver.lbm_duration = 5000.0;        // far more calls than one frame needs
+    spec.experiment.solver.lbm_duration = 5000.0;         // far more calls than one frame needs
     spec.experiment.solver.steps_per_frame = 100'000'000; // one frame: millions of calls
     spec.geometry = prepared(spec.experiment.geometry);
     runner.send(sim::StartAeroRun{spec, false});
@@ -355,8 +355,7 @@ TEST_CASE("Pause and Stop take effect between the solver calls of one frame",
     interrupt(sim::StopAeroRun{}, sim::AeroRunState::idle);
 }
 
-TEST_CASE("A lattice step limit stops the solve exactly at the limit",
-          "[aero][workspace][solve]") {
+TEST_CASE("A lattice step limit stops the solve exactly at the limit", "[aero][workspace][solve]") {
     // Limits below, at, between and above the 2D batch of 50 lattice steps.
     sim::AeroRunSpec spec;
     spec.experiment = tiny_lbm_experiment();

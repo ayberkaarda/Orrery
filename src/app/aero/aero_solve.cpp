@@ -241,9 +241,9 @@ core::Result<SolveOutcome, std::string> solve(const AeroRunSpec& spec,
     out.solver = plan.kind;
     out.reference = reference_values(*spec.geometry, spec.experiment.solver);
     try {
-        std::unique_ptr<aero::IAeroSolver> solver = make_solver(
-            plan, spec.experiment.solver,
-            lbm_steps_per_call_for(plan.two_dimensional, max_lattice_steps));
+        std::unique_ptr<aero::IAeroSolver> solver =
+            make_solver(plan, spec.experiment.solver,
+                        lbm_steps_per_call_for(plan.two_dimensional, max_lattice_steps));
         solver->setup(to_aero_geometry(*spec.geometry, spec.experiment.solver), out.flow.flow);
         while (!out.finished) {
             out.finished = solver->step();

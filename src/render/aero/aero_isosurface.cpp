@@ -246,8 +246,7 @@ struct EdgeVertex {
 // the same as from the plain differences wherever those do not overflow.
 double edge_fraction(double a, double b, double level) noexcept {
     const double denominator = 0.5 * b - 0.5 * a;
-    return denominator != 0.0 ? std::clamp((0.5 * level - 0.5 * a) / denominator, 0.0, 1.0)
-                              : 0.5;
+    return denominator != 0.0 ? std::clamp((0.5 * level - 0.5 * a) / denominator, 0.0, 1.0) : 0.5;
 }
 
 std::size_t node_of_edge(std::uint64_t edge) noexcept {
@@ -345,8 +344,7 @@ std::vector<float> kernel_values(const ScalarGrid& field, double level) {
     for (const double v : field.values) {
         largest = std::max(largest, std::abs(0.5 * v - 0.5 * level));
     }
-    const double factor =
-        2.0 * largest > kLargestKernelValue ? kLargestKernelValue / largest : 2.0;
+    const double factor = 2.0 * largest > kLargestKernelValue ? kLargestKernelValue / largest : 2.0;
     std::vector<float> values;
     values.reserve(field.values.size());
     for (const double v : field.values) {

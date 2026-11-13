@@ -53,8 +53,9 @@ struct IsoSurface {
 // The same surface from the GPU kernel: identical vertices (edges) and
 // triangles, positions in binary32. Values beyond 1e30 from the level are
 // scaled down for binary32 (a positive factor, so signs and edge fractions
-// keep; values that then fall below the binary32 range count as outside). Fails when the triangles exceed
-// max_triangles; `backend` must provide kernel_marching_cubes.
+// keep; values that then fall below the binary32 range count as outside).
+// Fails when the triangles exceed max_triangles; `backend` must provide
+// kernel_marching_cubes.
 [[nodiscard]] core::Result<IsoSurface, std::string>
 marching_cubes_gpu(aero::compute::IComputeBackend& backend, const ScalarGrid& field, double level,
                    std::size_t max_triangles = std::size_t{1} << 21U);
@@ -66,9 +67,9 @@ marching_cubes_gpu(aero::compute::IComputeBackend& backend, const ScalarGrid& fi
 // surface has every edge in exactly two triangles, once in each direction.
 struct MeshTopology {
     std::size_t edges = 0;
-    std::size_t boundary_edges = 0;       // in one triangle
-    std::size_t non_manifold_edges = 0;   // in more than two
-    std::size_t misoriented_edges = 0;    // in two triangles with the same direction
+    std::size_t boundary_edges = 0;     // in one triangle
+    std::size_t non_manifold_edges = 0; // in more than two
+    std::size_t misoriented_edges = 0;  // in two triangles with the same direction
     // A repeated vertex index, or (near) zero area: twice the area at most
     // 1e-12 of the longest side squared.
     std::size_t degenerate_triangles = 0;

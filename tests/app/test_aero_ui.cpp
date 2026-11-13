@@ -216,8 +216,7 @@ TEST_CASE("An edited loaded experiment is saved without its recorded result", "[
     CHECK(saved_with_result(h.workspace));
 }
 
-TEST_CASE("Opening another experiment shows its results, not the last run's",
-          "[app][ui][aero]") {
+TEST_CASE("Opening another experiment shows its results, not the last run's", "[app][ui][aero]") {
     const std::filesystem::path dir = scratch("open_other");
     Harness h(dir);
     REQUIRE(h.frames_until([&] { return h.workspace.geometry_ready(); }));

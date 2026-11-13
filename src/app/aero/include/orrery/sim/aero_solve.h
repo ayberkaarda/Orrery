@@ -100,9 +100,10 @@ struct SolveOutcome {
 
 // Runs a spec on the calling thread: setup, then step() until the solver
 // finishes or, for a time-marching solver, exactly `max_lattice_steps` have
-// been advanced (nullopt: until it finishes; the calls are then of
-// lbm_steps_per_call_for steps, so the force history is sampled after each). Fails with the solver's message for
-// an unusable geometry or conditions (validity warnings never fail).
+// been advanced (nullopt: until it finishes). With a limit, each call
+// advances lbm_steps_per_call_for(limit) steps, and the force history is
+// sampled after each call. Fails with the solver's message for an unusable
+// geometry or conditions (validity warnings never fail).
 [[nodiscard]] core::Result<SolveOutcome, std::string>
 solve(const AeroRunSpec& spec, std::optional<std::uint64_t> max_lattice_steps = std::nullopt);
 

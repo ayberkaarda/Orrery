@@ -306,7 +306,7 @@ TEST_CASE("Ranges and legends of extreme finite data stay finite and bounded",
     // Subnormal, overflowing and extreme ranges: finite ticks inside the
     // range, a bounded count, at least the two ends.
     const std::vector<ScalarRange> ranges{
-        {0.0, 10.0 * tiny}, {tiny, 3.0 * tiny},   {0.0, 1.0e-310}, {-huge, huge},
+        {0.0, 10.0 * tiny}, {tiny, 3.0 * tiny},  {0.0, 1.0e-310},       {-huge, huge},
         {0.0, huge},        {-1.0e300, 1.0e308}, {1.0e15, 1.0e15 + 2.0}};
     for (const ScalarRange& range : ranges) {
         INFO("[" << range.min << ", " << range.max << "]");

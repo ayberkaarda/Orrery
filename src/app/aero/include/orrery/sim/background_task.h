@@ -51,9 +51,9 @@ public:
     template <typename Work, typename OnException>
     BackgroundTask(Work work, OnException on_exception) : state_(std::make_shared<State>()) {
         std::shared_ptr<State> state = state_;
-        thread_ = std::jthread(
-            [state, work = std::move(work),
-             on_exception = std::move(on_exception)](std::stop_token stop) mutable {
+        thread_ =
+            std::jthread([state, work = std::move(work),
+                          on_exception = std::move(on_exception)](std::stop_token stop) mutable {
                 state->progress.watch(std::move(stop));
                 try {
                     state->result.emplace(work(state->progress));
