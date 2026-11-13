@@ -1,6 +1,7 @@
 #pragma once
 
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -44,8 +45,17 @@ struct SpaceExperiment {
     SimulationConfig config;
 };
 
-// Reads, validates and loads an experiment and its scenario. Errors name the
-// offending file and value.
+// Empty when `path` is a regular file (links followed) or does not exist (the
+// loader then reports it), else "not a regular file". FIFOs, sockets,
+// devices and directories are refused before they are opened: opening a
+// FIFO without a writer blocks the reading thread, and a device may never
+// end. (A file swapped for one between this check and the open is not
+// caught.)
+[[nodiscard]] std::optional<std::string> special_file_problem(const std::filesystem::path& path);
+
+// Reads, validates and loads an experiment and its scenario, both refused
+// unless regular files (special_file_problem). Errors name the offending
+// file and value.
 [[nodiscard]] core::Result<SpaceExperiment, std::string>
 load_space_experiment(const std::filesystem::path& path);
 

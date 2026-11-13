@@ -417,6 +417,11 @@ void Simulation::apply(const SimCommand& command) {
         }
         s.publish_governor();
     } else if (const auto* load = std::get_if<LoadScenario>(&command)) {
+        if (auto problem = special_file_problem(load->path)) {
+            s.status.message =
+                "Cannot load scenario " + load->path.filename().string() + ": " + *problem;
+            return;
+        }
         auto loaded = scene::load_scene_file(load->path);
         if (!loaded) {
             s.status.message = "Cannot load scenario " + load->path.filename().string() + ": " +

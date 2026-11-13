@@ -158,9 +158,21 @@ bool is_file(const std::filesystem::path& path) {
 
 } // namespace
 
+std::optional<std::string> special_file_problem(const std::filesystem::path& path) {
+    std::error_code error;
+    const std::filesystem::file_status status = std::filesystem::status(path, error);
+    if (error || !std::filesystem::exists(status) || std::filesystem::is_regular_file(status)) {
+        return std::nullopt;
+    }
+    return std::string("not a regular file");
+}
+
 core::Result<SpaceExperiment, std::string>
 load_space_experiment(const std::filesystem::path& path) {
     const std::string file = path.string();
+    if (auto problem = special_file_problem(path)) {
+        return core::failure("experiment " + file + ": " + *problem);
+    }
     const auto text_read = scene::read_text_file(path);
     if (!text_read) {
         return core::failure("experiment " + file + ": " + scene::to_string(text_read.error()));
@@ -198,6 +210,10 @@ load_space_experiment(const std::filesystem::path& path) {
         scenario_path = path.parent_path() / scenario_path;
     }
     scenario_path = scenario_path.lexically_normal();
+    if (auto problem = special_file_problem(scenario_path)) {
+        return core::failure("scenario " + scenario_path.string() + " (from experiment " + file +
+                             "): " + *problem);
+    }
     auto loaded = scene::load_scene_file(scenario_path);
     if (!loaded) {
         return core::failure("scenario " + scenario_path.string() + " (from experiment " + file +

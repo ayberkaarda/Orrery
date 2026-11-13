@@ -1,17 +1,28 @@
 #include <catch2/catch_test_macros.hpp>
 
 #include <array>
+#include <chrono>
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
+#include <functional>
+#include <future>
 #include <new>
 #include <string>
+#include <thread>
 #include <variant>
 #include <vector>
+
+#if !defined(_WIN32)
+#include <fcntl.h>
+#include <sys/stat.h>
+#include <unistd.h>
+#endif
 
 #include "../core/allocation_failure_injection.h"
 #include "app_test_support.h"
 #include "orrery/core/state_hash.h"
+#include "orrery/sim/physics_thread.h"
 #include "orrery/sim/space_experiment.h"
 
 using namespace orrery;
@@ -269,6 +280,116 @@ void check_same(const Observed& a, const Observed& b) {
 }
 
 } // namespace
+
+namespace {
+
+// An experiment in `dir` whose scenario is `scenario` (relative to dir).
+std::filesystem::path experiment_using(const std::filesystem::path& dir, const char* name,
+                                       const char* scenario) {
+    const std::filesystem::path file = dir / name;
+    std::ofstream out(file, std::ios::binary);
+    out << R"({"version":1,"domain":"space","inputs":{"scenario":")" << scenario
+        << R"("},"conditions":{},"solver":{"name":"leapfrog_kdk","version":"1",)"
+        << R"("settings":{}},"result":{}})";
+    return file;
+}
+
+} // namespace
+
+TEST_CASE("Files that are not regular files are refused before they are opened",
+          "[app][sim][experiment][special]") {
+    const std::filesystem::path dir = scratch("special_files");
+    std::filesystem::create_directories(dir / "folder.json");
+    const std::filesystem::path experiment = experiment_using(dir, "uses_folder.json", "folder.json");
+
+    const auto loaded = load_space_experiment(experiment);
+    REQUIRE_FALSE(loaded.has_value());
+    CHECK(contains(loaded.error(), "folder.json"));
+    CHECK(contains(loaded.error(), "not a regular file"));
+    const auto direct = load_space_experiment(dir / "folder.json");
+    REQUIRE_FALSE(direct.has_value());
+    CHECK(contains(direct.error(), "not a regular file"));
+
+    const SpaceListing listing = list_space_experiments(dir);
+    CHECK(listing.entries.empty());
+    REQUIRE(listing.problems.size() == 1);
+    CHECK(contains(listing.problems.front(), "not a regular file"));
+
+    SimulationConfig config;
+    Simulation simulation = app_test::make_simulation("sun_earth.json", config);
+    const std::uint64_t generation = simulation.status().generation;
+    simulation.apply(LoadScenario{dir / "folder.json"});
+    CHECK(contains(simulation.status().message, "not a regular file"));
+    simulation.apply(LoadExperiment{experiment});
+    CHECK(contains(simulation.status().message, "not a regular file"));
+    CHECK(simulation.status().generation == generation);
+}
+
+#if !defined(_WIN32)
+namespace {
+
+// Runs `call` on a thread of its own. When it has not returned within 10 s
+// (blocked opening the FIFO for reading), writers are opened on the FIFO
+// until it returns, to release every blocked reader; false then.
+bool returns_in_time(const std::filesystem::path& fifo, const std::function<void()>& call) {
+    std::promise<void> done;
+    std::future<void> finished = done.get_future();
+    std::thread worker([&] {
+        call();
+        done.set_value();
+    });
+    const bool in_time = finished.wait_for(std::chrono::seconds(10)) == std::future_status::ready;
+    while (finished.wait_for(std::chrono::milliseconds(100)) != std::future_status::ready) {
+        const int writer = ::open(fifo.c_str(), O_WRONLY | O_NONBLOCK);
+        if (writer >= 0) {
+            (void)::close(writer);
+        }
+    }
+    worker.join();
+    return in_time;
+}
+
+} // namespace
+
+TEST_CASE("A FIFO named as a scenario neither blocks listing nor loading",
+          "[app][sim][experiment][special]") {
+    const std::filesystem::path dir = scratch("fifo");
+    const std::filesystem::path fifo = dir / "pipe.json";
+    REQUIRE(::mkfifo(fifo.c_str(), 0600) == 0);
+    const std::filesystem::path experiment = experiment_using(dir, "uses_pipe.json", "pipe.json");
+
+    std::string load_error;
+    CHECK(returns_in_time(fifo, [&] {
+        const auto loaded = load_space_experiment(experiment);
+        load_error = loaded.has_value() ? std::string("loaded") : loaded.error();
+    }));
+    CHECK(contains(load_error, "not a regular file"));
+
+    SpaceListing listing;
+    CHECK(returns_in_time(fifo, [&] { listing = list_space_experiments(dir); }));
+    CHECK(listing.entries.empty());
+    REQUIRE(listing.problems.size() == 1);
+    CHECK(contains(listing.problems.front(), "not a regular file"));
+
+    // On the physics thread: reported, and the thread still shuts down.
+    std::string message;
+    CHECK(returns_in_time(fifo, [&] {
+        sim::PhysicsThread physics(app_test::make_simulation("sun_earth.json", SimulationConfig{}));
+        physics.send(LoadExperiment{experiment});
+        physics.send(LoadScenario{fifo});
+        (void)app_test::wait_until(
+            [&] {
+                physics.wake();
+                if (physics.fetch()) {
+                    message = physics.latest().status.message;
+                }
+                return contains(message, "pipe.json") && contains(message, "Cannot load scenario");
+            },
+            std::chrono::seconds(8));
+    }));
+    CHECK(contains(message, "not a regular file"));
+}
+#endif
 
 TEST_CASE("A LoadExperiment that fails on an allocation changes nothing",
           "[app][sim][experiment][alloc]") {

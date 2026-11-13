@@ -154,6 +154,11 @@ A space experiment is an `orrery/scene` experiment record with domain
 `conditions.paused`, `solver.name` (the integrator) and `solver.settings`
 `dt_days`, `force`, `softening_au`, `max_steps_per_frame`. Unknown keys and
 out-of-range values are rejected with the file and key in the message.
+Experiment and scenario paths that exist but are not regular files (FIFOs,
+sockets, devices, directories) are refused as `not a regular file` before
+anything opens them, so a listing, an Open or a `LoadScenario` naming one
+neither blocks the UI nor the physics thread and its shutdown (tested with
+a FIFO without a writer on POSIX).
 
 Aero experiments (Phase 8b) use the same schema, version 1, with domain
 `aero`: a geometry reference, the free-stream conditions, the solver choice
