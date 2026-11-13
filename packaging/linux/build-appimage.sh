@@ -14,7 +14,19 @@
 # <output-dir>/tools), each pinned to a release and checked against its
 # SHA-256 before use. They run with APPIMAGE_EXTRACT_AND_RUN=1, so FUSE is not
 # needed (containers, CI runners).
+#
+# The output is reproducible: the same installed tree gives the same AppImage
+# byte for byte, whenever and by whoever it is built. SOURCE_DATE_EPOCH (from
+# the environment, else the commit time of the checkout this script belongs
+# to) dates every file of the AppDir and the SquashFS image; permissions are
+# normalised (0755 for directories and executables, 0644 otherwise); every
+# file is root-owned in the image; mksquashfs 4.6 (bundled with appimagetool)
+# writes directory entries sorted and the same image on any number of
+# threads. packaging/linux/check-appimage-reproducible.sh checks this.
 set -euo pipefail
+# Files the tools write (appimagetool rewrites the desktop entry) get the
+# same modes under any umask of the caller.
+umask 022
 
 LINUXDEPLOY_URL="https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage"
 LINUXDEPLOY_SHA256="c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d"
@@ -43,6 +55,18 @@ tools=${ORRERY_APPIMAGE_TOOLS:-$out_dir/tools}
 appdir=$out_dir/Orrery.AppDir
 appimage=$out_dir/orrery-$version-linux-x86_64.AppImage
 export APPIMAGE_EXTRACT_AND_RUN=1
+
+if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then
+    SOURCE_DATE_EPOCH=$(git -C "$(dirname "$(realpath "$0")")" log -1 --format=%ct 2> /dev/null || true)
+fi
+case "${SOURCE_DATE_EPOCH:-}" in
+    '' | *[!0-9]*)
+        echo "error: SOURCE_DATE_EPOCH is not set and the commit time is not available" \
+            "(not a git checkout?); set SOURCE_DATE_EPOCH to a Unix time" >&2
+        exit 2
+        ;;
+esac
+export SOURCE_DATE_EPOCH
 
 # fetch <file> <url> <sha256>: downloads into $tools unless a verified copy is there.
 fetch() {
@@ -92,7 +116,14 @@ if find "$appdir" -name '*.debug' -print -quit | grep -q .; then
     exit 1
 fi
 
+# Normalised metadata: permissions independent of the umask and the
+# installed modes, every timestamp at SOURCE_DATE_EPOCH (symbolic links
+# included), every file owned by root in the image.
+find "$appdir" ! -type l -exec chmod u+rwX,go=rX {} +
+find "$appdir" -exec touch -h -d "@$SOURCE_DATE_EPOCH" {} +
+
 ARCH=x86_64 VERSION=$version "$tools/appimagetool" --no-appstream \
+    --mksquashfs-opt -all-root \
     --runtime-file "$tools/runtime-x86_64" "$appdir" "$appimage"
 
 reported=$("$appimage" --version)

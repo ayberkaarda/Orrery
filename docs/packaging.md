@@ -138,6 +138,30 @@ script before use. The tools run with `APPIMAGE_EXTRACT_AND_RUN=1`, so FUSE
 is not needed to build the AppImage. To run an AppImage without FUSE, use
 `./orrery-<version>-linux-x86_64.AppImage --appimage-extract-and-run`.
 
+#### Reproducible AppImage
+
+The same installed tree gives the same AppImage, byte for byte, whenever
+and by whoever it is built:
+
+- `SOURCE_DATE_EPOCH` comes from the environment, else from the commit time
+  of the checkout (`git log -1 --format=%ct`); without either the script
+  stops. Every file of the AppDir is dated to it (symbolic links included),
+  and the SquashFS creation time follows it (mksquashfs reads the variable).
+- Permissions are normalised (`umask 022`, then `u+rwX,go=rX`: 0755 for
+  directories and executables, 0644 otherwise), so neither the installed
+  modes nor the caller's umask reach the image.
+- Every file is owned by root in the image (`-all-root`), and mksquashfs 4.6
+  (bundled with the pinned appimagetool) writes directory entries sorted by
+  name and the same image on any number of threads.
+
+`packaging/linux/check-appimage-reproducible.sh <install-dir> <version>
+<work-dir>` builds the AppImage twice from two copies of the installed tree,
+one with every file dated 2001 and one with fresh timestamps built under
+umask 077, and compares the SHA-256 of the results. It was run under WSL
+(Ubuntu) with a stand-in executable: identical checksums, where the script
+without these steps gave different ones. The release workflow does not run
+it (it builds once); the real application's AppImage was not built twice.
+
 Host requirements of the Linux packages: x86_64, glibc 2.35 or newer
 (Ubuntu 22.04 or later), an OpenGL 4.6 driver and an X11 session (Wayland
 through XWayland). The vcpkg libraries are linked statically.
