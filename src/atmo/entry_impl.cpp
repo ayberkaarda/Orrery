@@ -8,6 +8,7 @@
 #include "convert.h"
 #include "entry_internal.h"
 #include "orrery/core/ias15.h"
+#include "orrery/core/profile.h"
 #include "orrery/core/units.h"
 
 namespace orrery::atmo {
@@ -181,6 +182,7 @@ core::Result<EntryOutcome, AtmoError> EntryExperiment::Impl::advance(double dura
     requested_s = std::min(requested_s + duration_s, limit);
     for (std::size_t steps = 0;
          summary.outcome == EntryOutcome::running && time_s < limit && steps < max_steps; ++steps) {
+        ORRERY_ZONE("entry_step");
         const double remaining = limit - time_s;
         const double next = next_step();
         const bool last = remaining <= next;
