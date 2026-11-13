@@ -264,6 +264,7 @@ add_executable(orrery_test_sim
     app/test_simulation.cpp
     app/test_physics_thread.cpp
     app/test_space_experiment.cpp
+    app/test_warp_governor.cpp
     app/test_aero_workspace.cpp)
 # Phase 9b: the Entry workspace's graphics-free side (inputs, solver thread,
 # comparison and CSV).
@@ -281,6 +282,8 @@ add_executable(orrery_test_app
     app/test_app_bar.cpp
     app/test_frame_stats.cpp
     app/test_config.cpp
+    app/test_shortcuts.cpp
+    app/test_workspace_journeys.cpp
     app/test_aero_ui.cpp
     app/test_aero_viewport.cpp)
 target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
@@ -391,6 +394,17 @@ set(ORRERY_EXPECT_ABORT ${CMAKE_CURRENT_SOURCE_DIR}/app/expect_abort.cmake)
 add_test(NAME app.terminate_report
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe> -DARGS=exception
         "-DEXPECT_STDERR=orrery_app: fatal: unhandled exception: probe failure"
+        -P ${ORRERY_EXPECT_ABORT})
+# Phase 10: end to end with the crash log - the report reaches standard
+# error and exactly one timestamped entry with the version reaches the log,
+# whose directory is created.
+set(ORRERY_CRASH_DIR ${CMAKE_CURRENT_BINARY_DIR}/app_output/crash)
+add_test(NAME app.terminate_writes_crash_log
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe>
+        "-DARGS=exception;${ORRERY_CRASH_DIR}/main/nested/crash.log"
+        -DLOG=${ORRERY_CRASH_DIR}/main/nested/crash.log -DLOG_DIR=${ORRERY_CRASH_DIR}/main
+        "-DEXPECT_STDERR=orrery_app: fatal: unhandled exception: probe failure"
+        "-DEXPECT_LOG=^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]T[0-9:]+Z Orrery probe: unhandled exception: probe failure with a message"
         -P ${ORRERY_EXPECT_ABORT})
 add_test(NAME app.terminate_report_out_of_memory
     COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe> -DARGS=out_of_memory

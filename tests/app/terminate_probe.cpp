@@ -1,11 +1,14 @@
 // Runs orrery_app's terminate handler in a process of its own (it aborts):
-//   terminate_probe exception     an unhandled exception, memory available
-//   terminate_probe out_of_memory the same with every allocation failing
-//                                 from the moment std::terminate is called
-// tests/app/expect_abort.cmake checks the report and the abnormal exit.
+//   terminate_probe exception [log]     an unhandled exception, memory available
+//   terminate_probe out_of_memory [log] the same with every allocation failing
+//                                       from the moment std::terminate is called
+// With [log] the handler also appends the report to that crash log (its
+// directory is created). tests/app/expect_abort.cmake checks the report on
+// standard error, the crash log and the abnormal exit.
 #include <cstdlib>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <optional>
 #include <stdexcept>
 
@@ -33,11 +36,12 @@ void quiet_failures() {
 } // namespace
 
 int main(int argc, char** argv) {
-    if (argc != 2) {
+    if (argc != 2 && argc != 3) {
         return 2;
     }
     quiet_failures();
-    orrery::app::install_terminate_handler({}, "probe");
+    orrery::app::install_terminate_handler(
+        argc == 3 ? std::filesystem::path(argv[2]) : std::filesystem::path(), "probe");
     const bool exhausted = std::strcmp(argv[1], "out_of_memory") == 0;
     try {
         throw std::runtime_error("probe failure with a message longer than any small string");
