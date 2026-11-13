@@ -242,6 +242,9 @@ struct AeroWorkspace::Impl {
     sim::BackgroundTask<sim::PrepareResult> geometry_task;
     sim::BackgroundTask<sim::ImportResult> import_task;
     std::optional<sim::ImportedModel> pending_import;
+    // The URL model of an opened experiment that waits for the download
+    // prompt's answer.
+    std::optional<scene::GeometryRef> download_prompt;
     // Errors shown in the modal.
     std::optional<sim::GeometryError> modal;
 
@@ -286,6 +289,7 @@ struct AeroWorkspace::Impl {
     bool source_tab_pending = true;
     bool rebuild_queued = false;
     bool modal_requested = false;
+    bool download_prompt_requested = false;
     bool to_convergence = false;
     bool reframe_pending = true;
     bool spin = false;
@@ -335,17 +339,42 @@ struct AeroWorkspace::Impl {
         start_geometry_build();
     }
 
-    void start_geometry_build() {
+    // Builds the geometry of the current inputs; a URL model that would have
+    // to be downloaded waits for the user's permission first.
+    void start_geometry_build(bool download_allowed = false) {
         task_request = geometry_request;
         const scene::GeometryRef ref = experiment.geometry;
         const std::filesystem::path dir = base_dir;
+        if (!download_allowed && sim::needs_download(ref, dir)) {
+            download_prompt = ref;
+            download_prompt_requested = true;
+            drop_geometry();
+            return;
+        }
+        download_prompt.reset();
+        sim::ExperimentDownload download;
+        download.allowed = download_allowed;
+        download.fetch.cache_dir = options.model_cache_dir;
         geometry_task = sim::BackgroundTask<sim::PrepareResult>(
-            [ref, dir](sim::TaskProgress& progress) {
-                return sim::load_experiment_geometry(ref, dir, &progress);
+            [ref, dir, download](sim::TaskProgress& progress) {
+                return sim::load_experiment_geometry(ref, dir, &progress, download);
             },
             [](const std::string& message) -> sim::PrepareResult {
                 return core::failure(sim::GeometryError{"Geometry failed", message});
             });
+    }
+
+    void answer_download(bool download) {
+        if (!download_prompt) {
+            return;
+        }
+        const bool current = *download_prompt == experiment.geometry;
+        download_prompt.reset();
+        if (download && current && !geometry_task.started()) {
+            start_geometry_build(true);
+        } else if (!download) {
+            set_notice("Model not downloaded: the experiment has no geometry", true);
+        }
     }
 
     void cancel_work() {
@@ -754,6 +783,7 @@ struct AeroWorkspace::Impl {
     void draw_experiments_panel();
     void draw_view_panel();
     void draw_modal();
+    void draw_download_prompt();
 };
 
 // --- Geometry panel ------------------------------------------------------------------
@@ -1728,6 +1758,49 @@ void AeroWorkspace::Impl::draw_modal() {
     }
 }
 
+// --- Download prompt -----------------------------------------------------------------
+
+void AeroWorkspace::Impl::draw_download_prompt() {
+    const std::string id(kDownloadPrompt);
+    if (download_prompt_requested) {
+        ImGui::OpenPopup(id.c_str());
+        download_prompt_requested = false;
+    }
+    const ImGuiViewport* viewport = ImGui::GetMainViewport();
+    ImGui::SetNextWindowPos(viewport->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5F, 0.5F));
+    ImGui::SetNextWindowSizeConstraints(ImVec2(ImGui::GetFontSize() * 24.0F, 0.0F),
+                                        ImVec2(ImGui::GetFontSize() * 42.0F, FLT_MAX));
+    if (!ImGui::BeginPopupModal(id.c_str(), nullptr, ImGuiWindowFlags_AlwaysAutoResize)) {
+        return;
+    }
+    if (!download_prompt) {
+        ImGui::CloseCurrentPopup();
+        ImGui::EndPopup();
+        return;
+    }
+    const scene::GeometryRef& ref = *download_prompt;
+    w::wrapped("This experiment wants to download a model from " + sim::url_host(ref.url) + ".",
+               ImGui::GetStyleColorVec4(ImGuiCol_Text));
+    ImGui::Separator();
+    w::muted("URL");
+    w::wrapped(ref.url, ImGui::GetStyleColorVec4(ImGuiCol_Text));
+    w::muted("Recorded SHA-256");
+    w::wrapped(ref.sha256.empty() ? std::string("none recorded") : ref.sha256,
+               ImGui::GetStyleColorVec4(ImGuiCol_Text));
+    w::muted("The download is compared with this hash before the model is read.");
+    ImGui::Dummy(ImVec2(0.0F, 4.0F));
+    if (ImGui::Button("Download")) {
+        answer_download(true);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::SameLine();
+    if (ImGui::Button("Cancel") || ImGui::IsKeyPressed(ImGuiKey_Escape)) {
+        answer_download(false);
+        ImGui::CloseCurrentPopup();
+    }
+    ImGui::EndPopup();
+}
+
 // --- Public interface ----------------------------------------------------------------
 
 AeroWorkspace::AeroWorkspace(AeroWorkspaceOptions options)
@@ -1894,6 +1967,7 @@ render::UiRect AeroWorkspace::draw_panels() {
     s.draw_view_panel();
     s.draw_experiments_panel();
     s.draw_modal();
+    s.draw_download_prompt();
     return scene;
 }
 
@@ -1997,6 +2071,19 @@ std::optional<std::filesystem::path> AeroWorkspace::save() {
 
 void AeroWorkspace::set_view_problem(std::string problem) {
     impl_->view_problem = std::move(problem);
+}
+
+std::optional<AeroDownloadRequest> AeroWorkspace::pending_download() const {
+    const Impl& s = *impl_;
+    if (!s.download_prompt) {
+        return std::nullopt;
+    }
+    return AeroDownloadRequest{s.download_prompt->url, sim::url_host(s.download_prompt->url),
+                               s.download_prompt->sha256};
+}
+
+void AeroWorkspace::answer_download(bool download) {
+    impl_->answer_download(download);
 }
 
 void AeroWorkspace::cancel_work() {

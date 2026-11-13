@@ -18,7 +18,8 @@ namespace orrery::app {
 core::Result<AeroHeadlessFrame, HeadlessError>
 render_aero_headless(const scene::AeroExperiment& experiment, const std::filesystem::path& base_dir,
                      const AeroHeadlessRequest& request) {
-    auto prepared = sim::load_experiment_geometry(experiment.geometry, base_dir);
+    auto prepared =
+        sim::load_experiment_geometry(experiment.geometry, base_dir, nullptr, request.download);
     if (!prepared) {
         const sim::GeometryError& cause = prepared.error();
         return core::failure(

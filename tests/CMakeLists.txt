@@ -323,6 +323,10 @@ target_compile_definitions(orrery_test_app PRIVATE
 target_sources(orrery_test_app PRIVATE
     app/test_entry_golden.cpp
     app/test_entry_workspace.cpp)
+# Experiment model downloads in headless runs and the window's prompt,
+# against the loader's mock server (tests/geom/net).
+target_sources(orrery_test_app PRIVATE app/test_headless_download.cpp)
+target_link_libraries(orrery_test_app PRIVATE orrery_geom_net test_net_support)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_RENDER_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/golden")
 orrery_configure_target(orrery_test_app)

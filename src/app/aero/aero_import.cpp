@@ -1,5 +1,7 @@
 #include "orrery/sim/aero_import.h"
 
+#include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -65,7 +67,7 @@ std::string fetch_title(geom::net::FetchErrorKind kind) {
         case Kind::cancelled:
             return "Cancelled";
         case Kind::digest_mismatch:
-            return "The model changed at its source";
+            return std::string(kModelChangedTitle);
     }
     return "Download failed";
 }
@@ -89,6 +91,35 @@ ImportResult import_path(const std::filesystem::path& path, scene::GeometryRef r
     ref.up_axis = model.imported.up.axis;
     model.ref = std::move(ref);
     return model;
+}
+
+std::filesystem::path resolve_model_path(const scene::GeometryRef& ref,
+                                         const std::filesystem::path& base_dir) {
+    std::filesystem::path path(ref.path);
+    if (path.is_relative() && !base_dir.empty()) {
+        path = (base_dir / path).lexically_normal();
+    }
+    return path;
+}
+
+bool model_file_present(const scene::GeometryRef& ref, const std::filesystem::path& base_dir) {
+    std::error_code error;
+    return !ref.path.empty() &&
+           std::filesystem::is_regular_file(resolve_model_path(ref, base_dir), error);
+}
+
+// Why a URL model was not downloaded, with what the user needs to decide.
+GeometryError download_refusal(const scene::GeometryRef& ref) {
+    std::string detail = "the model of this experiment is not in the cache, and opening an "
+                         "experiment never downloads on its own. It would be downloaded from ";
+    detail += url_host(ref.url);
+    detail += " (";
+    detail += ref.url;
+    detail += ", recorded SHA-256 ";
+    detail += ref.sha256.empty() ? std::string_view("none") : std::string_view(ref.sha256);
+    detail += "). Confirm the download in the window, or pass --allow-download to a headless "
+              "run.";
+    return GeometryError{std::string(kDownloadNotAllowedTitle), std::move(detail)};
 }
 
 } // namespace
@@ -123,6 +154,7 @@ ImportResult fetch_model_url(std::string_view url, const UrlImportOptions& optio
     geom::net::FetchOptions fetch;
     fetch.cache_dir = options.cache_dir;
     fetch.license_note = options.license_note;
+    fetch.expected_sha256 = options.expected_sha256;
     fetch.ca_bundle_override = options.ca_bundle_override;
     if (progress != nullptr) {
         // A stop request (Cancel, closing the window) ends even a stalled
@@ -153,23 +185,45 @@ ImportResult fetch_model_url(std::string_view url, const UrlImportOptions& optio
     return imported;
 }
 
+bool needs_download(const scene::GeometryRef& ref, const std::filesystem::path& base_dir) {
+    return ref.source == scene::GeometrySource::url && !model_file_present(ref, base_dir);
+}
+
+std::string url_host(std::string_view url) {
+    const std::size_t scheme = url.find("://");
+    if (scheme == std::string_view::npos) {
+        return {};
+    }
+    std::string_view authority = url.substr(scheme + 3);
+    authority = authority.substr(0, authority.find_first_of("/?#"));
+    if (const std::size_t at = authority.rfind('@'); at != std::string_view::npos) {
+        authority = authority.substr(at + 1);
+    }
+    if (!authority.starts_with("[")) {
+        authority = authority.substr(0, authority.find(':'));
+    }
+    return std::string(authority);
+}
+
 PrepareResult load_experiment_geometry(const scene::GeometryRef& ref,
                                        const std::filesystem::path& base_dir,
-                                       TaskProgress* progress) {
+                                       TaskProgress* progress, const ExperimentDownload& download) {
     if (ref.source == scene::GeometrySource::primitive) {
         report(progress, "building");
         return build_primitive(ref);
     }
-    std::filesystem::path path(ref.path);
-    if (path.is_relative() && !base_dir.empty()) {
-        path = (base_dir / path).lexically_normal();
-    }
-    std::error_code error;
-    const bool present = !ref.path.empty() && std::filesystem::is_regular_file(path, error);
+    const std::filesystem::path path = resolve_model_path(ref, base_dir);
+    const bool present = model_file_present(ref, base_dir);
     ImportResult imported = [&]() -> ImportResult {
         if (ref.source == scene::GeometrySource::url && !present) {
-            UrlImportOptions options;
+            if (!download.allowed) {
+                return core::failure(download_refusal(ref));
+            }
+            // The loader compares the recorded digest before anything reads
+            // the bytes, so a changed model never reaches the importer.
+            UrlImportOptions options = download.fetch;
             options.license_note = ref.license_note;
+            options.expected_sha256 = ref.sha256;
             return fetch_model_url(ref.url, options, progress);
         }
         scene::GeometryRef file_ref = ref;
@@ -179,13 +233,6 @@ PrepareResult load_experiment_geometry(const scene::GeometryRef& ref,
     if (!imported) {
         const GeometryError& cause = imported.error();
         return core::failure(GeometryError{cause.title, cause.detail});
-    }
-    if (ref.source == scene::GeometrySource::url && !ref.sha256.empty() &&
-        !imported.value().ref.sha256.empty() && imported.value().ref.sha256 != ref.sha256) {
-        return core::failure(GeometryError{"The model changed at its source",
-                                           "the download from " + ref.url + " has SHA-256 " +
-                                               imported.value().ref.sha256 +
-                                               ", the experiment recorded " + ref.sha256});
     }
     if (cancelled(progress)) {
         return core::failure(cancelled_error());

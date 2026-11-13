@@ -34,6 +34,7 @@ inline constexpr std::string_view kResultsWindow = "Aero Results";
 inline constexpr std::string_view kExperimentsWindow = "Experiments";
 inline constexpr std::string_view kViewWindow = "View";
 inline constexpr std::string_view kErrorModal = "Problem";
+inline constexpr std::string_view kDownloadPrompt = "Download model?";
 
 struct AeroWorkspaceOptions {
     // Saved experiments are listed from and written to this directory.
@@ -56,6 +57,14 @@ struct AeroViewState {
     aero::FlowConditions conditions;
     AeroLayers layers;
     bool running = false; // particles advance only while the solver runs
+};
+
+// A model download an opened experiment asks for (its cached file is
+// gone), waiting for the user's answer in the download prompt.
+struct AeroDownloadRequest {
+    std::string url;
+    std::string host;
+    std::string sha256; // as recorded; empty when the experiment has none
 };
 
 // The coefficients the Results panel shows.
@@ -116,6 +125,14 @@ public:
     // What the scene could not show (AeroViewport::problem()); the View panel
     // shows it until it is cleared with an empty string.
     void set_view_problem(std::string problem);
+    // The download the prompt asks about, if any. Opening an experiment
+    // never downloads on its own (docs/url-import-security.md,
+    // "Experiments"): nothing is fetched before the prompt is answered.
+    [[nodiscard]] std::optional<AeroDownloadRequest> pending_download() const;
+    // The prompt's answer, as its buttons give it: true (Download) fetches the
+    // model, checked against the recorded SHA-256 before it is read; false
+    // (Cancel) leaves the experiment without geometry.
+    void answer_download(bool download);
     // Stops the running download, import or geometry build (the Cancel
     // button): a download ends within about a second.
     void cancel_work();
