@@ -109,6 +109,7 @@ target_sources(orrery_test_render PRIVATE
     render/aero/test_aero_field.cpp
     render/aero/test_marching_cubes.cpp
     render/aero/test_streamlines.cpp
+    render/aero/test_aero_view.cpp
     render/aero/test_turntable.cpp)
 
 # Shader embedding of overlong lines: fixture shaders are generated at build
