@@ -140,6 +140,31 @@ TEST_CASE("US76 below sea level and invalid altitudes", "[atmo][us76]") {
     CHECK_FALSE(nan.inside);
 }
 
+TEST_CASE("US76 sampling rejects non-finite altitudes on both APIs", "[atmo][us76]") {
+    // A NaN geometric altitude once reached the M/M0 table as floor(NaN) cast
+    // to an index (undefined; caught by float-cast-overflow and ASan builds).
+    const UsStandardAtmosphere1976 us76;
+    const double inf = std::numeric_limits<double>::infinity();
+    for (const double h : {std::nan(""), inf, -inf}) {
+        INFO("geopotential " << h);
+        const AtmosphereSample s = us76.sample_geopotential(Length(h));
+        CHECK(std::isnan(s.density.value()));
+        CHECK(std::isnan(s.temperature_k));
+        CHECK_FALSE(s.inside);
+    }
+    CHECK(std::isnan(us76.sample(Length(std::nan(""))).temperature_k));
+    const AtmosphereSample above = us76.sample(Length(inf));
+    CHECK_FALSE(above.inside);
+    CHECK(above.density.value() == 0.0);
+    CHECK(us76.sample(Length(-inf)).density == us76.sample(Length(-5000.0)).density);
+    // Finite altitudes in the 80 to 86 km band still use the M/M0 table.
+    const AtmosphereSample band =
+        us76.sample_geopotential(UsStandardAtmosphere1976::geopotential_altitude(Length(83000.0)));
+    CHECK(band.temperature_k <
+          us76.molecular_scale_temperature(
+              UsStandardAtmosphere1976::geopotential_altitude(Length(83000.0))));
+}
+
 TEST_CASE("Mars model follows the NASA Glenn fit near the surface", "[atmo][mars]") {
     const MarsAtmosphere mars;
     const AtmosphereSample surface = mars.sample(Length(0.0));

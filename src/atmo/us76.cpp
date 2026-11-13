@@ -66,8 +66,10 @@ constexpr std::array<UpperNode, 20> kUpperNodes{{
     {800000.0, 999.99, 1.7036e-8, 1.136e-14}, {1000000.0, 1000.0, 7.5138e-9, 3.561e-15},
 }};
 
+// Callers pass a finite altitude; a NaN still returns 1 rather than reach
+// the table index below.
 double molecular_weight_ratio(double geometric_m) noexcept {
-    if (geometric_m <= kRatioStartM) {
+    if (!(geometric_m > kRatioStartM)) {
         return 1.0;
     }
     const double position = (geometric_m - kRatioStartM) / kRatioStepM;
@@ -158,6 +160,9 @@ double UsStandardAtmosphere1976::molecular_scale_temperature(
 AtmosphereSample
 UsStandardAtmosphere1976::sample_geopotential(core::si::Length geopotential) const noexcept {
     const double h = geopotential.value();
+    if (!std::isfinite(h)) {
+        return detail::nan_sample();
+    }
     return from_layers(*this, h, geometric_altitude(geopotential).value());
 }
 

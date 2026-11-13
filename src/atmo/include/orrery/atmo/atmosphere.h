@@ -122,7 +122,8 @@ public:
     [[nodiscard]] GasProperties gas() const noexcept override;
 
     // Sample at a geopotential altitude in the layered region (H up to
-    // 84.852 km), as tabulated by the standard.
+    // 84.852 km), as tabulated by the standard. A non-finite altitude gives
+    // a NaN sample (inside = false).
     [[nodiscard]] AtmosphereSample
     sample_geopotential(core::si::Length geopotential) const noexcept;
     // Molecular-scale temperature TM, K, at a geopotential altitude.
