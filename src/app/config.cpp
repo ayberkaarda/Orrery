@@ -12,6 +12,15 @@
 #include <utility>
 #include <vector>
 
+// Floating-point values through std::to_chars and std::from_chars (a stack
+// buffer), as toml++ already does with MSVC. Its fallback for GCC and Clang
+// formats through a std::ostringstream of its own, which keeps the digits it
+// has when an allocation fails (0.6 saved as 0.5999999999999), so a saved
+// configuration could silently change. Both standard libraries the project
+// builds with (MSVC STL, libstdc++ 11 or later) implement them.
+#if !defined(TOML_FLOAT_CHARCONV)
+#define TOML_FLOAT_CHARCONV 1
+#endif
 #include <toml++/toml.hpp>
 
 #include "orrery/scene/scenario.h"
