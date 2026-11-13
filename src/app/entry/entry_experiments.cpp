@@ -87,14 +87,24 @@ scene::EntryExperiment entry_record(const EntrySetup& s, const EntryTrace* resul
     return r;
 }
 
-StoredEntry entry_from_record(const scene::EntryExperiment& r) {
+core::Result<StoredEntry, std::string> entry_from_record(const scene::EntryExperiment& r) {
+    const scene::EntryEnvironment& env = r.environment;
+    if (env.planet != "earth" && env.planet != "mars") {
+        return core::failure("inputs.planet: unknown planet '" + env.planet + "'");
+    }
     StoredEntry stored;
     EntrySetup& s = stored.setup;
     s.name = r.name;
-    s.planet = r.environment.planet == "mars" ? EntryPlanet::mars : EntryPlanet::earth;
-    s.atmosphere = r.environment.atmosphere == scene::EntryAtmosphereModel::exponential
+    s.planet = env.planet == "mars" ? EntryPlanet::mars : EntryPlanet::earth;
+    s.atmosphere = env.atmosphere == scene::EntryAtmosphereModel::exponential
                        ? EntryAtmosphere::exponential
                        : EntryAtmosphere::standard;
+    if (atmosphere_model(s) != env.atmosphere) {
+        return core::failure(
+            "inputs.atmosphere: the Entry workspace flies " + env.planet +
+            " in its own atmosphere (" + std::string(scene::to_string(atmosphere_model(s))) +
+            ") or an exponential one, not '" + std::string(scene::to_string(env.atmosphere)) + "'");
+    }
     s.exponential_density_kg_m3 = r.environment.surface_density_kg_m3;
     s.exponential_scale_height_m = r.environment.scale_height_m;
     s.exponential_temperature_k = r.environment.temperature_k;
@@ -146,7 +156,11 @@ core::Result<StoredEntry, std::string> entry_from_experiment(const scene::Experi
     if (!typed) {
         return core::failure(std::string(typed.error()));
     }
-    return entry_from_record(typed.value());
+    auto stored = entry_from_record(typed.value());
+    if (!stored) {
+        return core::failure(std::string(stored.error()));
+    }
+    return std::move(stored).value();
 }
 
 core::Result<StoredEntry, std::string>

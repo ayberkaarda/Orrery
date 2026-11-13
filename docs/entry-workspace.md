@@ -140,8 +140,11 @@ A run's record is the `entry` domain of the experiment schema, typed by
 The workspace maps its setup to it (`sim::entry_record`): the periapsis form
 is stored resolved as the flight-path angle the run used (and the periapsis
 is derived again on load), a sampled Cd table is marked by the vehicle name
-`probe (Cd from the aero solver)`. Save writes the inputs and, when the
-shown run used exactly these inputs and has ended, its full result record
+`probe (Cd from the aero solver)`. A record that pairs a planet with the
+other planet's standard atmosphere (`earth` with `mars`, `mars` with `us76`;
+valid in the schema) is refused on load with an `inputs.atmosphere` error
+instead of being rerun in a different atmosphere. Save writes the inputs
+and, when the shown run used exactly these inputs and has ended, its full result record
 (series and summary); the file is written to a temporary name and renamed.
 The saved list reads every entry file of the experiments folder (other
 domains skipped, unreadable entry files listed as problems); Load stops the

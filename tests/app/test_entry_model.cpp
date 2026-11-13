@@ -381,6 +381,44 @@ TEST_CASE("Entry records round-trip through the experiment JSON", "[app][entry]"
     CHECK_FALSE(sim::entry_from_experiment(broken).has_value());
 }
 
+TEST_CASE("Every planet and atmosphere record runs with the atmosphere it names", "[app][entry]") {
+    using Model = scene::EntryAtmosphereModel;
+    for (const std::string planet : {"earth", "mars"}) {
+        for (const Model model : {Model::us76, Model::mars, Model::exponential}) {
+            scene::EntryExperiment record;
+            record.environment.planet = planet;
+            record.environment.atmosphere = model;
+            INFO(planet << " with " << scene::to_string(model));
+            auto direct = scene::to_entry_config(record); // the schema accepts every pair
+            REQUIRE(direct.has_value());
+            auto stored = sim::entry_from_experiment(scene::to_experiment(record));
+            const bool own_model =
+                model == Model::exponential || (model == Model::mars) == (planet == "mars");
+            if (!own_model) {
+                // The workspace flies each planet in its own standard atmosphere
+                // (or an exponential one): another planet's is refused with the
+                // key named, never silently replaced.
+                REQUIRE_FALSE(stored.has_value());
+                CHECK(stored.error().find("inputs.atmosphere") != std::string::npos);
+                continue;
+            }
+            REQUIRE(stored.has_value());
+            CHECK(sim::entry_record(stored.value().setup, nullptr).environment ==
+                  record.environment);
+            auto app = sim::entry_config(stored.value().setup);
+            REQUIRE(app.has_value());
+            const atmo::Planet& a = app.value().planet;
+            const atmo::Planet& d = direct.value().planet;
+            CHECK(a.name == d.name);
+            CHECK(a.atmosphere->name() == d.atmosphere->name());
+            for (const double h : {0.0, 30'000.0, 80'000.0}) {
+                CHECK(a.atmosphere->sample(core::si::Length(h)).density ==
+                      d.atmosphere->sample(core::si::Length(h)).density);
+            }
+        }
+    }
+}
+
 TEST_CASE("Entry planet constants are the physics library's presets", "[app][entry]") {
     for (const sim::EntryPlanet planet : {sim::EntryPlanet::earth, sim::EntryPlanet::mars}) {
         const atmo::Planet preset =

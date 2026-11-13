@@ -30,8 +30,13 @@ struct StoredEntry {
 // angle the run used), and a sampled Cd table is marked in the vehicle name.
 [[nodiscard]] scene::EntryExperiment entry_record(const EntrySetup& setup,
                                                   const EntryTrace* result);
-// A setup and its run back from a typed record.
-[[nodiscard]] StoredEntry entry_from_record(const scene::EntryExperiment& record);
+// A setup and its run back from a typed record. The workspace flies each
+// planet in its own atmosphere (us76 on Earth, mars on Mars) or an
+// exponential one; a record that pairs a planet with the other planet's
+// model (valid in the schema) is refused with an error naming
+// inputs.atmosphere rather than rerun with a different atmosphere.
+[[nodiscard]] core::Result<StoredEntry, std::string>
+entry_from_record(const scene::EntryExperiment& record);
 
 // The generic record (domain "entry") and back; the message names the
 // offending key.
