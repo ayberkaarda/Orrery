@@ -106,6 +106,32 @@ TEST_CASE("Diverging map: perceptually even steps", "[render][aero][colormap]") 
     CHECK(*largest / *smallest < 1.05);
 }
 
+TEST_CASE("Dark diverging map: lightness falls towards the centre on both arms",
+          "[render][aero][colormap]") {
+    std::vector<double> lightness;
+    for (std::size_t i = 0; i < kSamples; ++i) {
+        const double t = static_cast<double>(i) / static_cast<double>(kSamples - 1);
+        lightness.push_back(cie_lightness(colormap_linear(Colormap::diverging_dark, t)));
+    }
+    const std::size_t centre = kSamples / 2;
+    for (std::size_t i = 1; i <= centre; ++i) {
+        CHECK(lightness[i] < lightness[i - 1]);
+    }
+    for (std::size_t i = centre + 1; i < kSamples; ++i) {
+        CHECK(lightness[i] > lightness[i - 1]);
+    }
+    for (std::size_t i = 0; i < centre; ++i) {
+        CHECK(lightness[i] == Catch::Approx(lightness[kSamples - 1 - i]).margin(0.5));
+    }
+    CHECK(lightness[centre] < 16.0);
+    CHECK(lightness.front() == Catch::Approx(lightness.back()).margin(1.0e-6));
+    const glm::dvec3 lo = oklab_from_linear_srgb(colormap_linear(Colormap::diverging_dark, 0.0));
+    const glm::dvec3 hi = oklab_from_linear_srgb(colormap_linear(Colormap::diverging_dark, 1.0));
+    CHECK(lo.z < 0.0);
+    CHECK(hi.z > 0.0);
+    CHECK(std::hypot(lo.y, lo.z) == Catch::Approx(std::hypot(hi.y, hi.z)).margin(1.0e-3));
+}
+
 TEST_CASE("Sequential map: monotone lightness and even steps", "[render][aero][colormap]") {
     double previous = -1.0;
     std::vector<double> steps;
@@ -133,15 +159,17 @@ TEST_CASE("The maps stay distinguishable for protanopes and deuteranopes",
         INFO((protan ? "protanopia" : "deuteranopia"));
         // The two arms of the diverging map at the same distance from the
         // centre must not collapse onto one colour.
-        for (const double d : {0.15, 0.3, 0.5, 0.75, 1.0}) {
-            const glm::dvec3 neg =
-                glm::clamp(simulate(colormap_linear(Colormap::diverging, 0.5 - 0.5 * d), protan),
-                           glm::dvec3(0.0), glm::dvec3(1.0));
-            const glm::dvec3 pos =
-                glm::clamp(simulate(colormap_linear(Colormap::diverging, 0.5 + 0.5 * d), protan),
-                           glm::dvec3(0.0), glm::dvec3(1.0));
-            INFO("distance from the centre " << d);
-            CHECK(oklab_distance(neg, pos) > 0.12 * d);
+        for (const Colormap map : {Colormap::diverging, Colormap::diverging_dark}) {
+            for (const double d : {0.15, 0.3, 0.5, 0.75, 1.0}) {
+                const glm::dvec3 neg =
+                    glm::clamp(simulate(colormap_linear(map, 0.5 - 0.5 * d), protan),
+                               glm::dvec3(0.0), glm::dvec3(1.0));
+                const glm::dvec3 pos =
+                    glm::clamp(simulate(colormap_linear(map, 0.5 + 0.5 * d), protan),
+                               glm::dvec3(0.0), glm::dvec3(1.0));
+                INFO("map " << static_cast<int>(map) << " distance from the centre " << d);
+                CHECK(oklab_distance(neg, pos) > 0.12 * d);
+            }
         }
         // The sequential map keeps its lightness ordering.
         double previous = -1.0;
@@ -174,7 +202,8 @@ TEST_CASE("Colour map tables and parameter clamping", "[render][aero][colormap]"
 
 TEST_CASE("Display pre-compensation inverts the ACES display transform",
           "[render][aero][colormap]") {
-    for (const Colormap map : {Colormap::diverging, Colormap::sequential}) {
+    for (const Colormap map :
+         {Colormap::diverging, Colormap::diverging_dark, Colormap::sequential}) {
         for (std::size_t i = 0; i <= 64; ++i) {
             const glm::dvec3 display = colormap_linear(map, i / 64.0);
             for (const double exposure : {1.0, 0.5}) {
@@ -193,18 +222,18 @@ TEST_CASE("Display pre-compensation inverts the ACES display transform",
 TEST_CASE("Colour scale ranges", "[render][aero][colormap]") {
     const std::vector<double> cp{-1.38, -0.4, 0.2, 1.0, std::numeric_limits<double>::infinity()};
     const ScalarRange symmetric = resolve_range({ScaleMode::symmetric}, cp);
-    CHECK(symmetric.min == Catch::Approx(-1.5));
-    CHECK(symmetric.max == Catch::Approx(1.5));
+    CHECK(symmetric.min == Catch::Approx(-1.4));
+    CHECK(symmetric.max == Catch::Approx(1.4));
     ColorScale exact{ScaleMode::symmetric};
     exact.round_to_ticks = false;
     CHECK(resolve_range(exact, cp).max == Catch::Approx(1.38));
     const ScalarRange automatic = resolve_range({ScaleMode::automatic}, cp);
-    CHECK(automatic.min == Catch::Approx(-1.5));
+    CHECK(automatic.min == Catch::Approx(-1.4));
     CHECK(automatic.max == Catch::Approx(1.0));
     const std::vector<double> speed{0.0, 0.0831};
     const ScalarRange s = resolve_range({ScaleMode::automatic}, speed);
     CHECK(s.min == 0.0);
-    CHECK(s.max == Catch::Approx(0.1));
+    CHECK(s.max == Catch::Approx(0.084));
     ColorScale fixed{ScaleMode::fixed, -2.0, 3.0};
     CHECK(resolve_range(fixed, cp) == ScalarRange{-2.0, 3.0});
     fixed.min = 4.0; // invalid: falls back to automatic

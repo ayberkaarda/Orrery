@@ -12,21 +12,28 @@
 // (docs/aero-visualisation.md, "Colour maps"). Plain double-precision math,
 // no OpenGL; the GPU uses tables made by colormap_table().
 //
-// Both maps are defined in Oklab (Ottosson 2020), whose lightness is close to
-// perceptually uniform, with lightness linear in the map parameter:
+// The maps are defined with CIE L* lightness and Oklab (Ottosson 2020) hue
+// and chroma:
 //   diverging   blue (hue 255 deg) -> neutral light grey -> red-orange
-//               (hue 40 deg); lightness 0.48 at both ends, 0.94 at the centre,
-//               chroma 0 at the centre growing to 0.13 at the ends. The two
+//               (hue 38 deg); CIE L* 45 at both ends, 95 at the centre,
+//               chroma 0 at the centre growing to 0.15 at the ends. The two
 //               arms differ along the blue-yellow axis, which deuteranopes and
 //               protanopes keep, and have equal lightness at equal distance
 //               from the centre, so neither sign looks stronger.
-//   sequential  dark blue-violet -> teal -> pale yellow, lightness 0.30 to
-//               0.94 (for magnitudes: speed, |omega|, Q).
-// The signed quantities (Cp, vorticity, pressure) use the diverging map with
-// zero at its centre; negative values (suction) are blue.
+//   diverging_dark
+//               the same idea around a dark centre: blue (hue 250 deg) ->
+//               near black -> orange (hue 55 deg), CIE L* 14 at the centre
+//               and 76 at both ends (chroma 0.088); for signed fields on section planes in
+//               the dark workspace, where zero should recede.
+//   sequential  dark blue-violet -> teal -> pale yellow, CIE L* 22 to 94
+//               (for magnitudes: speed, |omega|, Q).
+// Lightness is linear in CIE L* along each map (each arm of a diverging
+// map); chroma and hue are set in Oklab. The signed quantities (Cp,
+// vorticity, pressure) use a diverging map with zero at its centre;
+// negative values (suction) are blue.
 namespace orrery::render {
 
-enum class Colormap : std::uint8_t { diverging, sequential };
+enum class Colormap : std::uint8_t { diverging, diverging_dark, sequential };
 
 // Linear-light sRGB of the map at t in [0, 1] (clamped; NaN gives the centre
 // of the diverging map and the start of the sequential one). Colours that
@@ -63,8 +70,9 @@ struct ColorScale {
     ScaleMode mode = ScaleMode::automatic;
     double min = 0.0; // fixed mode only
     double max = 1.0;
-    // Widen an automatic or symmetric range to the next tick of a 1-2-2.5-5
-    // sequence, so that the legend ends on round numbers.
+    // Widen an automatic or symmetric range to the next multiple of a fifth
+    // of its legend tick step (legend_ticks), so that the ends are round
+    // numbers without leaving much of the map unused.
     bool round_to_ticks = true;
 };
 

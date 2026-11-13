@@ -24,6 +24,12 @@ constexpr double kDivergingEndChroma = 0.15;
 constexpr double kDivergingNegativeHue = 255.0 * kDegree; // blue
 constexpr double kDivergingPositiveHue = 38.0 * kDegree;  // red-orange
 
+constexpr double kDarkCentreL = 14.0;
+constexpr double kDarkEndL = 76.0;
+constexpr double kDarkEndChroma = 0.088;
+constexpr double kDarkNegativeHue = 250.0 * kDegree; // blue
+constexpr double kDarkPositiveHue = 55.0 * kDegree;  // orange
+
 constexpr double kSequentialStartL = 22.0;
 constexpr double kSequentialEndL = 94.0;
 constexpr double kSequentialStartChroma = 0.10;
@@ -278,6 +284,13 @@ glm::dvec3 colormap_linear(Colormap map, double t) noexcept {
         const double hue = d < 0.0 ? kDivergingNegativeHue : kDivergingPositiveHue;
         return from_lstar(lightness, kDivergingEndChroma * a, hue);
     }
+    if (map == Colormap::diverging_dark) {
+        const double d = std::isnan(u) ? 0.0 : 2.0 * u - 1.0;
+        const double a = std::abs(d);
+        const double lightness = kDarkCentreL + (kDarkEndL - kDarkCentreL) * a;
+        const double hue = d < 0.0 ? kDarkNegativeHue : kDarkPositiveHue;
+        return from_lstar(lightness, kDarkEndChroma * a, hue);
+    }
     const double s = std::isnan(u) ? 0.0 : u;
     return from_lstar(kSequentialStartL + (kSequentialEndL - kSequentialStartL) * s,
                       kSequentialStartChroma + (kSequentialEndChroma - kSequentialStartChroma) * s,
@@ -343,7 +356,7 @@ ScalarRange resolve_range(const ColorScale& scale, std::span<const double> value
             m = 1.0;
         }
         if (scale.round_to_ticks) {
-            m = plan_ticks(-m, m, 5, true).high;
+            m = snap_up(m, 0.2 * plan_ticks(-m, m, 5, false).step);
         }
         return {-m, m};
     }
@@ -353,8 +366,8 @@ ScalarRange resolve_range(const ColorScale& scale, std::span<const double> value
         high += pad;
     }
     if (scale.round_to_ticks) {
-        const TickPlan plan = plan_ticks(low, high, 5, true);
-        return {plan.low, plan.high};
+        const double minor = 0.2 * plan_ticks(low, high, 5, false).step;
+        return {snap_down(low, minor), snap_up(high, minor)};
     }
     return {low, high};
 }
