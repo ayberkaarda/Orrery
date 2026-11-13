@@ -1,9 +1,9 @@
 # Orrery Performance
 
-The numeric acceptance criteria of spec section 8 ("SAYISAL KABUL
-KRITERLERI"), measured; the benchmark suite that measures them; and the
-release profile with link-time optimisation (spec phase 11: "bench targets,
-nightly large LBM test, release profile (LTO)"). Deviations are reported with
+The numeric acceptance targets of V1 (the table of section 3), measured;
+the benchmark suite that measures them; and the release profile with
+link-time optimisation, which Phase 11 added together with the benchmark
+targets and the nightly large lattice Boltzmann test. Deviations are reported with
 the measurement, the reason and a recommendation, never hidden. The CI time
 row is in [ci.md](ci.md).
 
@@ -105,7 +105,7 @@ Link-time optimisation buys nothing measurable here: the hot loops already
 sit in single translation units. The panel method (dense Eigen LU, inlined
 into `orrery_aero`) is about 25 percent slower with MSVC's whole-program
 optimisation, still 4.5 times under its target; the Newtonian difference is
-0.2 ms. Recommendation: keep the release profile as the spec asks (it is
+0.2 ms. Recommendation: keep the release profile with LTO as planned (it is
 also what the installer builds), and if the panel slowdown matters, exclude
 `orrery_aero`'s `panel3d.cpp` from `/GL` or try profile-guided optimisation;
 GCC's LTO speed has not been measured.
@@ -126,11 +126,11 @@ CPUs (single-thread times are listed as context).
 | Memory | 32 GB |
 | GPU | AMD Radeon RX 9060 XT class (RDNA 4 mid-range desktop) |
 
-All rows of the section 8 table. Performance rows come from the benchmark
+Every numeric acceptance target of V1. Performance rows come from the benchmark
 suite; accuracy rows from the tests that check them, re-run in the release
 build to print their values (`ctest` hides the output of passing tests).
 
-| Section 8 metric | Target | Measured | Result | Source |
+| V1 metric | Target | Measured | Result | Source |
 |---|---|---|---|---|
 | Energy drift, solar system 1000 years, Yoshida4 | abs(dE/E0) < 1e-9 | max 1.41e-10 (final 2.6e-14) | pass | `Sun and eight planets, 1000 years with Yoshida4` (orrery_test_core) |
 | Two-body circular, 100 orbits, Leapfrog | < 1e-6 AU | 3.77e-7 AU | pass | `circular two-body orbit, 100 orbits with Leapfrog` |

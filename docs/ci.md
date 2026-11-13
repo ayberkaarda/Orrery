@@ -1,8 +1,8 @@
 # Orrery Continuous Integration
 
 The pull-request workflow (`.github/workflows/ci.yml`), the nightly workflow
-(`.github/workflows/nightly.yml`) and the time budget of spec section 8: the
-full CI, nightly excluded, should finish in under 20 minutes.
+(`.github/workflows/nightly.yml`) and the V1 time budget: the full CI,
+nightly excluded, should finish in under 20 minutes.
 
 ## 1. Pull-request workflow
 
@@ -136,7 +136,7 @@ check. Both jobs restore the vcpkg binary cache of the pull-request workflow
 | Job | Content | Artifact |
 |---|---|---|
 | `release LTO (ubuntu-24.04-gcc-13), full tests and benchmarks` | Configures the `linux-release` preset (Release with LTO, `ORRERY_LTO`, [performance.md](performance.md)), runs `check_deps.py`, builds, runs the whole ctest suite in parallel - which includes the golden 10k-step determinism hashes, so a change of the hashes under link-time optimisation fails the night - then `tests/bench/run_benchmarks.py` and `make_report.py` (report also in the job summary) | `bench-results` (JSON, Markdown report, run log), 30 days |
-| `large LBM validation (CPU, ubuntu-24.04-gcc-13)` | Builds `orrery_nightly_lbm_validation` (`tests/bench/nightly`) in the release preset and runs it: cylinder at Re 150 (Strouhal 0.16 to 0.20, spec section 8) and at Re 100 with D = 40 (twice the pull-request resolution), sphere at Re 100 with 16 cells per diameter (Cd 1.0 to 1.2, section 8), at Re 10 and Re 300 (within 15 percent of Schiller-Naumann) | `lbm-validation` (console log with every measured value, JUnit XML) |
+| `large LBM validation (CPU, ubuntu-24.04-gcc-13)` | Builds `orrery_nightly_lbm_validation` (`tests/bench/nightly`) in the release preset and runs it: cylinder at Re 150 (Strouhal 0.16 to 0.20, a V1 target) and at Re 100 with D = 40 (twice the pull-request resolution), sphere at Re 100 with 16 cells per diameter (Cd 1.0 to 1.2, a V1 target), at Re 10 and Re 300 (within 15 percent of Schiller-Naumann) | `lbm-validation` (console log with every measured value, JUnit XML) |
 
 Why these run nightly and not per pull request:
 

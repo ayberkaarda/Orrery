@@ -12,7 +12,7 @@ The D3Q19 lattice is also the first one large enough to exhaust a device:
 256^3 nodes need about 2.9 GB of device memory, and one population buffer
 (19 binary32 values per node, 1.3 GB at 256^3) can exceed the largest buffer a
 shader storage binding may address (`GL_MAX_SHADER_STORAGE_BLOCK_SIZE`, as
-low as 2^27 bytes by the GL 4.3 minimum). The specification sizes the grid
+low as 2^27 bytes by the GL 4.3 minimum). The V1 requirements size the grid
 "64^3 .. 256^3 by VRAM", so a solver must be able to ask how much the device
 holds before it allocates, and refuse with an explicit error.
 

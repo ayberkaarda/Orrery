@@ -1,6 +1,6 @@
 # Packaging
 
-How Orrery is installed and packaged (Phase 11, spec section 8: binary and
+How Orrery is installed and packaged (Phase 11; V1 targets: binary and
 assets under 80 MB, cold start to the first frame under 3 s). The install
 rules and the CPack configuration live in `cmake/Packaging.cmake`, the
 installer resources and scripts in `packaging/`, the release workflow in
@@ -262,7 +262,7 @@ Measured on Windows (MSVC 19.44, `package` preset, version 0.0.1):
 | `.msi` | 9.2 MiB (9,675,112 bytes) |
 | `.zip` | 10.3 MiB (10,846,080 bytes) |
 
-The spec limit for binary and assets is 80 MB: the whole installed tree,
+The V1 limit for binary and assets is 80 MB: the whole installed tree,
 runtime libraries included, uses about a quarter of it. The Linux numbers
 are reported by the release workflow in its job summary.
 
@@ -277,7 +277,7 @@ PNG written; five runs each):
 | `black_hole`, 1920x1080 | 0.81 to 1.22 s |
 | `solar_system`, 160x90 | 0.39 to 2.6 s |
 
-The spec target is under 3 s. The very first runs of a freshly installed
+The V1 target is under 3 s. The very first runs of a freshly installed
 or unpacked tree were slower, 1.5 to 4.5 s (the 4.5 s for a 1080p frame):
 the antivirus scans the new binaries and the driver compiles the shaders
 into its cache once. So a first launch after installation can exceed 3 s

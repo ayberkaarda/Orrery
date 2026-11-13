@@ -1,7 +1,7 @@
 # Orrery Application Reference
 
-The application layer of V1 (spec section 8, "UYGULAMA", and 7.7; Phases
-4c, 8b, 9b and 10): the physics thread, the command channel, the time-warp
+The application layer of V1 (Phases 4c, 8b, 9b and 10,
+[roadmap.md](roadmap.md#v1-phases)): the physics thread, the command channel, the time-warp
 budget, the interactive window with its workspaces, panels and keyboard
 shortcuts, the configuration, the error surface and the headless command
 line. Rendering itself is described in `rendering.md`.
@@ -310,8 +310,7 @@ against requested while the budget holds it down), the body count, the
 frame and physics step times, the integrator and the energy drift series
 (decimated by two at 4096 points).
 
-**Experiment panel** (Phase 10, `space_experiment_panel.h`; spec 8
-"Scenario/Experiment"), docked as a tab beside the System Monitor: on the
+**Experiment panel** (Phase 10, `space_experiment_panel.h`), docked as a tab beside the System Monitor: on the
 left what runs (scenario; the experiment: the one the window started with,
 the one opened last, or none after a scenario picked on its own, told
 apart by `SimStatus::source`; integrator and step, force model, warp) and
@@ -331,20 +330,20 @@ shown as a problem, not as an empty library.
 **Measured:** `orrery_app --size 1920x1080 --benchmark 600` (vsync off, 30
 warm-up frames) on an AMD Radeon RX 9060 XT, Release MSVC: 600 frames at
 1920x1061 (the window was clamped by the desktop), solar system with UI,
-mean 2.0 ms, 499 fps (spec target: 60 fps at 1080p). The benchmark averages
+mean 2.0 ms, 499 fps (V1 target: 60 fps at 1080p). The benchmark averages
 the measured frame times; interactive updates use the same delta clamped to
 250 ms (`frame_stats.h`).
 
 **Measured (headless, black hole):** `orrery_app --headless --experiment
 black_hole --size 1920x1080 --out bh.png --benchmark 300`, Release MSVC, AMD
 Radeon RX 9060 XT: mean 1.51 ms per frame (663 fps), GPU median 1.29 ms,
-p95 1.40 ms, lensing on (spec target: at least 30 fps at 1080p). The same
+p95 1.40 ms, lensing on (V1 target: at least 30 fps at 1080p). The same
 command gives 0.91 ms (1098 fps) for `sgr_a_s2` (hole far away, lensing on)
 and 2.67 ms (374 fps) for `solar_system` (no hole).
 
 ## 9. Workspaces
 
-The window has three workspaces, Space, Aero and Entry (spec 8). They are
+The window has three workspaces, Space, Aero and Entry. They are
 switched in a slim strip under the main bar (`workspace_strip.h`, in the
 look of the bar's workspace tab, with the current workspace's caption on the
 right) or with Ctrl+1 / Ctrl+2 / Ctrl+3 (section 12). Each workspace has its own main
@@ -406,7 +405,7 @@ file that cannot be written and a file that cannot be replaced.
 
 ## 11. Error surface
 
-No failure is silent (spec 8):
+No failure is silent:
 
 - Recoverable errors are shown where they happen: command-line errors as one
   `orrery_app:` line with an exit code; scenario and simulation errors in the

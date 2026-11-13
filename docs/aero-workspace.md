@@ -1,6 +1,6 @@
 # Aero Workspace
 
-The Aero workspace of `orrery_app` (spec 8, Phase 8b) puts the geometry
+The Aero workspace of `orrery_app` (Phase 8b) puts the geometry
 pipeline (Phase 6), the aerodynamic solvers (Phase 7) and the aero view
 (Phase 8a, `orrery/render/aero_view.h`) behind one user
 interface, and records every run as an experiment. Sources: the
@@ -65,7 +65,7 @@ models what repair changed (boundary, non-manifold and inconsistent edges
 before and after, components, welded vertices, removed and flipped
 triangles, filled holes) with warnings for an orientation conflict or a body
 still open after repair. User models carry the **UNVALIDATED GEOMETRY**
-badge (spec 5.4: no validation case exists for them) and a **licence /
+badge (no validation case exists for them) and a **licence /
 source note** that is stored with the experiment and never checked.
 Reference quantities: frontal, planform and wetted area, length, span,
 volume.
@@ -115,7 +115,7 @@ thread of the space workspace (ADR-011): the UI sends `AeroCommand`s
 through a lock-free queue, wakes it once per frame, and reads immutable
 progress from a triple buffer. No frame waits for a solve.
 
-**Pacing** (spec 8, "steps per frame" and "run to convergence"): a
+**Pacing** ("steps per frame" and "run to convergence"): a
 time-marching run advances `steps_per_frame` lattice steps for every frame
 that woke the thread (in calls of 50 lattice steps in 2D, 20 in 3D; frames
 that arrive while a batch runs merge), so the view animates with the frame
