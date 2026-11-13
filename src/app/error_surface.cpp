@@ -1,11 +1,13 @@
 #include "orrery/app/error_surface.h"
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <fstream>
+#include <string>
 #include <system_error>
 #include <utility>
 
@@ -26,28 +28,44 @@ TerminateSettings& settings() {
     return instance;
 }
 
+// Appends the reason to the crash log, if one is set.
+void write_crash_log(const char* reason) noexcept {
+    const TerminateSettings& s = settings();
+    if (s.log.empty()) {
+        return;
+    }
+    try {
+        if (append_crash_log(s.log, crash_log_entry(reason, s.version))) {
+            std::fputs("orrery_app: crash report appended to ", stderr);
+            std::fputs(s.log.string().c_str(), stderr);
+            std::fputs("\n", stderr);
+        }
+    } catch (...) {
+        std::fputs("orrery_app: the crash report could not be written\n", stderr);
+    }
+}
+
+// Formatting the reason may fail (memory exhausted, for one); the fallback
+// is a literal, so nothing in the handler can throw. A second termination
+// while reporting (another thread, or the report itself) aborts at once.
 [[noreturn]] void on_terminate() noexcept {
+    static std::atomic<bool> entered{false};
+    if (entered.exchange(true)) {
+        std::fputs("orrery_app: std::terminate again while reporting; aborting\n", stderr);
+        std::abort();
+    }
     std::string reason;
+    const char* text = "std::terminate (the reason could not be formatted)";
     try {
         reason = describe_termination(std::current_exception());
+        text = reason.c_str();
     } catch (...) {
-        reason = "std::terminate (the reason could not be formatted)";
+        // `text` keeps the literal.
     }
     std::fputs("orrery_app: fatal: ", stderr);
-    std::fputs(reason.c_str(), stderr);
+    std::fputs(text, stderr);
     std::fputs("\n", stderr);
-    const TerminateSettings& s = settings();
-    if (!s.log.empty()) {
-        try {
-            if (append_crash_log(s.log, crash_log_entry(reason, s.version))) {
-                std::fputs("orrery_app: crash report appended to ", stderr);
-                std::fputs(s.log.string().c_str(), stderr);
-                std::fputs("\n", stderr);
-            }
-        } catch (...) {
-            std::fputs("orrery_app: the crash report could not be written\n", stderr);
-        }
-    }
+    write_crash_log(text);
     std::fflush(stderr);
     std::abort();
 }

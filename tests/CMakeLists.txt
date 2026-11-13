@@ -347,6 +347,24 @@ add_test(NAME app.bare_name_finds_its_assets
         -DWORK=${CMAKE_CURRENT_BINARY_DIR}/app_output/bare_name
         -P ${CMAKE_CURRENT_SOURCE_DIR}/app/bare_name_launch.cmake)
 set_tests_properties(app.bare_name_finds_its_assets PROPERTIES SKIP_RETURN_CODE 77)
+# The terminate handler in a process of its own (it aborts): its report for
+# an unhandled exception, and its allocation-free fallback when memory is
+# exhausted while the report is formatted (one report, no re-entry).
+add_executable(orrery_terminate_probe
+    app/terminate_probe.cpp
+    core/allocation_failure_injection.h
+    core/allocation_failure_injection.cpp)
+target_link_libraries(orrery_terminate_probe PRIVATE orrery_app_core)
+orrery_configure_target(orrery_terminate_probe)
+set(ORRERY_EXPECT_ABORT ${CMAKE_CURRENT_SOURCE_DIR}/app/expect_abort.cmake)
+add_test(NAME app.terminate_report
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe> -DARGS=exception
+        "-DEXPECT_STDERR=orrery_app: fatal: unhandled exception: probe failure"
+        -P ${ORRERY_EXPECT_ABORT})
+add_test(NAME app.terminate_report_out_of_memory
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_terminate_probe> -DARGS=out_of_memory
+        "-DEXPECT_STDERR=orrery_app: fatal: std::terminate \\(the reason could not be formatted\\)"
+        -P ${ORRERY_EXPECT_ABORT})
 if(ORRERY_SANITIZE AND NOT MSVC)
     # The executable calls glfwInit without a display; see lsan.supp.
     set_tests_properties(app.headless_png app.headless_black_hole_benchmark
