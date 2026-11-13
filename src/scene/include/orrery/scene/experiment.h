@@ -6,6 +6,7 @@
 #include <string>
 #include <string_view>
 #include <variant>
+#include <vector>
 
 #include "orrery/core/result.h"
 #include "orrery/scene/error.h"
@@ -31,6 +32,10 @@ enum class Domain : std::uint8_t {
 using ParameterValue = std::variant<double, std::string>;
 using Parameters = std::map<std::string, ParameterValue, std::less<>>;
 
+// Named series of finite numbers, e.g. a convergence history. Keys are kept
+// sorted like Parameters.
+using Series = std::map<std::string, std::vector<double>, std::less<>>;
+
 struct SolverInfo {
     std::string name;
     std::string version;
@@ -49,6 +54,10 @@ struct Experiment {
     Parameters conditions;
     SolverInfo solver;
     Parameters result;
+    // Optional series of the result (JSON key "series", added in Phase 8
+    // without a schema version change: files without it load unchanged and
+    // an empty map is not written).
+    Series series;
 
     friend bool operator==(const Experiment&, const Experiment&) = default;
 };
@@ -56,7 +65,7 @@ struct Experiment {
 [[nodiscard]] core::Result<Experiment, SceneError> parse_experiment(std::string_view json);
 
 // Shortest round-trip number formatting: parse_experiment(save_experiment(e))
-// == e for finite values.
+// == e for finite values (series values must be finite as well).
 [[nodiscard]] std::string save_experiment(const Experiment& experiment);
 
 } // namespace orrery::scene

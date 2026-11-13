@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "domain": "aero",
+  "inputs": {
+    "name": "Apollo-type capsule at Mach 20, trim 20 deg",
+    "geometry": "primitive",
+    "shape": "capsule",
+    "capsule": "apollo",
+    "diameter_m": 3.912
+  },
+  "conditions": {
+    "speed_m_s": 6100,
+    "density_kg_m3": 0.0003,
+    "viscosity_pa_s": 1.5e-05,
+    "temperature_k": 230,
+    "angle_of_attack_deg": 20,
+    "sideslip_deg": 0
+  },
+  "solver": {
+    "name": "auto",
+    "version": "1",
+    "settings": { "reference_area": "frontal" }
+  },
+  "result": {}
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "domain": "aero",
+  "inputs": { "geometry": "primitive", "shape": "sphere", "diameter_m": 0.2 },
+  "conditions": { "speed_m_s": 10 },
+  "solver": { "name": "newtonian" },
+  "result": {}
+}

@@ -75,7 +75,10 @@ EXPECTED_GRAPH: dict[str, set[str]] = {
     # Phase 4c: the simulation side of the application (physics thread,
     # commands, experiments) is graphics-free; the command line and headless
     # renderer join it with render; the executable links only those.
-    "orrery_sim": {"orrery_core", "orrery_scene"},
+    # Phase 8b: the Aero workspace's graphics-free side (solver thread,
+    # geometry preparation, URL imports) adds aero, geom and geom_net.
+    "orrery_sim": {"orrery_core", "orrery_scene", "orrery_aero", "orrery_geom",
+                   "orrery_geom_net"},
     "orrery_app_core": {"orrery_sim", "orrery_render"},
     "orrery_app": {"orrery_app_core"},
 }
@@ -110,6 +113,10 @@ THIRD_PARTY_DEPS: dict[str, set[str]] = {
     "orrery_scene": {"nlohmann_json::nlohmann_json"},
     "orrery_render": {"glfw", "glad::glad", "glm::glm-header-only", "imgui::imgui",
                       "implot::implot"},
+    # orrery_app_core (Phase 8b): the Aero workspace panels draw with Dear
+    # ImGui and ImPlot (private, as in orrery_render), and the user
+    # configuration is read with toml++ (MIT, header-only).
+    "orrery_app_core": {"imgui::imgui", "implot::implot", "tomlplusplus::tomlplusplus"},
 }
 
 # Imported targets created by CMake's own Find modules (FindZLIB, FindOpenSSL)

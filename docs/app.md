@@ -114,9 +114,18 @@ A space experiment is an `orrery/scene` experiment record with domain
 `space` (format in `src/app/include/orrery/sim/space_experiment.h`):
 `inputs.scenario` (relative to the experiment file), `conditions.time_warp`,
 `conditions.paused`, `solver.name` (the integrator) and `solver.settings`
-`dt_days`, `force`, `softening_au`, `max_steps_per_frame`. Unknown keys,
-out-of-range values and the aero and entry domains (later phases) are
-rejected with the file and key in the message.
+`dt_days`, `force`, `softening_au`, `max_steps_per_frame`. Unknown keys and
+out-of-range values are rejected with the file and key in the message.
+
+Aero experiments (Phase 8b) use the same schema, version 1, with domain
+`aero`: a geometry reference, the free-stream conditions, the solver choice
+and the result, plus the optional top-level `series` key (named arrays of
+finite numbers: residuals, force history) that older files simply lack. The
+typed record is `orrery/scene/aero_experiment.h`; keys and examples are in
+[aero-workspace.md](aero-workspace.md#experiments). The command line and the
+window look at the domain first: an aero file opens the Aero workspace or
+the aero headless renderer, anything else goes to the space loader (entry
+experiments arrive with their phase and are still rejected).
 
 Bundled experiments (`assets/experiments`):
 
@@ -127,6 +136,11 @@ Bundled experiments (`assets/experiments`):
 | `figure_eight` | three-body choreography | Yoshida4, 0.5 d | 2e6 |
 | `sgr_a_s2` | Sgr A* and S2 | IAS15, 2 d | 1e7 |
 | `black_hole` | a lone 4.3e6 Msun Schwarzschild hole (its thin disk is a rendering model, `rendering.md` section 17) | leapfrog, 1 d | 1 |
+
+Bundled aero experiments: `aero_naca0012_panel` (2D panel method, 4 deg),
+`aero_naca0012_lbm` (2D lattice Boltzmann at Re 400, 4 deg),
+`aero_naca2412_wing` (3D panel method, 5 deg) and `aero_apollo_capsule`
+(Newtonian impact theory at Mach 20); see aero-workspace.md.
 
 A name given on the command line is looked up as `<assets>/experiments/<name>.json`,
 where `<assets>` is `assets/` next to the executable if present (located
@@ -209,7 +223,7 @@ renders nothing while the simulation keeps running.
 
 **Application bar** (`ui_app_bar.h`, the viewport's main menu bar, so the
 dock space starts below it): orbit mark and word mark, the workspace tab
-(`Space`; the Aero and Entry workspaces arrive with their phases), transport
+(`Space`; switching workspaces is in the strip below the bar, section 9), transport
 (reset, run/pause, single step; vector glyphs, tooltips), the time warp
 (arrows step through 1-2-5 presets from 1x to 1e7x, the value opens the
 preset list with the simulated rate per second; the achieved rate in d/s or
@@ -248,3 +262,67 @@ Radeon RX 9060 XT: mean 1.51 ms per frame (663 fps), GPU median 1.29 ms,
 p95 1.40 ms, lensing on (spec target: at least 30 fps at 1080p). The same
 command gives 0.91 ms (1098 fps) for `sgr_a_s2` (hole far away, lensing on)
 and 2.67 ms (374 fps) for `solar_system` (no hole).
+
+## 9. Workspaces
+
+The window has two working workspaces, Space and Aero, and a disabled Entry
+tab for Phase 9 (spec 8). They are switched in a slim strip under the main
+bar (`workspace_strip.h`, in the look of the bar's workspace tab, with the
+current workspace's caption on the right) or with Ctrl+1 / Ctrl+2. Each
+workspace has its own main bar, dock layout, panels and camera; the space
+simulation keeps its state while the Aero workspace is shown (the physics
+thread is not woken by Aero frames, so a running warp continues at its idle
+tick rate). `--experiment` with an aero file opens the Aero workspace with
+it; otherwise the window opens on the workspace of the configuration. The
+Aero workspace is described in [aero-workspace.md](aero-workspace.md).
+
+The strip is drawn by the application rather than in the main bar because
+`render::draw_app_bar` shows only the Space tab; a workspace list in
+`AppBarData` would let the tabs move into the bar.
+
+## 10. Configuration
+
+`config.toml` in the platform configuration directory (`config.h`, read with
+toml++): Linux `$XDG_CONFIG_HOME/orrery` (else `~/.config/orrery`), macOS
+`~/Library/Application Support/orrery`, Windows `%APPDATA%\orrery\config`.
+Saved data (aero experiments, the crash log) go to the data directory:
+Linux `$XDG_DATA_HOME/orrery` (else `~/.local/share/orrery`), macOS
+`~/Library/Application Support/orrery`, Windows `%APPDATA%\orrery\data`;
+downloaded models to the model cache of url-import-security.md.
+
+```toml
+[paths]
+experiments = "C:/lab/orrery"   # default: <data dir>/experiments
+model_cache = "D:/cache/models" # default: the platform model cache
+[window]
+width = 1600                    # 320 .. 8192 px
+height = 900
+workspace = "aero"              # "space" (default) or "aero"
+[aero]
+steps_per_frame = 200           # 1 .. 100000 lattice steps per frame
+```
+
+A missing file means the defaults. Unknown keys and invalid values are
+reported on stderr as `orrery_app: config: config.toml:<line>:<column>: <key>:
+<reason>` and ignored, the rest of the file still applies; a file that is not
+TOML is reported with its position and the defaults are used. Command-line
+options win over the file.
+
+## 11. Error surface
+
+No failure is silent (spec 8):
+
+- Recoverable errors are shown where they happen: command-line errors as one
+  `orrery_app:` line with an exit code; scenario and simulation errors in the
+  space bar's message; geometry, import and download errors of the Aero
+  workspace in a modal with the full detail (and "Copy details"); solver
+  setup and step failures in the Aero Results panel and the Aero bar.
+- `main` installs a `std::set_terminate` handler (`error_surface.h`) before
+  anything else runs: it prints `orrery_app: fatal: <reason>` (the active
+  exception's message when there is one) and appends a timestamped entry
+  with the version to `<data dir>/crash.log`, then aborts. Exceptions that
+  reach `main` are reported there as before; the physics and solver threads
+  catch everything per tick and report it in their status.
+- AddressSanitizer reports of the sanitizer builds go to stderr as usual
+  (`ASAN_OPTIONS=log_path=...` sends them to a file); the crash log does not
+  capture them.

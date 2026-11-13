@@ -3,14 +3,22 @@
 #include <exception>
 #include <filesystem>
 #include <iostream>
+#include <optional>
 #include <span>
+#include <string>
 #include <string_view>
+#include <utility>
 #include <vector>
 
 #include "build_info.h"
 #include "orrery/app/cli.h"
+#include "orrery/app/config.h"
+#include "orrery/app/error_surface.h"
 #include "orrery/app/headless.h"
 #include "orrery/app/space_view.h"
+#include "orrery/scene/aero_experiment.h"
+#include "orrery/scene/experiment.h"
+#include "orrery/scene/scenario.h"
 #include "orrery/sim/space_experiment.h"
 
 #if !defined(ORRERY_HEADLESS)
@@ -34,11 +42,65 @@ void print_modules(std::ostream& out) {
 }
 
 #if !defined(ORRERY_HEADLESS)
+// The aero experiment at `path`, or nothing when the file is not one.
+std::optional<orrery::scene::AeroExperiment> aero_experiment_at(const std::filesystem::path& path,
+                                                                std::string& error) {
+    using namespace orrery;
+    const auto text = scene::read_text_file(path);
+    if (!text) {
+        return std::nullopt;
+    }
+    const auto generic = scene::parse_experiment(text.value());
+    if (!generic || generic.value().domain != scene::Domain::aero) {
+        return std::nullopt;
+    }
+    auto typed = scene::aero_from_experiment(generic.value());
+    if (!typed) {
+        error = "experiment " + path.string() + ": " + typed.error();
+        return std::nullopt;
+    }
+    return std::move(typed).value();
+}
+
 int run_window_mode(const orrery::app::CliOptions& options,
                     const std::filesystem::path& executable) {
     using namespace orrery;
+    app::AppConfig config = app::default_config();
+    if (auto loaded = app::load_config(app::default_config_path())) {
+        config = loaded.value().config;
+        for (const std::string& warning : loaded.value().warnings) {
+            std::cerr << "orrery_app: config: " << warning << '\n';
+        }
+    } else {
+        std::cerr << "orrery_app: config: " << loaded.error() << " (using the defaults)\n";
+    }
     const std::vector<std::filesystem::path> dirs = app::experiment_search_dirs(executable);
-    const auto path = sim::resolve_experiment(options.experiment.value_or("solar_system"), dirs);
+    app::WindowRequest request;
+    request.config = config;
+    request.workspace = config.start_workspace == app::Workspace::aero ? app::Workspace::aero
+                                                                       : app::Workspace::space;
+    std::string space_name = "solar_system";
+    if (options.experiment) {
+        const auto path = sim::resolve_experiment(*options.experiment, dirs);
+        if (!path) {
+            std::cerr << "orrery_app: " << path.error() << '\n';
+            return app::kExitFailure;
+        }
+        std::string aero_error;
+        request.aero_experiment = aero_experiment_at(path.value(), aero_error);
+        if (!aero_error.empty()) {
+            std::cerr << "orrery_app: " << aero_error << '\n';
+            return app::kExitFailure;
+        }
+        if (request.aero_experiment) {
+            request.aero_base_dir = path.value().parent_path();
+            request.workspace = app::Workspace::aero;
+        } else {
+            space_name = path.value().string();
+            request.workspace = app::Workspace::space;
+        }
+    }
+    const auto path = sim::resolve_experiment(space_name, dirs);
     if (!path) {
         std::cerr << "orrery_app: " << path.error() << '\n';
         return app::kExitFailure;
@@ -48,11 +110,10 @@ int run_window_mode(const orrery::app::CliOptions& options,
         std::cerr << "orrery_app: " << experiment.error() << '\n';
         return app::kExitFailure;
     }
-    app::WindowRequest request;
     request.experiment = std::move(experiment).value();
     request.scenarios = sim::list_scenarios(request.experiment.scenario_path.parent_path());
-    request.width = options.width.value_or(request.width);
-    request.height = options.height.value_or(request.height);
+    request.width = options.width.value_or(config.window_width);
+    request.height = options.height.value_or(config.window_height);
     request.benchmark_frames = options.benchmark_frames;
     return app::run_window(std::move(request), std::cout, std::cerr);
 }
@@ -106,6 +167,10 @@ int run(int argc, char** argv) {
 } // namespace
 
 int main(int argc, char** argv) {
+    // No silent crash: std::terminate reports its reason on stderr and in
+    // the crash log (docs/app.md, "Error surface").
+    orrery::app::install_terminate_handler(orrery::app::default_crash_log(),
+                                           orrery::core::version_string());
     try {
         return run(argc, argv);
     } catch (const std::exception& error) {

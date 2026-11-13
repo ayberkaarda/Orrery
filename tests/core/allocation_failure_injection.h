@@ -18,6 +18,9 @@ namespace orrery::test {
 class AllocationFailureScope {
 public:
     explicit AllocationFailureScope(long long allowed_allocations) noexcept;
+    // With `keep_failing`, every allocation after the first failing one
+    // fails as well (memory exhaustion) until the scope ends.
+    AllocationFailureScope(long long allowed_allocations, bool keep_failing) noexcept;
     ~AllocationFailureScope();
     AllocationFailureScope(const AllocationFailureScope&) = delete;
     AllocationFailureScope& operator=(const AllocationFailureScope&) = delete;

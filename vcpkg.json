@@ -35,6 +35,7 @@
     "miniz",
     "nlohmann-json",
     "openssl",
-    "tbb"
+    "tbb",
+    "tomlplusplus"
   ]
 }

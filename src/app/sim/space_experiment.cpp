@@ -172,7 +172,8 @@ load_space_experiment(const std::filesystem::path& path) {
     if (experiment.domain != scene::Domain::space) {
         return core::failure("experiment " + file + ": domain '" +
                              std::string(scene::to_string(experiment.domain)) +
-                             "' is not available in this version (only 'space' runs)");
+                             "' is not a space experiment (aero experiments open in the Aero "
+                             "workspace; entry arrives in a later phase)");
     }
     constexpr std::array<std::string_view, 1> kInputs{"scenario"};
     if (auto problem = unknown_key(experiment.inputs, kInputs, "inputs")) {

@@ -18,4 +18,10 @@ target_link_libraries(orrery_scene PUBLIC orrery_core orrery_geom orrery_aero or
 # JSON is an implementation detail: no public header includes nlohmann/json.
 target_link_libraries(orrery_scene PRIVATE nlohmann_json::nlohmann_json)
 
+# Phase 8: typed records of aero-domain experiments (geometry reference,
+# free-stream conditions, solver choice, result) on the generic schema.
+target_sources(orrery_scene PRIVATE
+    aero_experiment.cpp
+    include/orrery/scene/aero_experiment.h)
+
 orrery_configure_target(orrery_scene)

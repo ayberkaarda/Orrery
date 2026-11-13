@@ -44,6 +44,7 @@ namespace {
 // injection is disarmed. Constant-initialized, so usable before main.
 thread_local long long allocations_before_failure = -1;
 thread_local bool failure_fired = false;
+thread_local bool keep_failing_after = false;
 
 // Counts one allocation against the armed budget; true when it must fail.
 bool injected_failure() noexcept {
@@ -51,7 +52,9 @@ bool injected_failure() noexcept {
         return false;
     }
     if (allocations_before_failure == 0) {
-        allocations_before_failure = -1;
+        if (!keep_failing_after) {
+            allocations_before_failure = -1;
+        }
         failure_fired = true;
         return true;
     }
@@ -111,8 +114,13 @@ void deallocate_aligned(void* memory) noexcept {
 
 namespace orrery::test {
 
-AllocationFailureScope::AllocationFailureScope(long long allowed_allocations) noexcept {
+AllocationFailureScope::AllocationFailureScope(long long allowed_allocations) noexcept
+    : AllocationFailureScope(allowed_allocations, false) {}
+
+AllocationFailureScope::AllocationFailureScope(long long allowed_allocations,
+                                               bool keep_failing) noexcept {
     failure_fired = false;
+    keep_failing_after = keep_failing;
     allocations_before_failure = allowed_allocations < 0 ? 0 : allowed_allocations;
 }
 
@@ -122,6 +130,7 @@ AllocationFailureScope::~AllocationFailureScope() {
 
 void AllocationFailureScope::disarm() noexcept {
     allocations_before_failure = -1;
+    keep_failing_after = false;
 }
 
 bool AllocationFailureScope::fired() const noexcept {
