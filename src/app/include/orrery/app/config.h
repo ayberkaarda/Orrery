@@ -68,6 +68,12 @@ struct ConfigLoad {
 [[nodiscard]] std::filesystem::path data_dir();
 [[nodiscard]] std::filesystem::path default_config_path(); // config_dir()/config.toml
 
+// A path as the window shows it (experiment folders, the configuration
+// file): the user's home directory is shortened to "~", so that a
+// screenshot or a shared screen does not show the user name. Other paths
+// are shown as they are.
+[[nodiscard]] std::string display_path(const std::filesystem::path& path);
+
 // Defaults: experiments in data_dir()/experiments, the platform model cache.
 [[nodiscard]] AppConfig default_config();
 

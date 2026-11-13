@@ -19,6 +19,7 @@
 
 #include "aero_widgets.h"
 #include "orrery/app/aero_scene.h"
+#include "orrery/app/config.h"
 #include "orrery/geom/naca.h"
 #include "orrery/geom/primitives.h"
 #include "orrery/sim/aero_comparison.h"
@@ -1473,7 +1474,7 @@ void AeroWorkspace::Impl::draw_experiments_panel() {
         listing_dirty = true;
     }
     ImGui::SameLine();
-    w::muted(options.experiment_dir.string());
+    w::muted(display_path(options.experiment_dir));
     if (!notice.empty()) {
         if (notice_is_error) {
             w::error(notice);

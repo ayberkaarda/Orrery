@@ -8,6 +8,7 @@
 
 #include "../aero/aero_widgets.h"
 #include "entry_workspace_impl.h"
+#include "orrery/app/config.h"
 
 // Entry Setup, Experiments and View panels of the Entry workspace.
 namespace orrery::app {
@@ -327,7 +328,7 @@ void EntryWorkspace::Impl::draw_experiments_panel() {
     w::tooltip("Writes the comparison table (the ticked runs, or all) as CSV next to the "
                "experiments.");
     ImGui::SameLine();
-    w::muted(options.experiment_dir.string());
+    w::muted(display_path(options.experiment_dir));
     if (!notice.empty()) {
         if (notice_is_error) {
             w::error(notice);

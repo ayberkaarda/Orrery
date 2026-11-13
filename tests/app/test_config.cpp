@@ -5,6 +5,7 @@
 #include <fstream>
 #include <ios>
 #include <new>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
@@ -278,4 +279,27 @@ TEST_CASE("The terminate report names the active exception", "[app][error]") {
     text << in.rdbuf();
     CHECK(text.str() == "first\nsecond\n");
     CHECK(app::default_crash_log().filename() == "crash.log");
+}
+
+TEST_CASE("Paths shown in the window shorten the home directory to ~", "[app][config]") {
+    // The Aero and Entry experiment panels and the shortcut help show
+    // folders: a screenshot or a shared screen must not show the user name.
+#if defined(_WIN32)
+    const std::optional<std::string> home = app::environment_variable("USERPROFILE");
+#else
+    const std::optional<std::string> home = app::environment_variable("HOME");
+#endif
+    if (!home || home->empty()) {
+        SKIP("no home directory in the environment");
+    }
+    const std::filesystem::path base(*home);
+    const std::filesystem::path inside = base / "Documents" / "orrery" / "x.json";
+    const std::string sep(1, static_cast<char>(std::filesystem::path::preferred_separator));
+    CHECK(app::display_path(inside) == "~" + sep + "Documents" + sep + "orrery" + sep + "x.json");
+    CHECK(app::display_path(base) == "~");
+    // Only whole directory names: a sibling that shares the prefix stays.
+    const std::filesystem::path sibling(*home + "2");
+    CHECK(app::display_path(sibling / "x") == (sibling / "x").string());
+    const std::filesystem::path elsewhere = std::filesystem::path("relative") / "dir";
+    CHECK(app::display_path(elsewhere) == elsewhere.string());
 }

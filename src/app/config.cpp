@@ -197,6 +197,10 @@ std::optional<std::string> environment_variable(const char* name) {
 #endif
 }
 
+std::string display_path(const std::filesystem::path& path) {
+    return path.string();
+}
+
 std::filesystem::path config_dir() {
     return platform_dir("config");
 }

@@ -6,6 +6,7 @@
 #include <imgui.h>
 
 #include "aero/aero_widgets.h"
+#include "orrery/app/config.h"
 #include "orrery/render/ui_app_bar.h"
 #include "orrery/sim/aero_comparison.h"
 
@@ -116,7 +117,7 @@ void SpaceExperimentPanel::draw_run(const SpaceRunView& run, SpaceExperimentInte
     }
     std::string tooltip = "Writes the scenario, the integrator settings, the warp and the run so "
                           "far (time, steps, energy drift) as a new file (Ctrl+S).\nFolder: ";
-    tooltip += experiment_dir_.string();
+    tooltip += display_path(experiment_dir_);
     w::tooltip(tooltip.c_str());
     if (!notice_.empty()) {
         ImGui::SameLine();

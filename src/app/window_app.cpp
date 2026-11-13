@@ -368,7 +368,7 @@ void WindowApp::build_ui(double dt, int width, int height) {
     }
     apply_late_shortcuts(actions, targets); // open: after the panels exist this frame
     draw_shortcut_help(request_.config.shortcuts, workspace_, help_open_,
-                       request_.config_path.string());
+                       display_path(request_.config_path));
 }
 
 ShortcutTargets WindowApp::shortcut_targets() {
