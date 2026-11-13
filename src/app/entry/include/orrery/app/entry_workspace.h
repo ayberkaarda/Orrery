@@ -61,7 +61,7 @@ struct EntryLayers {
 struct EntryViewState {
     sim::EntryPlanet planet = sim::EntryPlanet::earth;
     std::shared_ptr<const sim::EntryTrace> trace; // the shown run (null before any)
-    std::uint64_t revision = 0;                   // changes with trace, planet or scale
+    std::uint64_t revision = 0;                   // changes with trace, planet, scale or coloring
     render::EntryGlobe globe;
     render::EntryViewOptions options; // range and markers filled in
     std::vector<render::EntryTrackPoint> track;

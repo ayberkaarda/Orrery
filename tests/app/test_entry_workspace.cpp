@@ -137,8 +137,21 @@ TEST_CASE("Entry workspace runs an entry on its thread and hands the view a trac
 
     // Heat-flux colouring swaps the range to kW/m^2.
     h.workspace.layers().coloring = app::EntryColoring::heat_flux;
-    CHECK(h.workspace.view_state().options.range.max >=
-          trace->summary.peak_heat_flux_w_m2 * 1.0e-3);
+    const app::EntryViewState heat = h.workspace.view_state();
+    CHECK(heat.options.range.max >= trace->summary.peak_heat_flux_w_m2 * 1.0e-3);
+    // ... and the ribbon's values: the viewport uploads the track only when
+    // the revision changes, so the same run in another quantity needs a new
+    // revision.
+    CHECK(heat.revision != state.revision);
+    REQUIRE(heat.track.size() == state.track.size());
+    bool values_differ = false;
+    for (std::size_t i = 0; i < heat.track.size(); ++i) {
+        values_differ = values_differ || heat.track[i].value != state.track[i].value;
+    }
+    CHECK(values_differ);
+    // Back to g-load: the original upload again.
+    h.workspace.layers().coloring = app::EntryColoring::g_load;
+    CHECK(h.workspace.view_state().revision == state.revision);
 }
 
 TEST_CASE("Entry workspace pauses and stops its run", "[app][ui][entry]") {

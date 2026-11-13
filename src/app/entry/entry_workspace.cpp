@@ -619,7 +619,9 @@ EntryViewState EntryWorkspace::Impl::view_state() const {
         s.setup.integration.interface_altitude_m.value_or(planet.atmosphere_top_m);
     state.globe.altitude_scale = std::max(1.0, s.layers.altitude_scale);
     state.trace = s.shown();
-    state.revision = s.view_key();
+    // The uploaded ribbon carries the coloured quantity too; the framing key
+    // leaves it out so that switching quantities does not move the camera.
+    state.revision = mix(s.view_key(), static_cast<std::uint64_t>(s.layers.coloring) + 1U);
     render::EntryViewOptions& o = state.options;
     o.style = s.setup.planet == sim::EntryPlanet::mars ? render::EntryPlanetStyle::mars
                                                        : render::EntryPlanetStyle::earth;
