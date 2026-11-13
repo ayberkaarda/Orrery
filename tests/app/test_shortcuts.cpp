@@ -2,10 +2,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstddef>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
 
+#include "key_events.h"
 #include "orrery/app/config.h"
 #include "orrery/app/shortcut_input.h"
 #include "orrery/app/shortcuts.h"
@@ -125,6 +128,11 @@ TEST_CASE("Matching respects repeats and text input", "[app][shortcuts]") {
     // Stepping repeats while held; run/pause does not.
     CHECK(fires(table, held, Workspace::space, ShortcutAction::single_step));
     CHECK_FALSE(fires(table, held, Workspace::space, ShortcutAction::toggle_pause));
+    // Characters typed by key repeat follow the same rule.
+    KeyFrame repeated_text;
+    repeated_text.typed_repeated = "?.";
+    CHECK(fires(table, repeated_text, Workspace::space, ShortcutAction::single_step));
+    CHECK_FALSE(fires(table, repeated_text, Workspace::space, ShortcutAction::help));
     KeyFrame typing = pressed("Space");
     typing.typed = "?";
     typing.text_input = true;
@@ -279,6 +287,75 @@ TEST_CASE("The help overlay lists every action under a headless UI", "[app][shor
         ui.end_frame();
     }
     CHECK_FALSE(ui.window_rect(kShortcutHelpWindow).has_value());
+}
+
+namespace {
+
+// Headless UI frames fed with keyboard events (key_events.h) and matched
+// through the production path: read_key_frame, then match_shortcuts.
+class KeyFrames {
+public:
+    explicit KeyFrames(ShortcutTable table) : table_(std::move(table)) {
+        auto created = render::UiContext::create_headless();
+        REQUIRE(created.has_value());
+        ui_.emplace(std::move(created).value());
+        input_.width = 1600;
+        input_.height = 900;
+        input_.delta_time = 0.1; // past the key repeat delay within a few frames
+        (void)frame([] {});      // makes the context current for the events
+    }
+
+    // Queues the events of `queue`, runs one frame and returns its actions.
+    template <typename Queue> std::vector<ShortcutAction> frame(Queue queue) {
+        queue();
+        ui_->begin_frame(input_);
+        std::vector<ShortcutAction> actions =
+            match_shortcuts(table_, read_key_frame(), Workspace::space);
+        ui_->end_frame();
+        return actions;
+    }
+
+    // Presses `stroke`, holds it for `frames` frames in all (the character
+    // typed again on each) and releases it; how often `action` fired.
+    std::ptrdiff_t hold(const app_test::KeyStroke& stroke, int frames, ShortcutAction action) {
+        std::ptrdiff_t count = 0;
+        for (int i = 0; i < frames; ++i) {
+            const auto actions = frame([&] {
+                if (i == 0) {
+                    app_test::key_down(stroke);
+                } else {
+                    app_test::key_repeat(stroke);
+                }
+            });
+            count += std::count(actions.begin(), actions.end(), action);
+        }
+        (void)frame([&] { app_test::key_up(stroke); });
+        return count;
+    }
+
+private:
+    ShortcutTable table_;
+    std::optional<render::UiContext> ui_;
+    render::UiFrameInput input_;
+};
+
+} // namespace
+
+TEST_CASE("A held character fires a non-repeating action once per press",
+          "[app][shortcuts][input]") {
+    ShortcutTable table = default_shortcuts();
+    table.of(ShortcutAction::save) = {chord(";")};
+    REQUIRE(find_conflicts(table).empty());
+    KeyFrames keys(table);
+    const app_test::KeyStroke semicolon{ImGuiKey_Semicolon, false, false, false, ';'};
+    const app_test::KeyStroke question{ImGuiKey_Slash, false, true, false, '?'};
+    const app_test::KeyStroke bracket{ImGuiKey_LeftBracket, false, false, false, '['};
+
+    CHECK(keys.hold(semicolon, 6, ShortcutAction::save) == 1);
+    CHECK(keys.hold(semicolon, 1, ShortcutAction::save) == 1); // a new press fires again
+    CHECK(keys.hold(question, 6, ShortcutAction::help) == 1);
+    // Warp shortcuts repeat: one step per typed character.
+    CHECK(keys.hold(bracket, 6, ShortcutAction::warp_down) == 6);
 }
 
 TEST_CASE("Scene input takes its keys from the shortcut actions", "[app][shortcuts]") {

@@ -281,8 +281,12 @@ target_compile_definitions(orrery_test_sim PRIVATE
 orrery_configure_target(orrery_test_sim)
 catch_discover_tests(orrery_test_sim DISCOVERY_MODE PRE_TEST)
 
+# The shortcut and journey tests queue keyboard events on the Dear ImGui
+# context (app/key_events.h), as the GLFW backend does in the window.
+find_package(imgui CONFIG REQUIRED)
 add_executable(orrery_test_app
     app/app_test_support.h
+    app/key_events.h
     app/test_cli.cpp
     app/test_headless.cpp
     app/test_app_bar.cpp
@@ -293,7 +297,7 @@ add_executable(orrery_test_app
     app/test_workspace_render.cpp
     app/test_aero_ui.cpp
     app/test_aero_viewport.cpp)
-target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
+target_link_libraries(orrery_test_app PRIVATE orrery_app_core imgui::imgui Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")

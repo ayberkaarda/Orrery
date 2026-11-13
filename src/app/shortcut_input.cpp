@@ -80,6 +80,18 @@ ImGuiKey imgui_key(Key key) {
     }
 }
 
+// Whether a keyboard key other than a modifier went down this frame (any
+// key, also one without a Key of its own, such as a layout's extra key).
+bool any_key_went_down() {
+    for (int index = ImGuiKey_NamedKey_BEGIN; index < ImGuiKey_NamedKey_END; ++index) {
+        const auto key = static_cast<ImGuiKey>(index);
+        if (ImGui::IsKeyboardKey(key) && !ImGui::IsLRModKey(key) && ImGui::IsKeyPressed(key, false)) {
+            return true;
+        }
+    }
+    return false;
+}
+
 // A key chord as a small rounded key cap on the frame colour.
 void key_cap(const std::string& label) {
     const ImGuiStyle& style = ImGui::GetStyle();
@@ -169,9 +181,14 @@ KeyFrame read_key_frame() {
             frame.repeated.push_back(chord);
         }
     }
+    // A character arrives with the key event that typed it (the platform
+    // backend queues both in one poll, and Dear ImGui keeps them in one frame
+    // while no text field is active), so characters of a frame in which no
+    // key went down were typed by key repeat.
+    std::string& typed = any_key_went_down() ? frame.typed : frame.typed_repeated;
     for (const ImWchar c : io.InputQueueCharacters) {
         if (c > 0x20 && c < 0x7F) {
-            frame.typed += static_cast<char>(c);
+            typed += static_cast<char>(c);
         }
     }
     return frame;

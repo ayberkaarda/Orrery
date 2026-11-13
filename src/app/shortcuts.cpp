@@ -415,7 +415,9 @@ std::vector<ShortcutAction> match_shortcuts(const ShortcutTable& table, const Ke
         const bool fired = std::any_of(
             table.of(info.action).begin(), table.of(info.action).end(), [&](const KeyChord& chord) {
                 if (chord.character != '\0') {
-                    return frame.typed.find(chord.character) != std::string::npos;
+                    return frame.typed.find(chord.character) != std::string::npos ||
+                           (info.repeats &&
+                            frame.typed_repeated.find(chord.character) != std::string::npos);
                 }
                 const auto in = [&](const std::vector<KeyChord>& keys) {
                     return std::find(keys.begin(), keys.end(), chord) != keys.end();

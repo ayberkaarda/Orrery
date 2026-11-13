@@ -214,13 +214,17 @@ apply_shortcut_overrides(ShortcutTable& table, std::span<const ShortcutOverride>
 struct KeyFrame {
     std::vector<KeyChord> pressed;  // keys going down this frame, with modifiers
     std::vector<KeyChord> repeated; // keys repeating while held
-    std::string typed;              // characters typed this frame
+    // Characters typed this frame by a key going down, and by key repeat (a
+    // held key types its character again on every repeat).
+    std::string typed;
+    std::string typed_repeated;
     // A text field has the keyboard: no shortcut fires.
     bool text_input = false;
 };
 
 // The actions whose chords occurred in `frame` and that apply in
-// `workspace`, in table order, each at most once.
+// `workspace`, in table order, each at most once. Like key chords, typed
+// characters fire on key repeat only the actions that repeat.
 [[nodiscard]] std::vector<ShortcutAction>
 match_shortcuts(const ShortcutTable& table, const KeyFrame& frame, Workspace workspace);
 

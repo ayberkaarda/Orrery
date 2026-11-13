@@ -444,7 +444,10 @@ a typed character: it matches what the keyboard layout types, so `?` works
 on any layout. With a modifier, punctuation names its US key (`Ctrl+[`);
 a shifted symbol has no key of its own (`Ctrl+?` is refused with a hint).
 Stepping and the warp keys repeat while held; the others fire once per
-press. No shortcut fires while a text field has the keyboard.
+press. Typed characters follow the same rule: a character that arrives in a
+frame in which no key went down was typed by key repeat, so a held `?`
+toggles the help once while a held `[` keeps lowering the warp. No shortcut
+fires while a text field has the keyboard.
 
 **Conflicts.** Two actions that apply in a common workspace may not share a
 chord; a typed character also conflicts with the key that types it on a US
