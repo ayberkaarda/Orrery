@@ -85,7 +85,8 @@ void key_cap(const std::string& label) {
     const ImGuiStyle& style = ImGui::GetStyle();
     const ImVec2 text = ImGui::CalcTextSize(label.c_str());
     const float pad = style.FramePadding.x * 0.75F;
-    const float h = ImGui::GetTextLineHeight() + 4.0F;
+    // As tall as a framed row, so the description beside it lines up.
+    const float h = ImGui::GetFrameHeight() - 2.0F;
     const ImVec2 pos = ImGui::GetCursorScreenPos();
     const ImVec2 size(text.x + pad * 2.0F, h);
     ImGui::Dummy(size);
@@ -117,9 +118,10 @@ void draw_group(const ShortcutTable& table, const Group& group) {
     if (!ImGui::BeginTable(group.caption, 2, ImGuiTableFlags_SizingFixedFit)) {
         return;
     }
-    ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 11.0F);
+    // Fixed widths: every group lines up, whatever its own keys.
+    ImGui::TableSetupColumn("keys", ImGuiTableColumnFlags_WidthFixed, ImGui::GetFontSize() * 8.0F);
     ImGui::TableSetupColumn("action", ImGuiTableColumnFlags_WidthFixed,
-                            ImGui::GetFontSize() * 21.0F);
+                            ImGui::GetFontSize() * 24.0F);
     for (const ShortcutInfo& info : shortcut_actions()) {
         if (info.workspaces != group.workspaces) {
             continue;
@@ -196,11 +198,17 @@ void draw_shortcut_help(const ShortcutTable& table, Workspace workspace, bool& o
                                    viewport->WorkPos.y + viewport->WorkSize.y * 0.5F),
                             ImGuiCond_Always, ImVec2(0.5F, 0.5F));
     ImGui::SetNextWindowFocus();
+    // Opaque: it sits over the panels.
+    ImGui::SetNextWindowBgAlpha(1.0F);
     constexpr ImGuiWindowFlags kFlags = ImGuiWindowFlags_NoDocking | ImGuiWindowFlags_NoCollapse |
                                         ImGuiWindowFlags_AlwaysAutoResize |
                                         ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove;
     const std::string title(kShortcutHelpWindow);
-    if (ImGui::Begin(title.c_str(), &open, kFlags)) {
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(18.0F, 14.0F));
+    ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 1.0F);
+    const bool shown = ImGui::Begin(title.c_str(), &open, kFlags);
+    ImGui::PopStyleVar(2);
+    if (shown) {
         const std::uint8_t here = workspace_bit(workspace);
         constexpr std::array<Group, 3> kGroups{{
             {kInAll, "ALL WORKSPACES"},

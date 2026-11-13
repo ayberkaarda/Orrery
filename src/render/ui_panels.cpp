@@ -474,11 +474,11 @@ SystemMonitorIntent draw_system_monitor(const SystemMonitorData& data) {
         const WarpReadout& warp = *data.warp;
         std::string reason = "Warp lowered to fit the physics budget";
         if (warp.load && warp.load_limit > 0.0) {
-            reason += ": load " + fixed(*warp.load * 100.0, 0) + " % of " +
-                      fixed(warp.load_limit * 100.0, 0) + " %";
+            reason += " (load " + fixed(*warp.load * 100.0, 0) + " % of " +
+                      fixed(warp.load_limit * 100.0, 0) + " %)";
         }
         reason += "; " + format_time_warp(static_cast<double>(warp.requested)) +
-                  " returns when the load allows";
+                  " returns when the load allows.";
         ImGui::PushStyleColor(ImGuiCol_Text, warning_colour);
         ImGui::PushTextWrapPos(0.0F);
         ImGui::TextUnformatted(reason.c_str());

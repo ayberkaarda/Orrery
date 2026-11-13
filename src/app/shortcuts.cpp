@@ -22,8 +22,7 @@ constexpr std::array<ShortcutInfo, kShortcutActionCount> kActions{{
     {ShortcutAction::save, "save", "Save the experiment", kInAll, false},
     {ShortcutAction::open, "open", "Show the saved experiments", kInAll, false},
     {ShortcutAction::help, "help", "Show or hide this list", kInAll, false},
-    {ShortcutAction::close, "close", "Close this list; clear the selection or pinned cursor",
-     kInAll, false},
+    {ShortcutAction::close, "close", "Close this list, or release the selection", kInAll, false},
 }};
 
 struct KeySpec {
