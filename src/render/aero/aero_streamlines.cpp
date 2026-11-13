@@ -20,9 +20,13 @@ bool usable(const VectorGrid& velocity, std::span<const std::uint8_t> solid) {
            (solid.empty() || solid.size() == count);
 }
 
-// True where the node nearest to `p` is solid (and false outside the grid).
+// True where the node nearest to `p` is solid (the nearest grid node outside
+// the grid) and for a non-finite `p`, which no line or particle may enter.
 bool in_solid(const GridGeometry& grid, std::span<const std::uint8_t> solid,
               const glm::dvec3& p) noexcept {
+    if (!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z)) {
+        return true;
+    }
     if (solid.empty()) {
         return false;
     }
@@ -33,6 +37,9 @@ bool in_solid(const GridGeometry& grid, std::span<const std::uint8_t> solid,
         }
         const auto axis = static_cast<glm::length_t>(a);
         const double f = std::round((p[axis] - grid.origin[axis]) / grid.spacing);
+        if (std::isnan(f)) {
+            return true;
+        }
         at[a] = static_cast<std::size_t>(std::clamp(f, 0.0, static_cast<double>(grid.dims[a] - 1)));
     }
     return solid[grid.index(at[0], at[1], at[2])] != 0;

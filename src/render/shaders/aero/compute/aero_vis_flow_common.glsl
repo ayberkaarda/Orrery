@@ -2,7 +2,7 @@
 // reference in src/render/aero/aero_streamlines.cpp and aero_field.cpp:
 // positions are grid index coordinates (node (i, j, k) at (i, j, k)),
 // velocity is trilinear between nodes (bilinear on a 2D grid, nz = 1), and a
-// point is in a body where its nearest node is solid.
+// point is in a body where its nearest node is solid (or it is not finite).
 
 layout(std430, binding = 0) readonly buffer FlowVelocity {
     vec4 velocity[]; // m/s per node, w unused
@@ -31,7 +31,12 @@ bool flow_inside(vec3 p) {
            p.y <= last.y + kTolerance && z_ok;
 }
 
+// True for a non-finite p as well, which no line or particle may enter (and
+// whose conversion to a node index would be undefined).
 bool flow_solid(vec3 p) {
+    if (any(isnan(p)) || any(isinf(p))) {
+        return true;
+    }
     uvec3 n = uvec3(clamp(round(p), vec3(0.0), flow_last()));
     if (u_nz < 2u) {
         n.z = 0u;

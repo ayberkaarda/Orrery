@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <iostream>
+#include <limits>
 #include <numbers>
 #include <optional>
 #include <vector>
@@ -142,6 +143,37 @@ TEST_CASE("Particles follow the circular flow with second-order accuracy",
     // One revolution: midpoint rule error of order dt^2 per revolution.
     CHECK(glm::length(p - glm::dvec3(1.0, 0.0, 0.0)) < 2.0e-3);
     CHECK_FALSE(advect_particle(u, {}, {1.9, 1.9, 0.0}, 0.5).has_value()); // leaves the grid
+}
+
+TEST_CASE("Non-finite seeds, steps and velocities stop lines before the solid lookup",
+          "[render][aero][streamlines]") {
+    // A populated mask makes every position reach the nearest-node lookup;
+    // a non-finite coordinate must stop there instead of being converted.
+    const double nan = std::numeric_limits<double>::quiet_NaN();
+    const double inf = std::numeric_limits<double>::infinity();
+    VectorGrid u = rotation(1);
+    const std::vector<std::uint8_t> solid(u.values.size(), 0);
+    const std::vector<glm::dvec3> seeds{{nan, 0.0, 0.0}, {0.5, nan, 0.0}, {inf, 0.0, 0.0}};
+    for (const Streamline& line : trace_streamlines(u, solid, seeds, {})) {
+        CHECK(line.points.empty());
+    }
+    StreamlineSettings nan_step;
+    nan_step.step = nan;
+    const std::vector<glm::dvec3> good{{1.0, 0.0, 0.0}};
+    for (const Streamline& line : trace_streamlines(u, solid, good, nan_step)) {
+        CHECK(line.points.size() <= 1);
+    }
+    CHECK_FALSE(advect_particle(u, solid, {nan, 0.0, 0.0}, 0.01).has_value());
+    CHECK_FALSE(advect_particle(u, solid, {1.0, 0.0, 0.0}, nan).has_value());
+    CHECK_FALSE(advect_particle(u, solid, {1.0, 0.0, 0.0}, inf).has_value());
+    // A non-finite velocity sample sends the midpoint to NaN.
+    for (glm::dvec3& v : u.values) {
+        v = glm::dvec3(nan, 0.0, 0.0);
+    }
+    CHECK_FALSE(advect_particle(u, solid, {1.0, 0.0, 0.0}, 0.01).has_value());
+    for (const Streamline& line : trace_streamlines(u, solid, good, {})) {
+        CHECK(line.points.empty());
+    }
 }
 
 TEST_CASE("Streamlines on the GPU match the CPU reference", "[render][aero][streamlines][gl]") {
