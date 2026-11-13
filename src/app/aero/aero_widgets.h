@@ -54,6 +54,8 @@ void end_properties();
 
 // Rounded label on a faint background of `tint` (warning chip, badges).
 void chip(const std::string& label, const render::UiColor& tint, const char* tooltip_text);
+// A chip after the previous item on its line.
+void chip_after(const std::string& label, const render::UiColor& tint, const char* tooltip_text);
 
 // Square-ish button with a vector glyph (the default font has no icons).
 enum class Glyph : std::uint8_t { play, pause, step, stop };

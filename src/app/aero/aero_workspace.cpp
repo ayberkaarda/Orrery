@@ -1143,23 +1143,21 @@ void AeroWorkspace::Impl::draw_run_status(const sim::AeroProgress& p, bool live,
     if (live || state == sim::AeroRunState::setting_up || state == sim::AeroRunState::failed) {
         w::text(std::string(sim::solver_display_name(p.status.solver)) +
                 (p.status.two_dimensional ? " (2D)" : " (3D)"));
-        ImGui::SameLine();
         render::UiColor tint = w::theme().accent;
         if (state == sim::AeroRunState::failed) {
             tint = w::theme().warning;
         } else if (state == sim::AeroRunState::finished) {
             tint = w::theme().accent_secondary;
         }
-        w::chip(state_label(state), tint, nullptr);
+        w::chip_after(state_label(state), tint, nullptr);
         if (live && state == sim::AeroRunState::finished) {
-            ImGui::SameLine();
             if (p.result->converged) {
-                w::chip("CONVERGED", w::theme().accent_secondary,
-                        "The solver's convergence test passed.");
+                w::chip_after("CONVERGED", w::theme().accent_secondary,
+                              "The solver's convergence test passed.");
             } else {
-                w::chip("NOT CONVERGED", w::theme().warning,
-                        "The run finished without passing the convergence test; see the "
-                        "warnings below.");
+                w::chip_after("NOT CONVERGED", w::theme().warning,
+                              "The run finished without passing the convergence test; see the "
+                              "warnings below.");
             }
         }
     } else if (record != nullptr) {

@@ -175,6 +175,11 @@ void chip(const std::string& label, const render::UiColor& tint, const char* too
     }
 }
 
+void chip_after(const std::string& label, const render::UiColor& tint, const char* tooltip_text) {
+    ImGui::SameLine();
+    chip(label, tint, tooltip_text);
+}
+
 bool icon_button(const char* id, Glyph glyph, const char* tooltip_text, bool emphasised,
                  bool enabled) {
     const ImGuiStyle& style = ImGui::GetStyle();

@@ -358,3 +358,28 @@ TEST_CASE("The workspace strip drops its caption rather than cover a tab", "[app
         }
     }
 }
+
+TEST_CASE("Status chips wrap to the next line rather than leave the panel", "[app][ui][aero]") {
+    // In the window the Aero Results heading "Lattice Boltzmann (2D)
+    // Finished NOT CONVERGED" ran past the panel's right edge, cutting the
+    // last chip.
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    render::UiFrameInput input;
+    input.width = 1600;
+    input.height = 900;
+    ui.begin_frame(input);
+    ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+    ImGui::SetNextWindowSize(ImVec2(340.0F, 200.0F));
+    ImGui::Begin("Chips");
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    app::widgets::text("Lattice Boltzmann (2D)");
+    for (const char* label : {"Finished", "NOT CONVERGED"}) {
+        app::widgets::chip_after(label, app::widgets::theme().warning, nullptr);
+        INFO(label);
+        CHECK(ImGui::GetItemRectMax().x <= right + 0.5F);
+    }
+    ImGui::End();
+    ui.end_frame();
+}
