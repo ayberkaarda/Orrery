@@ -4,6 +4,7 @@
 #include <array>
 #include <cstddef>
 #include <limits>
+#include <optional>
 #include <string>
 #include <utility>
 
@@ -105,14 +106,15 @@ core::Result<FlowSnapshot, std::string> capture_flow(aero::IAeroSolver& solver,
     FlowSnapshot out;
     if (auto* lbm2 = dynamic_cast<aero::lbm::LbmAeroSolver2D*>(&solver)) {
         aero::lbm::Lbm2DSolver* lattice = lbm2->lattice();
-        if (lattice == nullptr || !lbm2->units()) {
+        const std::optional<aero::lbm::LatticeUnits>& lattice_units = lbm2->units();
+        if (lattice == nullptr || !lattice_units.has_value()) {
             return core::failure(std::string("the lattice is not set up"));
         }
         auto fields = lattice->macroscopic();
         if (!fields) {
             return core::failure(std::string(fields.error()));
         }
-        const aero::lbm::LatticeUnits& units = *lbm2->units();
+        const aero::lbm::LatticeUnits& units = lattice_units.value();
         const ViewFrame frame = view_frame(conditions, true);
         const geom::SectionPoint centre =
             section_to_wind({reference.moment_centre.x, reference.moment_centre.z}, frame);
@@ -128,14 +130,15 @@ core::Result<FlowSnapshot, std::string> capture_flow(aero::IAeroSolver& solver,
     }
     if (auto* lbm3 = dynamic_cast<aero::lbm::LbmAeroSolver3D*>(&solver)) {
         aero::lbm::Lbm3DSolver* lattice = lbm3->lattice();
-        if (lattice == nullptr || !lbm3->units() || geometry.mesh.vertices.empty()) {
+        const std::optional<aero::lbm::LatticeUnits>& lattice_units = lbm3->units();
+        if (lattice == nullptr || !lattice_units.has_value() || geometry.mesh.vertices.empty()) {
             return core::failure(std::string("the lattice is not set up"));
         }
         auto fields = lattice->macroscopic();
         if (!fields) {
             return core::failure(std::string(fields.error()));
         }
-        const aero::lbm::LatticeUnits& units = *lbm3->units();
+        const aero::lbm::LatticeUnits& units = lattice_units.value();
         const ViewFrame frame = view_frame(conditions, false);
         geom::Vector3 lo = to_view(geometry.mesh.vertices.front(), frame);
         geom::Vector3 hi = lo;

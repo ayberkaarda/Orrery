@@ -62,6 +62,12 @@ double ShapeDimensions::* dimension_member(std::string_view key) noexcept {
     return nullptr;
 }
 
+// The value of a dimension key (shape_dimensions only names known keys).
+double dimension_value(const ShapeDimensions& d, std::string_view key) noexcept {
+    double ShapeDimensions::* member = dimension_member(key);
+    return member != nullptr ? d.*member : 0.0;
+}
+
 struct AreaName {
     geom::ReferenceAreaKind kind;
     std::string_view name;
@@ -215,6 +221,9 @@ core::Result<GeometryRef, std::string> read_geometry(const Parameters& inputs) {
         for (const std::string_view key : shape_dimensions(ref.shape)) {
             allowed.push_back(key);
             double ShapeDimensions::* member = dimension_member(key);
+            if (member == nullptr) {
+                continue;
+            }
             auto value = in.positive(key, ref.dimensions.*member);
             if (!value) {
                 return core::failure(std::string(value.error()));
@@ -633,7 +642,7 @@ Experiment to_experiment(const AeroExperiment& experiment) {
             out.inputs.emplace("geometry", std::string("primitive"));
             out.inputs.emplace("shape", std::string(to_string(g.shape)));
             for (const std::string_view key : shape_dimensions(g.shape)) {
-                out.inputs.emplace(std::string(key), g.dimensions.*dimension_member(key));
+                out.inputs.emplace(std::string(key), dimension_value(g.dimensions, key));
             }
             if (g.shape == AeroShape::naca_wing || g.shape == AeroShape::naca_section) {
                 out.inputs.emplace("naca", g.naca);

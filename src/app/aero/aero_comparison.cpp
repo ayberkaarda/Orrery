@@ -53,7 +53,7 @@ std::string csv_field(const std::string& text) {
 
 std::string geometry_label(const scene::GeometryRef& ref) {
     if (ref.source != scene::GeometrySource::primitive) {
-        const std::string name = std::filesystem::path(ref.path).filename().string();
+        std::string name = std::filesystem::path(ref.path).filename().string();
         if (!name.empty()) {
             return name;
         }

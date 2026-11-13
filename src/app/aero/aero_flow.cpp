@@ -111,7 +111,7 @@ std::string format_significant(double value, int digits) {
     if (written <= 0) {
         return "-";
     }
-    return std::string(buffer.data(), static_cast<std::size_t>(written));
+    return {buffer.data(), static_cast<std::size_t>(written)};
 }
 
 } // namespace orrery::sim

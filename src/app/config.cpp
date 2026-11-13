@@ -28,7 +28,7 @@ std::filesystem::path home_dir() {
     }
 #else
     if (auto home = environment_variable("HOME")) {
-        return std::filesystem::path(*home);
+        return {*home};
     }
 #endif
     return {};
@@ -191,7 +191,7 @@ core::Result<ConfigLoad, std::string> parse_config(std::string_view text,
             } else if (value && *value == "aero") {
                 out.config.start_workspace = Workspace::aero;
             } else {
-                warn(*node, "window.workspace", "expected \"space\" or \"aero\", ignored");
+                warn(*node, "window.workspace", R"(expected "space" or "aero", ignored)");
             }
         }
     }
