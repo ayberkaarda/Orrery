@@ -261,7 +261,10 @@ TEST_CASE("Entry experiments save, load and compare through the workspace", "[ap
     const std::optional<std::filesystem::path> csv = h.workspace.export_comparison();
     REQUIRE(csv.has_value());
     std::ifstream in(csv.value_or(std::filesystem::path{}), std::ios::binary);
-    const std::string text((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+    in.seekg(0, std::ios::end);
+    std::string text(static_cast<std::size_t>(in.tellg()), ' ');
+    in.seekg(0, std::ios::beg);
+    in.read(text.data(), static_cast<std::streamsize>(text.size()));
     CHECK(text.find("\"'=steeper\"") != std::string::npos);
     CHECK(text.find(",landed,") != std::string::npos);
 
