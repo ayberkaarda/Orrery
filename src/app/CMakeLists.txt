@@ -51,6 +51,22 @@ target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/aero/in
 target_link_libraries(orrery_sim PUBLIC orrery_aero orrery_geom)
 target_link_libraries(orrery_sim PRIVATE orrery_geom_net)
 
+# Phase 9b: the graphics-free side of the Entry workspace
+# (docs/entry-workspace.md): entry inputs and series, the adapter to the entry
+# physics, the solver thread, experiment records and the comparison table.
+target_sources(orrery_sim PRIVATE
+    entry/entry_backend.cpp
+    entry/entry_comparison.cpp
+    entry/entry_experiments.cpp
+    entry/entry_model.cpp
+    entry/entry_runner.cpp
+    entry/include/orrery/sim/entry_backend.h
+    entry/include/orrery/sim/entry_comparison.h
+    entry/include/orrery/sim/entry_experiments.h
+    entry/include/orrery/sim/entry_model.h
+    entry/include/orrery/sim/entry_runner.h)
+target_include_directories(orrery_sim PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/entry/include)
+
 add_library(orrery_app_core STATIC
     cli.cpp
     frame_stats.cpp
@@ -97,6 +113,20 @@ target_sources(orrery_app_core PRIVATE
     aero/include/orrery/app/aero_viewport.h
     aero/include/orrery/app/aero_workspace.h)
 target_include_directories(orrery_app_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/aero/include)
+
+# Phase 9b: the Entry workspace's user interface (setup, profile plots, ground
+# track map, experiments, view), its scene adapter to render::EntryView and
+# the headless path that draws the whole workspace offscreen.
+target_sources(orrery_app_core PRIVATE
+    entry/entry_headless.cpp
+    entry/entry_panels.cpp
+    entry/entry_profile.cpp
+    entry/entry_viewport.cpp
+    entry/entry_workspace.cpp
+    entry/entry_workspace_impl.h
+    entry/include/orrery/app/entry_headless.h
+    entry/include/orrery/app/entry_viewport.h
+    entry/include/orrery/app/entry_workspace.h)
 target_link_libraries(orrery_app_core PRIVATE imgui::imgui implot::implot
     tomlplusplus::tomlplusplus)
 

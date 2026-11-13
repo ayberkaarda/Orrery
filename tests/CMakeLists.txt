@@ -121,6 +121,9 @@ target_sources(orrery_test_render PRIVATE
     render/aero/test_aero_view.cpp
     render/aero/test_turntable.cpp)
 
+# Phase 9b: the entry view (geometry without a GPU, drawing tagged [gl]).
+target_sources(orrery_test_render PRIVATE render/entry/test_entry_view.cpp)
+
 # Shader embedding of overlong lines: fixture shaders are generated at build
 # time and embedded by the production script into a header that the test
 # compiles (MSVC limits each string literal to 16380 bytes). The fixture
@@ -262,6 +265,9 @@ add_executable(orrery_test_sim
     app/test_physics_thread.cpp
     app/test_space_experiment.cpp
     app/test_aero_workspace.cpp)
+# Phase 9b: the Entry workspace's graphics-free side (inputs, solver thread,
+# comparison and CSV).
+target_sources(orrery_test_sim PRIVATE app/test_entry_model.cpp)
 target_link_libraries(orrery_test_sim PRIVATE orrery_sim Catch2::Catch2WithMain)
 target_compile_definitions(orrery_test_sim PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
@@ -281,6 +287,13 @@ target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2With
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")
+# Phase 9b: the Entry workspace under a headless UiContext, and its golden
+# snapshot through the headless path (render/golden/entry, [gl][golden]).
+target_sources(orrery_test_app PRIVATE
+    app/test_entry_golden.cpp
+    app/test_entry_workspace.cpp)
+target_compile_definitions(orrery_test_app PRIVATE
+    ORRERY_RENDER_GOLDEN_DIR="${CMAKE_CURRENT_SOURCE_DIR}/render/golden")
 orrery_configure_target(orrery_test_app)
 set(app_discover_props)
 if(ORRERY_SANITIZE AND NOT MSVC)
@@ -348,6 +361,15 @@ add_test(NAME app.headless_aero_png
         -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
         -P ${ORRERY_EXPECT_EXIT})
 set_tests_properties(app.headless_aero_png PROPERTIES SKIP_RETURN_CODE 77)
+# Phase 9b: an entry experiment end to end (the Apollo-like entry run to the
+# ground, the whole Entry workspace drawn offscreen).
+add_test(NAME app.headless_entry_png
+    COMMAND ${CMAKE_COMMAND} -DEXE=$<TARGET_FILE:orrery_app> -DEXPECT_CODE=0
+        "-DEXPECT_STDOUT=wrote .*app_output/cli_entry_apollo.png \\(960x540\\): Apollo-like entry, Earth: landed"
+        "-DARGS=--headless;--experiment;entry_apollo_like;--size;960x540;--out;${CMAKE_CURRENT_BINARY_DIR}/app_output/cli_entry_apollo.png"
+        -DSKIP_CODE=3 -DOUT_DIR=${CMAKE_CURRENT_BINARY_DIR}/app_output
+        -P ${ORRERY_EXPECT_EXIT})
+set_tests_properties(app.headless_entry_png PROPERTIES SKIP_RETURN_CODE 77)
 # Started by its bare name through PATH from another directory, the
 # executable still finds the assets next to itself.
 add_test(NAME app.bare_name_finds_its_assets
@@ -377,7 +399,7 @@ add_test(NAME app.terminate_report_out_of_memory
 if(ORRERY_SANITIZE AND NOT MSVC)
     # The executable calls glfwInit without a display; see lsan.supp.
     set_tests_properties(app.headless_png app.headless_black_hole_benchmark
-        app.headless_aero_png app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
+        app.headless_aero_png app.headless_entry_png app.bare_name_finds_its_assets PROPERTIES ENVIRONMENT
         "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
 endif()
 
