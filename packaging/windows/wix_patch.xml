@@ -1,0 +1,14 @@
+<CPackWiXPatch>
+  <!-- CPACK_PACKAGE_INSTALL_DIRECTORY "Programs/Orrery" makes CPack declare
+       %LOCALAPPDATA%\Programs as INSTALL_PREFIX_1 without the RemoveFolder
+       entry a per-user directory needs (ICE64). This one removes the folder
+       on uninstall only when it is empty, so other applications there are
+       untouched. -->
+  <CPackWiXFragment Id="#PRODUCTFEATURE">
+    <Component Id="ORRERY_PROGRAMS_RemoveFolderComponent" Directory="INSTALL_PREFIX_1" Guid="*">
+      <RemoveFolder Id="ORRERY_PROGRAMS_RemoveFolder" Directory="INSTALL_PREFIX_1" On="uninstall"/>
+      <RegistryValue Root="HKCU" Key="Software\Orrery\Orrery\Components"
+        Name="ORRERY_PROGRAMS_RemoveFolderComponent" Type="string" Value="1" KeyPath="yes"/>
+    </Component>
+  </CPackWiXFragment>
+</CPackWiXPatch>

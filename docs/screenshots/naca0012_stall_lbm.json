@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "domain": "aero",
+  "inputs": {
+    "name": "NACA 0012 at 20 deg (stalled), lattice Boltzmann, Re 500",
+    "geometry": "primitive",
+    "shape": "naca_section",
+    "naca": "0012",
+    "chord_m": 0.1
+  },
+  "conditions": {
+    "speed_m_s": 0.073,
+    "density_kg_m3": 1.225,
+    "viscosity_pa_s": 1.789e-05,
+    "temperature_k": 288.15,
+    "angle_of_attack_deg": 20,
+    "sideslip_deg": 0
+  },
+  "solver": {
+    "name": "lbm",
+    "version": "1",
+    "settings": {
+      "reference_area": "planform",
+      "lbm_cells_per_length": 40,
+      "lbm_duration": 60,
+      "steps_per_frame": 200
+    }
+  },
+  "result": {}
+}

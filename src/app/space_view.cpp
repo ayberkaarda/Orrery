@@ -260,10 +260,17 @@ std::vector<std::filesystem::path> asset_directories(const std::filesystem::path
     std::vector<std::filesystem::path> dirs;
     std::error_code error;
     if (!executable.empty()) {
-        const std::filesystem::path beside =
-            std::filesystem::absolute(executable, error).parent_path() / "assets";
-        if (!error && std::filesystem::is_directory(beside, error)) {
-            dirs.push_back(beside);
+        const std::filesystem::path bin =
+            std::filesystem::absolute(executable, error).parent_path();
+        if (!error) {
+            // A portable copy keeps assets/ beside the executable; an installed
+            // tree (bin/ and share/orrery/assets) keeps them under share/.
+            for (const std::filesystem::path& candidate :
+                 {bin / "assets", bin.parent_path() / "share" / "orrery" / "assets"}) {
+                if (std::filesystem::is_directory(candidate, error)) {
+                    dirs.push_back(candidate);
+                }
+            }
         }
     }
 #if defined(ORRERY_SOURCE_ASSET_DIR)

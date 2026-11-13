@@ -11,6 +11,10 @@ permissions:
 
 # Accepted risks: pip packages are version-pinned without hashes. Action
 # tags remain mutable.
+#
+# Time budget (docs/ci.md): every job restores the vcpkg binary cache, the
+# Linux compiling jobs restore a ccache saved by main, and ctest runs one
+# test process per runner core.
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -28,6 +32,9 @@ env:
   NINJA_PIN: ninja==1.13.2
   # Must match the clang-format used to format the sources (LLVM 22).
   CLANG_FORMAT_PIN: clang-format==22.1.8
+  # ccache (Linux compiling jobs): bounded, paths relative to the checkout.
+  CCACHE_MAXSIZE: 500M
+  CCACHE_COMPRESS: "true"
 
 jobs:
   build:
@@ -54,6 +61,8 @@ jobs:
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
       VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
       - name: Install Linux toolchain
@@ -61,7 +70,7 @@ jobs:
         run: |
           APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
           retry $APT update
-          retry $APT install -y $LINUX_DEPS
+          retry $APT install -y $LINUX_DEPS ccache
           if [ "${{ matrix.cc }}" = "gcc-13" ]; then
             if command -v g++-13 >/dev/null 2>&1 && command -v gcc-13 >/dev/null 2>&1; then
               echo "gcc-13/g++-13 already installed"
@@ -120,16 +129,36 @@ jobs:
           python -m pip install "$CMAKE_PIN" "$NINJA_PIN"
           cmake --version
           ninja --version
+      - name: Runner image
+        id: image
+        shell: bash
+        # The image version names the compiler build that vcpkg hashes into
+        # every binary package; a new image starts a new cache entry.
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
       - name: Cache vcpkg binaries
         uses: actions/cache@v4
         with:
           path: .vcpkg-cache
-          key: vcpkg-${{ matrix.name }}-${{ hashFiles('vcpkg.json') }}
+          key: vcpkg-${{ matrix.name }}-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
+          restore-keys: |
+            vcpkg-${{ matrix.name }}-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-${{ matrix.name }}-
+      - name: Restore ccache
+        if: runner.os == 'Linux'
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.name }}-${{ github.run_id }}
+          restore-keys: ccache-${{ matrix.name }}-
       - name: Bootstrap vcpkg
         shell: bash
+        # The checkout is pinned to the manifest's builtin-baseline, so the
+        # vcpkg scripts (part of every package hash) change only with it.
         run: |
           mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          baseline=$(python -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
           if [ "$RUNNER_OS" = "Windows" ]; then
             "$VCPKG_ROOT/bootstrap-vcpkg.bat" -disableMetrics
           else
@@ -141,21 +170,49 @@ jobs:
           if [ -n "${{ matrix.cc }}" ]; then
             export CC=${{ matrix.cc }} CXX=${{ matrix.cxx }}
           fi
-          cmake --preset ${{ matrix.preset }}
+          launcher=""
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            launcher="-DCMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          fi
+          cmake --preset ${{ matrix.preset }} $launcher
       - name: Dependency boundaries (configured build tree)
         shell: bash
         run: python tools/check_deps.py --build-dir "build/${{ matrix.preset }}"
       - name: Build
-        run: cmake --build --preset ${{ matrix.preset }}
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Linux" ]; then ccache --zero-stats; fi
+          cmake --build --preset ${{ matrix.preset }}
+          if [ "$RUNNER_OS" = "Linux" ]; then ccache --show-stats; fi
+      - name: Save ccache
+        if: runner.os == 'Linux' && github.event_name == 'push'
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-${{ matrix.name }}-${{ github.run_id }}
       - name: Test
-        run: ctest --preset ${{ matrix.preset }} --output-on-failure
+        shell: bash
+        # One test process per runner core (the tests are independent
+        # processes; the simulation thread tests run alone, RUN_SERIAL).
+        run: ctest --preset ${{ matrix.preset }} --output-on-failure --parallel "$(nproc)"
 
-  asan:
-    name: asan (ubuntu-24.04-gcc-13)
+  # The sanitizer suite (30 minutes serial) runs in two shards of
+  # alternating test numbers, each with one test process per core. Each
+  # shard builds the same tree (ccache keeps the second build cheap); the
+  # `asan` job below reports their combined result under the required name.
+  asan-shard:
+    name: asan (ubuntu-24.04-gcc-13) shard ${{ matrix.shard }}/2
     runs-on: ubuntu-24.04
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [1, 2]
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+      CCACHE_BASEDIR: ${{ github.workspace }}
       CC: gcc-13
       CXX: g++-13
     steps:
@@ -166,10 +223,10 @@ jobs:
           if command -v g++-13 >/dev/null 2>&1 && command -v gcc-13 >/dev/null 2>&1; then
             echo "gcc-13/g++-13 already installed"
             retry $APT update
-            retry $APT install -y $LINUX_DEPS
+            retry $APT install -y $LINUX_DEPS ccache
           else
             retry $APT update
-            retry $APT install -y $LINUX_DEPS gcc-13 g++-13
+            retry $APT install -y $LINUX_DEPS ccache gcc-13 g++-13
           fi
       - uses: actions/setup-python@v5
         with:
@@ -178,21 +235,71 @@ jobs:
         run: |
           python -m pip install "$CMAKE_PIN" "$NINJA_PIN"
           cmake --version
+      - name: Runner image
+        id: image
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      # The dependencies are built by vcpkg with the same compiler and
+      # triplet as in build (ubuntu-24.04-gcc-13), whatever the project's
+      # build type and sanitizer flags: the binary cache is shared.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
+          restore-keys: |
+            vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-ubuntu-24.04-gcc-13-
+      - name: Restore ccache
+        uses: actions/cache/restore@v4
+        with:
+          path: .ccache
+          key: ccache-asan-${{ github.run_id }}
+          restore-keys: ccache-asan-
       - name: Bootstrap vcpkg
         run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          baseline=$(python -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
       - name: Configure
-        run: cmake --preset linux-debug-asan
+        run: cmake --preset linux-debug-asan -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
       - name: Dependency boundaries (configured build tree)
         run: python tools/check_deps.py --build-dir build/linux-debug-asan
       - name: Build
-        run: cmake --build --preset linux-debug-asan
-      - name: Test
+        run: |
+          ccache --zero-stats
+          cmake --build --preset linux-debug-asan
+          ccache --show-stats
+      - name: Save ccache
+        if: github.event_name == 'push' && matrix.shard == 1
+        uses: actions/cache/save@v4
+        with:
+          path: .ccache
+          key: ccache-asan-${{ github.run_id }}
+      - name: Test (shard ${{ matrix.shard }} of 2)
         env:
           ASAN_OPTIONS: detect_leaks=1:abort_on_error=1
           UBSAN_OPTIONS: print_stacktrace=1:halt_on_error=1
-        run: ctest --preset linux-debug-asan --output-on-failure
+        # -I <start>,,2: every second test number from the shard's start,
+        # so the long lattice Boltzmann tests (adjacent numbers) are split.
+        run: |
+          ctest --preset linux-debug-asan --output-on-failure --parallel "$(nproc)" \
+            -I "${{ matrix.shard }},,2"
+
+  asan:
+    name: asan (ubuntu-24.04-gcc-13)
+    needs: asan-shard
+    if: always()
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Both shards passed
+        env:
+          SHARDS: ${{ needs.asan-shard.result }}
+        run: |
+          echo "asan shards: $SHARDS"
+          test "$SHARDS" = "success"
 
   lint:
     name: lint (format, tidy, cppcheck, deps)
@@ -200,6 +307,7 @@ jobs:
     timeout-minutes: ${{ (github.event_name == 'workflow_dispatch' || github.event_name == 'schedule') && 75 || 50 }}
     env:
       VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
       CC: clang-17
       CXX: clang++-17
     steps:
@@ -234,12 +342,30 @@ jobs:
           clang-format --version
       - name: Dependency boundaries (sources)
         run: python tools/check_deps.py --source-only
+      - name: Documentation links and physics index
+        run: python tools/check_docs.py
       - name: clang-format check
         run: |
           git ls-files '*.cpp' '*.hpp' '*.h' '*.cc' | xargs -r clang-format --dry-run --Werror
+      - name: Runner image
+        id: image
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      # Same compiler and triplet as build (ubuntu-22.04-clang-17): the
+      # vcpkg binary cache is shared with it.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ubuntu-22.04-clang-17-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
+          restore-keys: |
+            vcpkg-ubuntu-22.04-clang-17-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-ubuntu-22.04-clang-17-
       - name: Bootstrap vcpkg
         run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
           git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          baseline=$(python -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
           "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
       - name: Configure (compile database)
         run: cmake --preset linux-ci-headless -DCMAKE_EXPORT_COMPILE_COMMANDS=ON

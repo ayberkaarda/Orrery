@@ -3,7 +3,7 @@
 | ADR | Title | Status |
 |---|---|---|
 | [001](001-unit-systems.md) | Unit systems per domain | Accepted |
-| [002](002-integrators.md) | Symplectic default integrator, adaptive IAS15 | Accepted |
+| [002](002-integrators.md) | Symplectic default integrator, adaptive IAS15 | Accepted; step policy amended (2026-11-13, see ADR-016) |
 | [003](003-schwarzschild-lensing.md) | Schwarzschild lensing for black holes, Kerr deferred | Accepted; superseded-by-roadmap (V3) |
 | [004](004-pseudo-newtonian-bh.md) | Pseudo-Newtonian black hole dynamics | Accepted |
 | [005](005-graphics-api.md) | OpenGL 4.6 with GLSL compute | Accepted |

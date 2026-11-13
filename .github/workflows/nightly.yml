@@ -1,0 +1,167 @@
+name: nightly
+
+# Long-running checks that never gate a pull request (docs/ci.md):
+#   - release: the release profile (Release + LTO, GCC 13) built and tested
+#     in full, which checks that link-time optimisation keeps the golden
+#     10k-step determinism hashes; then the benchmark suite (CPU rows; the
+#     hosted runners have no GPU, so the GPU rows are reported as not
+#     measured) with its JSON and Markdown report uploaded;
+#   - lbm-validation: the large lattice Boltzmann validation on the CPU
+#     (cylinder Re 100 and 150 at D = 40, sphere Re 10, 100 and 300 at up to
+#     16 cells per diameter).
+# Both restore the vcpkg binary cache of the pull-request workflow without
+# saving to it.
+
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  LINUX_DEPS: >-
+    libx11-dev libxrandr-dev libxinerama-dev libxcursor-dev libxi-dev
+    xorg-dev libgl1-mesa-dev libglu1-mesa-dev pkg-config
+    autoconf autoconf-archive automake libtool make m4
+  CMAKE_PIN: cmake==4.4.4
+  NINJA_PIN: ninja==1.13.2
+
+jobs:
+  release:
+    name: release LTO (ubuntu-24.04-gcc-13), full tests and benchmarks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
+          retry $APT update
+          if command -v g++-13 >/dev/null 2>&1 && command -v gcc-13 >/dev/null 2>&1; then
+            retry $APT install -y $LINUX_DEPS
+          else
+            retry $APT install -y $LINUX_DEPS gcc-13 g++-13
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CMake and Ninja
+        run: |
+          python -m pip install "$CMAKE_PIN" "$NINJA_PIN"
+          cmake --version
+      - name: Runner image
+        id: image
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore vcpkg binaries
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
+          restore-keys: |
+            vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-ubuntu-24.04-gcc-13-
+      - name: Bootstrap vcpkg
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          baseline=$(python -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure (release, LTO)
+        run: cmake --preset linux-release
+      - name: Dependency boundaries (configured build tree)
+        run: python tools/check_deps.py --build-dir build/linux-release
+      - name: Build
+        run: cmake --build --preset linux-release
+      - name: Test (full suite under LTO, golden determinism hashes included)
+        run: ctest --preset linux-release --output-on-failure --parallel "$(nproc)"
+      - name: Benchmarks
+        run: |
+          python tests/bench/run_benchmarks.py --build-dir build/linux-release \
+            --out bench-results/results.json --log-dir bench-results
+          python tests/bench/make_report.py bench-results/results.json --out bench-results/report.md
+          cat bench-results/report.md >> "$GITHUB_STEP_SUMMARY"
+      - name: Upload benchmark results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bench-results
+          path: bench-results/
+          if-no-files-found: warn
+          retention-days: 30
+
+  lbm-validation:
+    name: large LBM validation (CPU, ubuntu-24.04-gcc-13)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      VCPKG_ROOT: ${{ github.workspace }}/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-cache
+      CC: gcc-13
+      CXX: g++-13
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install toolchain
+        run: |
+          APT="sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 -o Acquire::Retries=2"; retry() { for i in 1 2 3; do timeout 240 "$@" && return 0; echo "attempt $i failed: $*"; sleep $((i * 5)); done; return 1; }
+          retry $APT update
+          if command -v g++-13 >/dev/null 2>&1 && command -v gcc-13 >/dev/null 2>&1; then
+            retry $APT install -y $LINUX_DEPS
+          else
+            retry $APT install -y $LINUX_DEPS gcc-13 g++-13
+          fi
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CMake and Ninja
+        run: |
+          python -m pip install "$CMAKE_PIN" "$NINJA_PIN"
+          cmake --version
+      - name: Runner image
+        id: image
+        run: echo "id=${ImageOS:-unknown}-${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+      - name: Restore vcpkg binaries
+        uses: actions/cache/restore@v4
+        with:
+          path: .vcpkg-cache
+          key: vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-${{ steps.image.outputs.id }}
+          restore-keys: |
+            vcpkg-ubuntu-24.04-gcc-13-${{ hashFiles('vcpkg.json') }}-
+            vcpkg-ubuntu-24.04-gcc-13-
+      - name: Bootstrap vcpkg
+        run: |
+          mkdir -p "$VCPKG_DEFAULT_BINARY_CACHE"
+          git clone https://github.com/microsoft/vcpkg.git "$VCPKG_ROOT"
+          baseline=$(python -c "import json; print(json.load(open('vcpkg.json'))['builtin-baseline'])")
+          git -C "$VCPKG_ROOT" checkout --quiet "$baseline"
+          "$VCPKG_ROOT/bootstrap-vcpkg.sh" -disableMetrics
+      - name: Configure (release, LTO)
+        run: cmake --preset linux-release
+      - name: Build the validation executable
+        run: cmake --build --preset linux-release --target orrery_nightly_lbm_validation
+      - name: Large LBM validation
+        run: |
+          mkdir -p lbm-validation
+          set -o pipefail
+          build/linux-release/tests/bench/orrery_nightly_lbm_validation --durations yes \
+            --reporter console --reporter "junit::out=lbm-validation/junit.xml" \
+            2>&1 | tee lbm-validation/log.txt
+      - name: Upload validation log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lbm-validation
+          path: lbm-validation/
+          if-no-files-found: warn
+          retention-days: 30

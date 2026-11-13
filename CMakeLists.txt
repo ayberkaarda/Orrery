@@ -37,6 +37,7 @@ list(APPEND CMAKE_MODULE_PATH "${PROJECT_SOURCE_DIR}/cmake")
 include(Warnings)
 include(Sanitizers)
 include(FpDeterminism)
+include(Lto)
 
 # Applies the project-wide compile policy (warnings, sanitizers, deterministic
 # floating-point semantics) to a first-party target.
@@ -56,3 +57,6 @@ if(ORRERY_BUILD_TESTS)
     enable_testing()
     add_subdirectory(tests)
 endif()
+
+# Install rules, the relocated install test and CPack (docs/packaging.md).
+include(Packaging)

@@ -151,6 +151,12 @@ FORBIDDEN_NAME = re.compile(
 )
 FORBIDDEN_PART = re.compile(r"(opengl|glad|glfw|glew|imgui|implot|freeglut|epoxy)", re.IGNORECASE)
 GENEX_OPEN = re.compile(r"\$<[A-Za-z_]+(?:\s*:)?")
+# MSVC switches that look like a graphics library name once the leading
+# slash is read as a directory separator: /GL (whole-program optimisation,
+# which CMake's interprocedural optimisation puts on the link flags of the
+# LTO release builds). Matched exactly and case-sensitively, so /DEFAULTLIB:
+# items and library files are still inspected.
+MSVC_SWITCHES = frozenset({"/GL", "-GL"})
 LIBRARY_EXT = re.compile(r"\.(?:so(?:\.\d+)*|a|lib|dylib|tbd|dll|framework)$", re.IGNORECASE)
 
 # File API codemodel version that introduced linkLibraries,
@@ -278,7 +284,7 @@ def forbidden_item(item: str) -> str | None:
     """Return the graphics library named by a link item, or None."""
     text = GENEX_OPEN.sub(" ", item).replace(">", " ")
     for token in re.split(r"[\s,;\"']+|LINKER:|-Wl|-Xlinker", text):
-        if not token:
+        if not token or token in MSVC_SWITCHES:
             continue
         for name in link_names(token):
             if FORBIDDEN_PART.search(name) or FORBIDDEN_NAME.match(name):
@@ -777,6 +783,10 @@ def check_configuration(config: dict, reply: Path, source_root: Path, tag: str,
                 )
         if is_first_party(data["name"]) and not data.get("imported"):
             for index, group in enumerate(groups):
+                # Resource scripts (the Windows icon and version, RC) hold no
+                # floating-point code and take no compiler options.
+                if data["compileGroups"][index].get("language") == "RC":
+                    continue
                 check_fp_model(group, f"[{tag}] {data['name']} compile group {index}", errors)
 
     # Physics sources and include directories for the precision check.
@@ -826,7 +836,7 @@ def check_compile_commands(build_dir: Path, errors: list[str]) -> str:
             path = Path(entry.get("directory", "")) / path
         first_party = "vcpkg_installed" not in path.parts and (
             ROOT in path.resolve().parents)
-        if first_party:
+        if first_party and path.suffix.lower() != ".rc":
             check_fp_model(command, f"[{build_dir.name}] compile_commands.json: {source}", errors)
     return f"{len(entries)} commands"
 
