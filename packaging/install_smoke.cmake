@@ -13,13 +13,15 @@
 #   - an experiment that exists only in the moved tree is found by name from
 #     another working directory and rendered headless (with its scenario,
 #     resolved relative to the experiment), and so is a bundled one;
-#   - with SOURCE_FALLBACK off, the executable holds no source tree path.
+#   - with SOURCE_FALLBACK off, the executable holds no path of the source
+#     tree, the build tree or the vcpkg checkout (packaging/embedded_paths.cmake;
+#     the only tolerated strings are OpenSSL's two compiled-in directories).
 # Without an OpenGL 4.6 context the application exits with 3 after it has
 # found and loaded the experiment: that still proves the lookup and passes,
 # unless ORRERY_REQUIRE_GL=1 makes it a failure.
 #
 # Arguments: BUILD_DIR, WORK, VERSION, SOURCE_DIR, SOURCE_FALLBACK, ASSET_DIR,
-# MAX_BYTES, PYTHON.
+# MAX_BYTES, PYTHON, and (empty without vcpkg) VCPKG_ROOT, VCPKG_INSTALLED_DIR.
 cmake_minimum_required(VERSION 3.25)
 
 set(staged "${WORK}/staged")
@@ -149,13 +151,21 @@ render_installed(only_in_the_installed_tree)
 render_installed(solar_system)
 
 if(NOT SOURCE_FALLBACK)
-    file(TO_CMAKE_PATH "${SOURCE_DIR}" source_path)
-    string(REGEX REPLACE "([][+.*()^$?|\\\\])" "\\\\\\1" source_regex "${source_path}")
-    file(STRINGS "${exe}" source_paths REGEX "${source_regex}")
-    if(source_paths)
-        message(FATAL_ERROR "the executable holds source tree paths: ${source_paths}")
+    include("${CMAKE_CURRENT_LIST_DIR}/embedded_paths.cmake")
+    orrery_embedded_path_problems(build_paths tolerated_paths "${exe}"
+        FORBIDDEN "${SOURCE_DIR}" "${BUILD_DIR}" "${VCPKG_ROOT}"
+        VCPKG_INSTALLED_DIR "${VCPKG_INSTALLED_DIR}")
+    if(tolerated_paths)
+        string(REPLACE ";" "\n  " tolerated_paths "${tolerated_paths}")
+        message(STATUS "tolerated in the executable (OpenSSL's compiled-in engine and module "
+            "directories, never read; docs/packaging.md):\n  ${tolerated_paths}")
     endif()
-    message(STATUS "no source tree path in the executable")
+    if(build_paths)
+        string(REPLACE ";" "\n  " build_paths "${build_paths}")
+        message(FATAL_ERROR "the executable holds paths of the source tree, the build tree or "
+            "vcpkg:\n  ${build_paths}")
+    endif()
+    message(STATUS "no source, build or vcpkg path in the executable")
 else()
     message(STATUS "ORRERY_SOURCE_ASSET_FALLBACK is on: the executable may also look in the "
         "source tree; the experiment only in the installed tree proves the installed lookup")

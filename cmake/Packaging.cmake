@@ -135,6 +135,19 @@ option(ORRERY_INSTALL_TEST "Register the relocated install test (install.relocat
 if(ORRERY_INSTALL_TEST)
     # Runs tools/check_docs.py on the installed documentation.
     find_package(Python3 COMPONENTS Interpreter REQUIRED)
+    # The vcpkg checkout (from its toolchain file) and the manifest's installed
+    # tree: the executable must not name the first, and may name the second
+    # only in OpenSSL's compiled-in directories (packaging/embedded_paths.cmake).
+    set(orrery_vcpkg_root "")
+    if(CMAKE_TOOLCHAIN_FILE MATCHES "/scripts/buildsystems/vcpkg\\.cmake$")
+        cmake_path(GET CMAKE_TOOLCHAIN_FILE PARENT_PATH orrery_vcpkg_root)
+        cmake_path(GET orrery_vcpkg_root PARENT_PATH orrery_vcpkg_root)
+        cmake_path(GET orrery_vcpkg_root PARENT_PATH orrery_vcpkg_root)
+    endif()
+    set(orrery_vcpkg_installed "")
+    if(DEFINED VCPKG_INSTALLED_DIR)
+        set(orrery_vcpkg_installed "${VCPKG_INSTALLED_DIR}")
+    endif()
     enable_testing()
     add_test(NAME install.relocated
         COMMAND ${CMAKE_COMMAND}
@@ -146,6 +159,8 @@ if(ORRERY_INSTALL_TEST)
             -DASSET_DIR=${ORRERY_INSTALL_ASSET_DIR}
             -DMAX_BYTES=80000000
             -DPYTHON=${Python3_EXECUTABLE}
+            -DVCPKG_ROOT=${orrery_vcpkg_root}
+            -DVCPKG_INSTALLED_DIR=${orrery_vcpkg_installed}
             -P ${PROJECT_SOURCE_DIR}/packaging/install_smoke.cmake)
     set_tests_properties(install.relocated PROPERTIES SKIP_RETURN_CODE 77 TIMEOUT 900)
 endif()
@@ -207,6 +222,9 @@ include(CPack)
 if(ORRERY_BUILD_TESTS)
     add_test(NAME packaging.checks
         COMMAND ${CMAKE_COMMAND} -P ${PROJECT_SOURCE_DIR}/packaging/tests/package_checks_test.cmake)
+    add_test(NAME packaging.embedded_paths
+        COMMAND ${CMAKE_COMMAND} -DWORK=${PROJECT_BINARY_DIR}/embedded_paths_test
+            -P ${PROJECT_SOURCE_DIR}/packaging/tests/embedded_paths_test.cmake)
     if(ORRERY_SOURCE_ASSET_FALLBACK)
         add_test(NAME packaging.refuses_fallback
             COMMAND ${CMAKE_COMMAND}
