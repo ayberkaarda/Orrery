@@ -181,7 +181,7 @@ TEST_CASE("The GPU D3Q19 driver checks the device memory", "[aero][lbm3d]") {
     const std::size_t population = *gpu_population_buffer_bytes(config);
     // No links; the one wall slot of the halfway wall.
     const std::size_t total = *gpu_memory_bytes(config, 0, 0);
-    CHECK(total == *gpu_memory_bytes(config) + 19 * 4);
+    CHECK(total == *gpu_memory_bytes(config) + std::size_t{19} * 4);
 
     backend.set_memory({std::nullopt, population - 1});
     auto binding = make_gpu_solver(backend, config, mask);
