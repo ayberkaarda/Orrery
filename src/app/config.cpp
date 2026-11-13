@@ -1,27 +1,22 @@
 #include "orrery/app/config.h"
 
 #include <algorithm>
+#include <array>
+#include <charconv>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <fstream>
 #include <memory>
 #include <optional>
 #include <sstream>
+#include <string>
 #include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
 
-// Floating-point values through std::to_chars and std::from_chars (a stack
-// buffer), as toml++ already does with MSVC. Its fallback for GCC and Clang
-// formats through a std::ostringstream of its own, which keeps the digits it
-// has when an allocation fails (0.6 saved as 0.5999999999999), so a saved
-// configuration could silently change. Both standard libraries the project
-// builds with (MSVC STL, libstdc++ 11 or later) implement them.
-#if !defined(TOML_FLOAT_CHARCONV)
-#define TOML_FLOAT_CHARCONV 1
-#endif
 #include <toml++/toml.hpp>
 
 #include "orrery/scene/scenario.h"
@@ -335,38 +330,107 @@ core::Result<ConfigLoad, std::string> load_config(const std::filesystem::path& p
     return parse_config(text.value(), path.filename().string());
 }
 
-std::string config_to_toml(const AppConfig& config) {
-    toml::table paths;
-    paths.insert("experiments", config.experiment_dir.generic_string());
-    paths.insert("model_cache", config.model_cache_dir.generic_string());
-    toml::table window;
-    window.insert("width", static_cast<std::int64_t>(config.window_width));
-    window.insert("height", static_cast<std::int64_t>(config.window_height));
-    window.insert("workspace", std::string(workspace_name(config.start_workspace)));
-    toml::table aero;
-    aero.insert("steps_per_frame", config.steps_per_frame);
-    toml::table space;
-    space.insert("physics_budget", config.physics_budget);
-    toml::table shortcuts;
-    for (const ShortcutInfo& info : shortcut_actions()) {
-        toml::array chords;
-        for (const KeyChord& chord : config.shortcuts.of(info.action)) {
-            chords.push_back(format_key_chord(chord));
+namespace {
+
+// The configuration's TOML is written by hand into one std::string: every
+// allocation failure propagates as std::bad_alloc. toml++'s printer formats
+// floats through a stream of its own where its library is built without
+// std::to_chars (GCC and Clang), and that stream swallows the failure and
+// keeps the digits it has (0.6 written as 0.5999999999999).
+
+void append_hex_escape(std::string& out, unsigned char c) {
+    constexpr std::string_view kHex = "0123456789ABCDEF";
+    out += '\\';
+    out += "u00";
+    out += kHex[static_cast<std::size_t>(c >> 4U)];
+    out += kHex[static_cast<std::size_t>(c & 0x0FU)];
+}
+
+// A TOML basic string: quotes, backslashes and control characters escaped,
+// everything else (UTF-8 included) as is.
+void append_string(std::string& out, std::string_view text) {
+    out += '"';
+    for (const char c : text) {
+        const auto byte = static_cast<unsigned char>(c);
+        if (c == '"' || c == '\\') {
+            out += '\\';
+            out += c;
+        } else if (byte < 0x20U || byte == 0x7FU) {
+            append_hex_escape(out, byte);
+        } else {
+            out += c;
         }
-        shortcuts.insert(info.name, std::move(chords));
     }
-    toml::table root;
-    root.insert("paths", std::move(paths));
-    root.insert("window", std::move(window));
-    root.insert("aero", std::move(aero));
-    root.insert("space", std::move(space));
-    root.insert("shortcuts", std::move(shortcuts));
-    std::ostringstream out;
-    // A stream swallows a failure (memory exhausted) and keeps what it has:
-    // rethrown instead, so that a truncated text is never saved.
-    out.exceptions(std::ios::badbit | std::ios::failbit);
-    out << "# Orrery configuration (docs/app.md, \"Configuration\").\n" << root << '\n';
-    return out.str();
+    out += '"';
+}
+
+void append_integer(std::string& out, std::int64_t value) {
+    std::array<char, 32> buffer{};
+    const auto written = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    out.append(buffer.data(), written.ptr);
+}
+
+// The shortest text that reads back as the same double, always a TOML float.
+void append_float(std::string& out, double value) {
+    std::array<char, 64> buffer{};
+    const auto written = std::to_chars(buffer.data(), buffer.data() + buffer.size(), value);
+    const std::string_view text(buffer.data(),
+                                static_cast<std::size_t>(written.ptr - buffer.data()));
+    out += text;
+    if (text.find_first_of(".eEn") == std::string_view::npos) {
+        out += ".0";
+    }
+}
+
+void append_key(std::string& out, std::string_view key) {
+    out += key;
+    out += " = ";
+}
+
+void append_string_entry(std::string& out, std::string_view key, std::string_view value) {
+    append_key(out, key);
+    append_string(out, value);
+    out += '\n';
+}
+
+void append_shortcuts(std::string& out, const ShortcutTable& table) {
+    out += "\n[shortcuts]\n";
+    for (const ShortcutInfo& info : shortcut_actions()) {
+        append_key(out, info.name);
+        out += '[';
+        const std::vector<KeyChord>& chords = table.of(info.action);
+        for (std::size_t i = 0; i < chords.size(); ++i) {
+            out += i == 0 ? "" : ", ";
+            append_string(out, format_key_chord(chords[i]));
+        }
+        out += "]\n";
+    }
+}
+
+} // namespace
+
+std::string config_to_toml(const AppConfig& config) {
+    std::string out = "# Orrery configuration (docs/app.md, \"Configuration\").\n";
+    out += "\n[paths]\n";
+    append_string_entry(out, "experiments", config.experiment_dir.generic_string());
+    append_string_entry(out, "model_cache", config.model_cache_dir.generic_string());
+    out += "\n[window]\n";
+    append_key(out, "width");
+    append_integer(out, config.window_width);
+    out += '\n';
+    append_key(out, "height");
+    append_integer(out, config.window_height);
+    out += '\n';
+    append_string_entry(out, "workspace", workspace_name(config.start_workspace));
+    out += "\n[aero]\n";
+    append_key(out, "steps_per_frame");
+    append_integer(out, config.steps_per_frame);
+    out += "\n\n[space]\n";
+    append_key(out, "physics_budget");
+    append_float(out, config.physics_budget);
+    out += '\n';
+    append_shortcuts(out, config.shortcuts);
+    return out;
 }
 
 namespace {

@@ -96,6 +96,30 @@ TEST_CASE("Configuration round-trips through its TOML text and file", "[app][con
     CHECK(parsed.value().warnings.empty());
     CHECK(parsed.value().config == c);
 
+    // Text that needs escaping, and numbers at the edges of their ranges.
+    app::AppConfig odd = app::default_config();
+    odd.experiment_dir = "C:/lab \"quoted\"\ttab/\x01\x1f\x7f/caf\xc3\xa9";
+    // A backslash and a quote as chords (a path's backslash becomes '/').
+    const auto backslash = app::parse_key_chord("\\");
+    const auto quote = app::parse_key_chord("\"");
+    REQUIRE(backslash.has_value());
+    REQUIRE(quote.has_value());
+    odd.shortcuts.of(app::ShortcutAction::open) = {backslash.value()};
+    odd.shortcuts.of(app::ShortcutAction::close).push_back(quote.value());
+    REQUIRE(app::find_conflicts(odd.shortcuts).empty());
+    odd.window_width = 8192;
+    odd.window_height = 320;
+    odd.steps_per_frame = 100'000;
+    for (const double budget : {0.05, 0.95, 1.0 / 3.0, 0.6}) {
+        odd.physics_budget = budget;
+        const std::string text = app::config_to_toml(odd);
+        const auto reread = app::parse_config(text, "config.toml");
+        INFO(text);
+        REQUIRE(reread.has_value());
+        CHECK(reread.value().warnings.empty());
+        CHECK(reread.value().config == odd);
+    }
+
     const std::filesystem::path dir = scratch("roundtrip");
     // A missing file means the defaults, not an error.
     const auto missing = app::load_config(dir / "none.toml");
