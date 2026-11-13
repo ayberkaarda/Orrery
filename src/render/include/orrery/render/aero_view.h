@@ -67,6 +67,8 @@ struct SectionPlane {
     // Symmetric is used for signed quantities whatever the mode says unless
     // the mode is fixed.
     ColorScale scale;
+    // Empty: diverging_dark for signed quantities, sequential otherwise.
+    std::optional<Colormap> colormap;
     double opacity = 1.0;
 };
 
@@ -106,8 +108,8 @@ struct IsoSurfaceLayer {
     // absolute value [1/s^2] when `absolute` is true.
     double level = 0.05;
     bool absolute = false;
-    glm::dvec3 color{0.40, 0.78, 0.74}; // display-linear
-    double opacity = 0.6;
+    glm::dvec3 color{0.62, 0.68, 0.76}; // display-linear
+    double opacity = 0.35;
 };
 
 struct ForceLayer {

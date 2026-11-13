@@ -103,7 +103,10 @@ target_sources(orrery_render PRIVATE
     aero/aero_internal.h
     aero/aero_isosurface.cpp
     aero/aero_streamlines.cpp
+    aero/aero_overlay.cpp
+    aero/aero_overlay.h
     aero/aero_surface.cpp
+    aero/aero_view.cpp
     include/orrery/render/aero_colormap.h
     include/orrery/render/aero_compute.h
     include/orrery/render/aero_field.h
