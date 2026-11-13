@@ -304,3 +304,31 @@ TEST_CASE("Numbers and changes in the Aero panels use glyphs the UI font has", "
     CHECK(missing(app::widgets::change(12, 0)).empty());
     ui.end_frame();
 }
+
+TEST_CASE("A panel row's control never covers its label", "[app][ui][aero]") {
+    // The Aero Results panel's "Steps per frame" and "Run to convergence"
+    // were cut by their controls, which start at a column sized for
+    // "Temperature".
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    render::UiFrameInput input;
+    input.width = 1600;
+    input.height = 900;
+    ui.begin_frame(input);
+    ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+    ImGui::SetNextWindowSize(ImVec2(360.0F, 300.0F));
+    ImGui::Begin("Rows");
+    for (const char* label : {"Speed", "Temperature", "Steps per frame", "Run to convergence"}) {
+        const float left = ImGui::GetCursorScreenPos().x;
+        ImGui::PushID(label);
+        app::widgets::row_label(label);
+        bool ticked = false;
+        (void)ImGui::Checkbox("##control", &ticked);
+        ImGui::PopID();
+        INFO(label);
+        CHECK(ImGui::GetItemRectMin().x >= left + ImGui::CalcTextSize(label).x);
+    }
+    ImGui::End();
+    ui.end_frame();
+}
