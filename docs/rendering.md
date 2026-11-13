@@ -60,7 +60,7 @@ All camera math is double precision and independent of OpenGL
 | Mode | State | Behaviour |
 |---|---|---|
 | Free | position, orientation, speed | 6-DoF flight; input moves along camera axes, yaw/pitch/roll turn about camera axes, zoom scales speed |
-| Orbit | target body or fixed focus, distance, yaw, pitch | eye at `focus + distance (cos p cos y, cos p sin y, sin p)`, looks at the focus, world +Z up |
+| Orbit | target body or fixed focus, distance, yaw, pitch, view shift | eye at `focus + distance (cos p cos y, cos p sin y, sin p)`, looks at the focus, world +Z up; a view shift (half view heights right and up) slides eye and look point in the view plane, so the focus is drawn off centre at any yaw, pitch and distance |
 | Chase | target body, distance, yaw, pitch | offset in the body's travel frame (forward = velocity, up = world +Z made orthogonal); yaw = pitch = 0 is directly behind; the frame turns smoothly with the velocity |
 | Surface | body, latitude, longitude, altitude, heading, pitch, speed | eye at `radius + altitude` on the body sphere in the body-fixed frame (`BodyFrame::orientation`), looks along a heading from local north; input walks along the heading as arc length on the sphere |
 
