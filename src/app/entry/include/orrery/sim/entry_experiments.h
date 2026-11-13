@@ -25,6 +25,11 @@ struct StoredEntry {
     std::shared_ptr<const EntryTrace> result;
 };
 
+// The planet and atmosphere of a setup as a record names them (the standard
+// atmosphere resolved to the planet's model); entry_config() builds its
+// atmosphere from this through scene::make_entry_atmosphere.
+[[nodiscard]] scene::EntryEnvironment entry_environment(const EntrySetup& setup);
+
 // The typed record of a setup and, when it has a result record, its run.
 // The periapsis form of the start is stored resolved (as the flight-path
 // angle the run used), and a sampled Cd table is marked in the vehicle name.

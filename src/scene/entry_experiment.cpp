@@ -334,8 +334,10 @@ void write_result(const EntryResultRecord& r, Experiment& out) {
     }
 }
 
-core::Result<std::shared_ptr<const atmo::IAtmosphere>, Error>
-make_atmosphere(const EntryEnvironment& env) {
+} // namespace
+
+core::Result<std::shared_ptr<const atmo::IAtmosphere>, std::string>
+make_entry_atmosphere(const EntryEnvironment& env) {
     switch (env.atmosphere) {
         case EntryAtmosphereModel::us76:
             return std::shared_ptr<const atmo::IAtmosphere>(
@@ -350,6 +352,11 @@ make_atmosphere(const EntryEnvironment& env) {
     p.surface_density = core::si::Density(env.surface_density_kg_m3);
     p.scale_height = core::si::Length(env.scale_height_m);
     p.temperature_k = env.temperature_k;
+    if (env.planet == "mars") {
+        // Mars' CO2 sets the speed of sound (the library default is air).
+        p.gas.gamma = atmo::MarsAtmosphere::gamma;
+        p.gas.gas_constant_j_kg_k = atmo::MarsAtmosphere::gas_constant;
+    }
     auto model = atmo::ExponentialAtmosphere::create(p);
     if (!model) {
         return core::failure("inputs.atmosphere: " + model.error().message);
@@ -357,6 +364,8 @@ make_atmosphere(const EntryEnvironment& env) {
     return std::shared_ptr<const atmo::IAtmosphere>(
         std::make_shared<const atmo::ExponentialAtmosphere>(model.value()));
 }
+
+namespace {
 
 core::Result<atmo::EntryVehicle, Error> make_vehicle(const EntryVehicleRecord& v) {
     if (v.cd_table_mach.size() != v.cd_table_cd.size()) {
@@ -736,7 +745,7 @@ core::Result<atmo::EntryConfig, std::string> to_entry_config(const EntryExperime
     }
     atmo::EntryConfig c;
     c.planet = env.planet == "mars" ? atmo::Planet::mars() : atmo::Planet::earth();
-    auto atmosphere = make_atmosphere(env);
+    auto atmosphere = make_entry_atmosphere(env);
     if (!atmosphere) {
         return core::failure(atmosphere.error());
     }

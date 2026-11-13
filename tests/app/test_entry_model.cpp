@@ -419,6 +419,50 @@ TEST_CASE("Every planet and atmosphere record runs with the atmosphere it names"
     }
 }
 
+TEST_CASE("Scene and workspace build the same physics from a Mars exponential record",
+          "[app][entry]") {
+    scene::EntryExperiment record;
+    record.environment.planet = "mars";
+    record.environment.atmosphere = scene::EntryAtmosphereModel::exponential;
+    record.environment.surface_density_kg_m3 = 0.0158;
+    record.environment.scale_height_m = 11'100.0;
+    record.environment.temperature_k = 210.0;
+    // A Cd that varies with Mach, so the speed of sound reaches the dynamics.
+    record.vehicle.cd_table_mach = {0.5, 2.0, 5.0, 10.0};
+    record.vehicle.cd_table_cd = {0.9, 1.3, 1.6, 1.7};
+    record.conditions.altitude_m = 125'000.0;
+    record.conditions.speed_m_s = 5'800.0;
+    record.conditions.flight_path_angle_deg = -15.5;
+    record.solver.max_duration_s = 900.0;
+    auto direct = scene::to_entry_config(record);
+    REQUIRE(direct.has_value());
+    auto stored = sim::entry_from_experiment(scene::to_experiment(record));
+    REQUIRE(stored.has_value());
+    auto app = sim::entry_config(stored.value().setup);
+    REQUIRE(app.has_value());
+    const atmo::IAtmosphere& a = *app.value().planet.atmosphere;
+    const atmo::IAtmosphere& d = *direct.value().planet.atmosphere;
+    // Mars' CO2 through both doors.
+    CHECK(a.gas().gamma == d.gas().gamma);
+    CHECK(a.gas().gas_constant_j_kg_k == d.gas().gas_constant_j_kg_k);
+    CHECK(d.gas().gas_constant_j_kg_k == atmo::MarsAtmosphere::gas_constant);
+    for (const double h : {0.0, 20'000.0, 60'000.0}) {
+        const atmo::AtmosphereSample sa = a.sample(core::si::Length(h));
+        const atmo::AtmosphereSample sd = d.sample(core::si::Length(h));
+        CHECK(sa.pressure == sd.pressure);
+        CHECK(sa.speed_of_sound == sd.speed_of_sound);
+    }
+    auto run_a = atmo::EntryExperiment::create(app.value());
+    auto run_d = atmo::EntryExperiment::create(direct.value());
+    REQUIRE(run_a.has_value());
+    REQUIRE(run_d.has_value());
+    REQUIRE(run_a.value().run().has_value());
+    REQUIRE(run_d.value().run().has_value());
+    CHECK(run_a.value().series().mach == run_d.value().series().mach);
+    CHECK(run_a.value().series().cd == run_d.value().series().cd);
+    CHECK(run_a.value().series().speed_m_s == run_d.value().series().speed_m_s);
+}
+
 TEST_CASE("Entry planet constants are the physics library's presets", "[app][entry]") {
     for (const sim::EntryPlanet planet : {sim::EntryPlanet::earth, sim::EntryPlanet::mars}) {
         const atmo::Planet preset =

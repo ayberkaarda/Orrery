@@ -11,35 +11,13 @@
 #include "orrery/scene/aero_experiment.h"
 #include "orrery/sim/aero_flow.h"
 #include "orrery/sim/aero_geometry.h"
+#include "orrery/sim/entry_experiments.h"
 
 namespace orrery::sim {
 
 namespace {
 
 constexpr double kDegree = std::numbers::pi / 180.0;
-// Specific gas constant and ratio of specific heats of Mars' CO2 (the
-// exponential model's gas on Mars; Earth uses the library's air default).
-constexpr double kMarsGasConstant = 192.1;
-constexpr double kMarsGamma = 1.29;
-
-core::Result<std::shared_ptr<const atmo::IAtmosphere>, std::string>
-exponential_atmosphere(const EntrySetup& s) {
-    atmo::ExponentialAtmosphereParameters p;
-    p.surface_density = core::si::Density{s.exponential_density_kg_m3};
-    p.scale_height = core::si::Length{s.exponential_scale_height_m};
-    p.temperature_k = s.exponential_temperature_k;
-    if (s.planet == EntryPlanet::mars) {
-        p.gas.gamma = kMarsGamma;
-        p.gas.gas_constant_j_kg_k = kMarsGasConstant;
-    }
-    auto made = atmo::ExponentialAtmosphere::create(p);
-    if (!made) {
-        return core::failure("exponential atmosphere: " + made.error().message);
-    }
-    std::shared_ptr<const atmo::IAtmosphere> shared =
-        std::make_shared<const atmo::ExponentialAtmosphere>(std::move(made).value());
-    return shared;
-}
 
 // Great-circle angle between two points given in degrees.
 double central_angle(double lat0, double lon0, double lat1, double lon1) noexcept {
@@ -203,13 +181,13 @@ core::Result<atmo::EntryConfig, std::string> entry_config(const EntrySetup& s) {
     }
     atmo::EntryConfig config;
     config.planet = s.planet == EntryPlanet::mars ? atmo::Planet::mars() : atmo::Planet::earth();
-    if (s.atmosphere == EntryAtmosphere::exponential) {
-        auto made = exponential_atmosphere(s);
-        if (!made) {
-            return core::failure(std::string(made.error()));
-        }
-        config.planet.atmosphere = std::move(made).value();
+    // Built where the record's configuration builds it, so a setup and its
+    // saved record fly in the same atmosphere.
+    auto atmosphere = scene::make_entry_atmosphere(entry_environment(s));
+    if (!atmosphere) {
+        return core::failure(std::string(atmosphere.error()));
     }
+    config.planet.atmosphere = std::move(atmosphere).value();
     std::vector<atmo::CdSample> samples;
     samples.reserve(s.cd_table.size());
     for (const MachCd& p : s.cd_table) {

@@ -46,14 +46,20 @@ EntrySummary recorded_summary(const scene::EntryResultRecord& r, const EntrySeri
 
 } // namespace
 
+scene::EntryEnvironment entry_environment(const EntrySetup& s) {
+    scene::EntryEnvironment env;
+    env.planet = std::string(to_string(s.planet));
+    env.atmosphere = atmosphere_model(s);
+    env.surface_density_kg_m3 = s.exponential_density_kg_m3;
+    env.scale_height_m = s.exponential_scale_height_m;
+    env.temperature_k = s.exponential_temperature_k;
+    return env;
+}
+
 scene::EntryExperiment entry_record(const EntrySetup& s, const EntryTrace* result) {
     scene::EntryExperiment r;
     r.name = s.name;
-    r.environment.planet = std::string(to_string(s.planet));
-    r.environment.atmosphere = atmosphere_model(s);
-    r.environment.surface_density_kg_m3 = s.exponential_density_kg_m3;
-    r.environment.scale_height_m = s.exponential_scale_height_m;
-    r.environment.temperature_k = s.exponential_temperature_k;
+    r.environment = entry_environment(s);
     r.vehicle.name =
         std::string(s.cd_source == CdSource::aero_solver ? kSampledVehicle : kTabulatedVehicle);
     r.vehicle.mass_kg = s.mass_kg;

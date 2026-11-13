@@ -272,7 +272,12 @@ experiment schema (domain `entry`, schema version 1, no change to the schema):
 Unknown keys and values no run can use are rejected with the offending key
 (`inputs.mass_kg: must be positive and finite`). `to_entry_config` builds the
 `atmo::EntryConfig` of a record and `entry_result` the result record of a
-finished run. Fixture: `tests/scene/fixtures/entry_apollo.json`.
+finished run. `make_entry_atmosphere` is the one place that builds a record's
+atmosphere, for `to_entry_config` and the Entry workspace alike; the
+exponential model takes the planet's gas (Earth: the library's air default;
+Mars: CO2 with `MarsAtmosphere`'s gamma 1.29 and R 192.1 J/(kg K)), so the
+same record has the same speed of sound, Mach number and Cd through either
+door. Fixture: `tests/scene/fixtures/entry_apollo.json`.
 
 ## Approximations
 

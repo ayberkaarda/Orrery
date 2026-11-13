@@ -1,11 +1,13 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
+#include "orrery/atmo/atmosphere.h"
 #include "orrery/atmo/drag.h"
 #include "orrery/atmo/entry.h"
 #include "orrery/core/result.h"
@@ -147,6 +149,14 @@ entry_from_experiment(const Experiment& experiment);
 [[nodiscard]] core::Result<EntryExperiment, std::string>
 parse_entry_experiment(std::string_view json);
 [[nodiscard]] std::string save_entry_experiment(const EntryExperiment& experiment);
+
+// The atmosphere model of an environment: US76, the Mars model, or the
+// exponential model with the gas of the planet (Earth air, the library
+// default; Mars' CO2, gamma and R of atmo::MarsAtmosphere). The one place
+// that builds it, for records (to_entry_config) and the Entry workspace
+// alike. Fails with a message naming inputs.atmosphere.
+[[nodiscard]] core::Result<std::shared_ptr<const atmo::IAtmosphere>, std::string>
+make_entry_atmosphere(const EntryEnvironment& environment);
 
 // The simulation configuration of a record (planet preset, atmosphere model,
 // Cd table, initial state, settings). Fails with a message naming the key.
