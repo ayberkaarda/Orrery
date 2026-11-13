@@ -43,6 +43,23 @@ struct MachCd {
     friend bool operator==(const MachCd&, const MachCd&) = default;
 };
 
+// Integrator of the gravity part of the physics library's split step.
+enum class EntryIntegrator : std::uint8_t { ias15, yoshida4, leapfrog_kdk };
+
+// Integration settings of a run (docs/atmosphere.md, "Integration"); the
+// defaults are the library's.
+struct EntryIntegration {
+    EntryIntegrator integrator = EntryIntegrator::ias15;
+    double tolerance = 1.0e-9; // IAS15
+    double time_step_s = 0.5;  // inside the atmosphere; also the series spacing
+    double max_coast_step_s = 30.0;
+    bool stop_on_skip_out = true;
+    // Entry interface altitude; nullopt uses the planet's.
+    std::optional<double> interface_altitude_m;
+
+    friend bool operator==(const EntryIntegration&, const EntryIntegration&) = default;
+};
+
 struct EntrySetup {
     std::string name = "Apollo-like entry";
     EntryPlanet planet = EntryPlanet::earth;
@@ -50,6 +67,7 @@ struct EntrySetup {
     // Exponential model: rho = rho0 exp(-h / H).
     double exponential_density_kg_m3 = 1.225;
     double exponential_scale_height_m = 7200.0;
+    double exponential_temperature_k = 288.15; // pressure and speed of sound
     // Probe (constant mass, no lift, heat shield forward: ADR-012).
     double mass_kg = 5500.0;
     double reference_area_m2 = 12.02;
@@ -59,7 +77,7 @@ struct EntrySetup {
     // Initial state.
     EntryStart start = EntryStart::state;
     double altitude_m = 121'920.0; // 400 000 ft entry interface
-    double speed_m_s = 7'800.0;    // planet-relative
+    double speed_m_s = 7'800.0;    // inertial, planet-centred
     double flight_path_angle_deg = -2.0;
     double periapsis_altitude_m = 40'000.0;
     double latitude_deg = 0.0;
@@ -67,6 +85,10 @@ struct EntrySetup {
     double heading_deg = 90.0; // from north towards east
     // Integration stops here when the probe neither lands nor leaves.
     double max_time_s = 3'600.0;
+    // The air turns with the planet (airspeed = v - omega x r) instead of
+    // resting in the inertial frame.
+    bool co_rotating_atmosphere = false;
+    EntryIntegration integration;
 
     friend bool operator==(const EntrySetup&, const EntrySetup&) = default;
 };
@@ -138,6 +160,8 @@ struct EntrySummary {
 // Index of the sample nearest to `t` (nullopt when empty).
 [[nodiscard]] std::optional<std::size_t> nearest_index(const std::vector<double>& time_s, double t);
 
+// The values of atmo::Planet::earth() and mars() the panels and the view need
+// every frame (a test keeps them equal).
 struct PlanetConstants {
     std::string_view name;
     double radius_m = 0.0;

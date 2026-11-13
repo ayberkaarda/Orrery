@@ -1,253 +1,252 @@
 #include "orrery/sim/entry_backend.h"
 
 #include <algorithm>
-#include <array>
 #include <cmath>
 #include <numbers>
 #include <stdexcept>
 #include <utility>
 
+#include "orrery/atmo/aero_table.h"
+#include "orrery/atmo/atmosphere.h"
 #include "orrery/scene/aero_experiment.h"
 #include "orrery/sim/aero_flow.h"
 #include "orrery/sim/aero_geometry.h"
-#include "orrery/sim/aero_solve.h"
 
 namespace orrery::sim {
 
 namespace {
 
-// Interim stepper used until the orrery_atmo entry API is wired in: a
-// three-degree-of-freedom point mass over a spherical, non-rotating planet
-// (RK4, fixed 0.05 s step), drag 0.5 rho v^2 Cd(M) A, a layered exponential
-// fit of the standard atmospheres, and the Sutton-Graves stagnation heat flux.
-
 constexpr double kDegree = std::numbers::pi / 180.0;
-constexpr double kG0 = 9.80665;
-constexpr double kStep = 0.05;
+// Specific gas constant and ratio of specific heats of Mars' CO2 (the
+// exponential model's gas on Mars; Earth uses the library's air default).
+constexpr double kMarsGasConstant = 192.1;
+constexpr double kMarsGamma = 1.29;
 
-struct Vec {
-    double x = 0.0;
-    double y = 0.0;
-    double z = 0.0;
-};
-Vec operator+(Vec a, Vec b) {
-    return {a.x + b.x, a.y + b.y, a.z + b.z};
-}
-Vec operator*(double s, Vec a) {
-    return {s * a.x, s * a.y, s * a.z};
-}
-double dot(Vec a, Vec b) {
-    return a.x * b.x + a.y * b.y + a.z * b.z;
-}
-double norm(Vec a) {
-    return std::sqrt(dot(a, a));
-}
-
-struct Air {
-    double density = 0.0;
-    double sound_speed = 1.0;
-};
-
-// Base altitude [m], density [kg/m^3], scale height [m], temperature [K].
-struct Layer {
-    double base;
-    double density;
-    double scale_height;
-    double temperature;
-};
-constexpr std::array<Layer, 8> kEarth{{
-    {0.0, 1.225, 8'440.0, 288.15},
-    {11'000.0, 0.3639, 6'340.0, 216.65},
-    {20'000.0, 0.0880, 6'680.0, 216.65},
-    {32'000.0, 0.01322, 7'190.0, 228.65},
-    {47'000.0, 0.001427, 7'800.0, 270.65},
-    {51'000.0, 8.6e-4, 7'260.0, 270.65},
-    {71'000.0, 6.42e-5, 5'800.0, 214.65},
-    {86'000.0, 6.96e-6, 6'550.0, 186.87},
-}};
-
-Air air(const EntrySetup& s, double h) {
-    h = std::max(h, 0.0);
-    if (s.atmosphere == EntryAtmosphere::exponential) {
-        const double t = s.planet == EntryPlanet::mars ? 210.0 : 250.0;
-        const double gas = s.planet == EntryPlanet::mars ? 1.29 * 191.8 : 1.4 * 287.05;
-        return {s.exponential_density_kg_m3 * std::exp(-h / s.exponential_scale_height_m),
-                std::sqrt(gas * t)};
-    }
+core::Result<std::shared_ptr<const atmo::IAtmosphere>, std::string>
+exponential_atmosphere(const EntrySetup& s) {
+    atmo::ExponentialAtmosphereParameters p;
+    p.surface_density = core::si::Density{s.exponential_density_kg_m3};
+    p.scale_height = core::si::Length{s.exponential_scale_height_m};
+    p.temperature_k = s.exponential_temperature_k;
     if (s.planet == EntryPlanet::mars) {
-        return {0.020 * std::exp(-h / 11'100.0), std::sqrt(1.29 * 191.8 * 210.0)};
+        p.gas.gamma = kMarsGamma;
+        p.gas.gas_constant_j_kg_k = kMarsGasConstant;
     }
-    const Layer* layer = kEarth.data();
-    for (const Layer& l : kEarth) {
-        if (h >= l.base) {
-            layer = &l;
-        }
+    auto made = atmo::ExponentialAtmosphere::create(p);
+    if (!made) {
+        return core::failure("exponential atmosphere: " + made.error().message);
     }
-    return {layer->density * std::exp(-(h - layer->base) / layer->scale_height),
-            std::sqrt(1.4 * 287.05 * layer->temperature)};
+    std::shared_ptr<const atmo::IAtmosphere> shared =
+        std::make_shared<const atmo::ExponentialAtmosphere>(std::move(made).value());
+    return shared;
 }
 
-double cd_at(const std::vector<MachCd>& table, double mach) {
-    if (mach <= table.front().mach) {
-        return table.front().cd;
-    }
-    for (std::size_t i = 1; i < table.size(); ++i) {
-        if (mach <= table[i].mach) {
-            const double f = (mach - table[i - 1].mach) / (table[i].mach - table[i - 1].mach);
-            return table[i - 1].cd + f * (table[i].cd - table[i - 1].cd);
-        }
-    }
-    return table.back().cd;
+// Great-circle angle between two points given in degrees.
+double central_angle(double lat0, double lon0, double lat1, double lon1) noexcept {
+    const double a = lat0 * kDegree;
+    const double b = lat1 * kDegree;
+    const double dl = (lon1 - lon0) * kDegree;
+    const double c = std::sin(a) * std::sin(b) + std::cos(a) * std::cos(b) * std::cos(dl);
+    return std::acos(std::clamp(c, -1.0, 1.0));
 }
 
-class InterimStepper final : public EntryStepper {
+// Appends rows [from, size) of the library's series.
+void append_rows(const atmo::EntrySeries& in, std::size_t from, double radius, EntrySeries& out) {
+    for (std::size_t i = from; i < in.size(); ++i) {
+        EntrySample s;
+        s.time_s = in.time_s[i];
+        s.altitude_m = in.altitude_m[i];
+        s.speed_m_s = in.speed_m_s[i];
+        s.flight_path_angle_deg = in.flight_path_angle_deg[i];
+        s.g_load = in.g_load[i];
+        s.dynamic_pressure_pa = in.dynamic_pressure_pa[i];
+        s.heat_flux_w_m2 = in.heat_flux_w_m2[i];
+        s.mach = in.mach[i];
+        s.latitude_deg = in.latitude_deg[i];
+        s.longitude_deg = in.longitude_deg[i];
+        s.downrange_m = in.size() > 0 ? radius * central_angle(in.latitude_deg.front(),
+                                                               in.longitude_deg.front(),
+                                                               s.latitude_deg, s.longitude_deg)
+                                      : 0.0;
+        out.push(s);
+    }
+}
+
+// True when every column the workspace reads has the same length.
+bool usable(const atmo::EntrySeries& s) noexcept {
+    const std::size_t n = s.time_s.size();
+    return s.altitude_m.size() == n && s.speed_m_s.size() == n &&
+           s.flight_path_angle_deg.size() == n && s.g_load.size() == n &&
+           s.dynamic_pressure_pa.size() == n && s.heat_flux_w_m2.size() == n &&
+           s.mach.size() == n && s.latitude_deg.size() == n && s.longitude_deg.size() == n;
+}
+
+void apply_integration(const EntrySetup& s, atmo::EntryConfig& config) {
+    const EntryIntegration& i = s.integration;
+    config.frame = s.co_rotating_atmosphere ? atmo::AtmosphereFrame::co_rotating
+                                            : atmo::AtmosphereFrame::inertial;
+    config.integrator = to_atmo(i.integrator);
+    config.ias15_tolerance = i.tolerance;
+    config.time_step = core::si::Time{i.time_step_s};
+    config.max_coast_step = core::si::Time{i.max_coast_step_s};
+    config.stop_on_skip_out = i.stop_on_skip_out;
+    if (i.interface_altitude_m) {
+        config.planet.entry_interface_altitude = core::si::Length{*i.interface_altitude_m};
+    }
+}
+
+void read_integration(const atmo::EntryConfig& config, EntrySetup& s) {
+    EntryIntegration& i = s.integration;
+    s.co_rotating_atmosphere = config.frame == atmo::AtmosphereFrame::co_rotating;
+    i.integrator = from_atmo(config.integrator);
+    i.tolerance = config.ias15_tolerance;
+    i.time_step_s = config.time_step.value();
+    i.max_coast_step_s = config.max_coast_step.value();
+    i.stop_on_skip_out = config.stop_on_skip_out;
+}
+class AtmoStepper final : public EntryStepper {
 public:
-    explicit InterimStepper(EntrySetup setup, double gamma)
-        : setup_(std::move(setup)), planet_(planet_constants(setup_.planet)) {
-        const double lat = setup_.latitude_deg * kDegree;
-        const double lon = setup_.longitude_deg * kDegree;
-        const double heading = setup_.heading_deg * kDegree;
-        const Vec up{std::cos(lat) * std::cos(lon), std::cos(lat) * std::sin(lon), std::sin(lat)};
-        const Vec east{-std::sin(lon), std::cos(lon), 0.0};
-        const Vec north{-std::sin(lat) * std::cos(lon), -std::sin(lat) * std::sin(lon),
-                        std::cos(lat)};
-        start_dir_ = up;
-        r_ = (planet_.radius_m + setup_.altitude_m) * up;
-        const double v = setup_.speed_m_s;
-        const double horizontal = v * std::cos(gamma * kDegree);
-        v_ = horizontal * std::cos(heading) * north + horizontal * std::sin(heading) * east +
-             v * std::sin(gamma * kDegree) * up;
-        entered_ = setup_.altitude_m <= planet_.atmosphere_top_m;
-    }
+    AtmoStepper(atmo::EntryExperiment run, double radius) : run_(std::move(run)), radius_(radius) {}
 
     bool advance(double seconds, EntrySeries& out) override {
-        if (!recorded_first_) {
-            record(out, sample());
-            recorded_first_ = true;
-        }
-        const double stop = std::min(t_ + std::max(seconds, 0.0), setup_.max_time_s);
-        while (outcome_ == EntryOutcome::none && t_ < stop - 1e-12) {
-            step(std::min(kStep, stop - t_));
-            if (t_ >= next_sample_ - 1e-9) {
-                record(out, sample());
-                next_sample_ += kEntrySampleInterval;
+        if (!run_.finished()) {
+            auto advanced = run_.advance(core::si::Time{std::max(seconds, 0.0)});
+            if (!advanced) {
+                throw std::runtime_error(advanced.error().message);
+            }
+            if (advanced.value() == atmo::EntryOutcome::failed) {
+                throw std::runtime_error("the integrator failed");
             }
         }
-        if (outcome_ == EntryOutcome::none && t_ >= setup_.max_time_s - 1e-9) {
-            outcome_ = EntryOutcome::orbiting;
+        const atmo::EntrySeries& series = run_.series();
+        if (!usable(series)) {
+            throw std::runtime_error("the entry series have different lengths");
         }
-        if (outcome_ != EntryOutcome::none && (out.empty() || out.time_s.back() < t_)) {
-            record(out, sample());
-        }
-        return outcome_ != EntryOutcome::none;
+        append_rows(series, copied_, radius_, out);
+        copied_ = series.size();
+        return run_.finished();
     }
 
-    [[nodiscard]] EntryOutcome outcome() const noexcept override { return outcome_; }
-    [[nodiscard]] double time_s() const noexcept override { return t_; }
+    [[nodiscard]] EntryOutcome outcome() const noexcept override {
+        return outcome_from(run_.outcome());
+    }
+    [[nodiscard]] double time_s() const noexcept override { return run_.time().value(); }
+    [[nodiscard]] std::shared_ptr<const scene::EntryResultRecord> record() const override {
+        return std::make_shared<const scene::EntryResultRecord>(scene::entry_result(run_));
+    }
 
 private:
-    [[nodiscard]] Vec acceleration(Vec r, Vec v, double* drag_out = nullptr) const {
-        const double radius = norm(r);
-        const Vec gravity = (-planet_.mu_m3_s2 / (radius * radius * radius)) * r;
-        const Air a = air(setup_, radius - planet_.radius_m);
-        const double speed = norm(v);
-        const double cd = cd_at(setup_.cd_table, speed / a.sound_speed);
-        const double drag =
-            0.5 * a.density * speed * speed * cd * setup_.reference_area_m2 / setup_.mass_kg;
-        if (drag_out != nullptr) {
-            *drag_out = drag;
-        }
-        return speed > 0.0 ? gravity + (-drag / speed) * v : gravity;
-    }
-
-    void step(double h) {
-        const Vec k1v = acceleration(r_, v_);
-        const Vec k1r = v_;
-        const Vec k2v = acceleration(r_ + (0.5 * h) * k1r, v_ + (0.5 * h) * k1v);
-        const Vec k2r = v_ + (0.5 * h) * k1v;
-        const Vec k3v = acceleration(r_ + (0.5 * h) * k2r, v_ + (0.5 * h) * k2v);
-        const Vec k3r = v_ + (0.5 * h) * k2v;
-        const Vec k4v = acceleration(r_ + h * k3r, v_ + h * k3v);
-        const Vec k4r = v_ + h * k3v;
-        const Vec r_next = r_ + (h / 6.0) * (k1r + 2.0 * k2r + 2.0 * k3r + k4r);
-        const Vec v_next = v_ + (h / 6.0) * (k1v + 2.0 * k2v + 2.0 * k3v + k4v);
-        if (!std::isfinite(norm(r_next)) || !std::isfinite(norm(v_next))) {
-            throw std::runtime_error("the integration produced a non-finite state");
-        }
-        const double altitude = norm(r_next) - planet_.radius_m;
-        if (altitude <= 0.0) {
-            // Land on the surface: shorten the last step linearly.
-            const double before = norm(r_) - planet_.radius_m;
-            const double f = before > altitude ? before / (before - altitude) : 1.0;
-            r_ = r_ + f * (r_next + (-1.0) * r_);
-            r_ = (planet_.radius_m / norm(r_)) * r_;
-            v_ = v_ + f * (v_next + (-1.0) * v_);
-            t_ += f * h;
-            outcome_ = EntryOutcome::landed;
-            return;
-        }
-        r_ = r_next;
-        v_ = v_next;
-        t_ += h;
-        entered_ = entered_ || altitude < planet_.atmosphere_top_m;
-        if (entered_ && altitude > planet_.atmosphere_top_m && dot(r_, v_) > 0.0) {
-            outcome_ = EntryOutcome::skip_out;
-        }
-    }
-
-    [[nodiscard]] EntrySample sample() const {
-        EntrySample s;
-        s.time_s = t_;
-        const double radius = norm(r_);
-        s.altitude_m = std::max(radius - planet_.radius_m, 0.0);
-        s.speed_m_s = norm(v_);
-        s.flight_path_angle_deg =
-            s.speed_m_s > 0.0
-                ? std::asin(std::clamp(dot(r_, v_) / (radius * s.speed_m_s), -1.0, 1.0)) / kDegree
-                : 0.0;
-        double drag = 0.0;
-        (void)acceleration(r_, v_, &drag);
-        s.g_load = drag / kG0;
-        const Air a = air(setup_, s.altitude_m);
-        s.dynamic_pressure_pa = 0.5 * a.density * s.speed_m_s * s.speed_m_s;
-        const double k = setup_.planet == EntryPlanet::mars ? 1.9027e-4 : 1.7415e-4;
-        s.heat_flux_w_m2 = k * std::sqrt(a.density / setup_.nose_radius_m) * s.speed_m_s *
-                           s.speed_m_s * s.speed_m_s;
-        s.mach = s.speed_m_s / a.sound_speed;
-        s.latitude_deg = std::asin(std::clamp(r_.z / radius, -1.0, 1.0)) / kDegree;
-        s.longitude_deg = std::atan2(r_.y, r_.x) / kDegree;
-        const double c = std::clamp(dot(start_dir_, (1.0 / radius) * r_), -1.0, 1.0);
-        s.downrange_m = std::acos(c) * planet_.radius_m;
-        return s;
-    }
-
-    static void record(EntrySeries& out, const EntrySample& s) { out.push(s); }
-
-    EntrySetup setup_;
-    PlanetConstants planet_;
-    Vec r_;
-    Vec v_;
-    Vec start_dir_;
-    double t_ = 0.0;
-    double next_sample_ = kEntrySampleInterval;
-    EntryOutcome outcome_ = EntryOutcome::none;
-    bool entered_ = false;
-    bool recorded_first_ = false;
+    atmo::EntryExperiment run_;
+    double radius_ = 0.0;
+    std::size_t copied_ = 0;
 };
 
 } // namespace
 
-core::Result<std::unique_ptr<EntryStepper>, std::string>
-make_entry_stepper(const EntrySetup& setup) {
-    const std::vector<std::string> errors = setup_errors(setup);
-    if (!errors.empty()) {
+atmo::EntryIntegrator to_atmo(EntryIntegrator integrator) noexcept {
+    switch (integrator) {
+        case EntryIntegrator::yoshida4:
+            return atmo::EntryIntegrator::yoshida4;
+        case EntryIntegrator::leapfrog_kdk:
+            return atmo::EntryIntegrator::leapfrog_kdk;
+        case EntryIntegrator::ias15:
+            return atmo::EntryIntegrator::ias15;
+    }
+    return atmo::EntryIntegrator::ias15;
+}
+
+EntryIntegrator from_atmo(atmo::EntryIntegrator integrator) noexcept {
+    switch (integrator) {
+        case atmo::EntryIntegrator::yoshida4:
+            return EntryIntegrator::yoshida4;
+        case atmo::EntryIntegrator::leapfrog_kdk:
+            return EntryIntegrator::leapfrog_kdk;
+        case atmo::EntryIntegrator::ias15:
+            return EntryIntegrator::ias15;
+    }
+    return EntryIntegrator::ias15;
+}
+
+EntryOutcome outcome_from(atmo::EntryOutcome outcome) noexcept {
+    switch (outcome) {
+        case atmo::EntryOutcome::impact:
+            return EntryOutcome::landed;
+        case atmo::EntryOutcome::skip_out:
+            return EntryOutcome::skip_out;
+        case atmo::EntryOutcome::time_limit:
+            return EntryOutcome::orbiting;
+        case atmo::EntryOutcome::running:
+        case atmo::EntryOutcome::failed:
+            return EntryOutcome::none;
+    }
+    return EntryOutcome::none;
+}
+
+EntrySeries series_from(const atmo::EntrySeries& series, double planet_radius_m) {
+    EntrySeries out;
+    if (!usable(series)) {
+        return out;
+    }
+    out.reserve(series.size());
+    append_rows(series, 0, planet_radius_m, out);
+    return out;
+}
+
+core::Result<atmo::EntryConfig, std::string> entry_config(const EntrySetup& s) {
+    if (const std::vector<std::string> errors = setup_errors(s); !errors.empty()) {
         return core::failure(errors.front());
     }
-    const std::optional<double> gamma = effective_flight_path_angle(setup);
+    const std::optional<double> gamma = effective_flight_path_angle(s);
     if (!gamma) {
         return core::failure(std::string("no flight-path angle for this start"));
     }
-    std::unique_ptr<EntryStepper> stepper = std::make_unique<InterimStepper>(setup, *gamma);
+    atmo::EntryConfig config;
+    config.planet = s.planet == EntryPlanet::mars ? atmo::Planet::mars() : atmo::Planet::earth();
+    if (s.atmosphere == EntryAtmosphere::exponential) {
+        auto made = exponential_atmosphere(s);
+        if (!made) {
+            return core::failure(std::string(made.error()));
+        }
+        config.planet.atmosphere = std::move(made).value();
+    }
+    std::vector<atmo::CdSample> samples;
+    samples.reserve(s.cd_table.size());
+    for (const MachCd& p : s.cd_table) {
+        samples.push_back({p.mach, p.cd});
+    }
+    auto table =
+        atmo::AeroCoefficientTable::create(std::move(samples), core::si::Area{s.reference_area_m2});
+    if (!table) {
+        return core::failure("Cd(Mach) table: " + table.error().message);
+    }
+    config.vehicle.name = s.name;
+    config.vehicle.mass = core::si::Mass{s.mass_kg};
+    config.vehicle.aero = std::move(table).value();
+    config.vehicle.nose_radius = core::si::Length{s.nose_radius_m};
+    config.initial.altitude = core::si::Length{s.altitude_m};
+    config.initial.speed = core::si::Velocity{s.speed_m_s};
+    config.initial.flight_path_angle = core::Angle::from_degrees(*gamma);
+    config.initial.latitude = core::Angle::from_degrees(s.latitude_deg);
+    config.initial.longitude = core::Angle::from_degrees(s.longitude_deg);
+    config.initial.heading = core::Angle::from_degrees(s.heading_deg);
+    config.max_duration = core::si::Time{s.max_time_s};
+    apply_integration(s, config);
+    return config;
+}
+
+core::Result<std::unique_ptr<EntryStepper>, std::string>
+make_entry_stepper(const EntrySetup& setup) {
+    auto config = entry_config(setup);
+    if (!config) {
+        return core::failure(std::string(config.error()));
+    }
+    const double radius = config.value().planet.radius.value();
+    auto run = atmo::EntryExperiment::create(std::move(config).value());
+    if (!run) {
+        return core::failure(run.error().message);
+    }
+    std::unique_ptr<EntryStepper> stepper =
+        std::make_unique<AtmoStepper>(std::move(run).value(), radius);
     return stepper;
 }
 
@@ -265,9 +264,75 @@ core::Result<EntryRunResult, std::string> run_entry(const EntrySetup& setup) {
         return core::failure(std::string(error.what()));
     }
     result.summary = summarize(result.series, stepper.outcome());
+    result.record = stepper.record();
     return result;
 }
 
+EntrySetup setup_from_config(const atmo::EntryConfig& config, std::string name) {
+    EntrySetup s;
+    s.name = std::move(name);
+    s.planet = config.planet.name == "mars" ? EntryPlanet::mars : EntryPlanet::earth;
+    s.atmosphere = EntryAtmosphere::standard;
+    s.mass_kg = config.vehicle.mass.value();
+    s.reference_area_m2 = config.vehicle.aero.reference_area().value();
+    s.nose_radius_m = config.vehicle.nose_radius.value();
+    s.cd_table.clear();
+    for (const atmo::CdSample& sample : config.vehicle.aero.samples()) {
+        s.cd_table.push_back({sample.mach, sample.cd});
+    }
+    s.cd_source = CdSource::table;
+    s.start = EntryStart::state;
+    s.altitude_m = config.initial.altitude.value();
+    s.speed_m_s = config.initial.speed.value();
+    s.flight_path_angle_deg = config.initial.flight_path_angle.degrees();
+    s.latitude_deg = config.initial.latitude.degrees();
+    s.longitude_deg = config.initial.longitude.degrees();
+    s.heading_deg = config.initial.heading.degrees();
+    s.max_time_s = config.max_duration.value();
+    read_integration(config, s);
+    return s;
+}
+
+std::vector<EntryPreset> entry_presets() {
+    // The physics library's scenarios (docs/atmosphere.md, "Scenarios"): the
+    // ballistic Apollo-like lunar return and its skip-out variant.
+    // Placed near Apollo 11's entry interface over the western Pacific,
+    // heading north-east; the air rests in the inertial frame, so the place
+    // changes the ground track only, not the dynamics.
+    const auto pacific = [](EntrySetup s) {
+        s.latitude_deg = -3.2;
+        s.longitude_deg = 171.6;
+        s.heading_deg = 52.0;
+        return s;
+    };
+    const EntrySetup apollo =
+        pacific(setup_from_config(atmo::apollo_like_entry(), "Apollo-like entry"));
+    const EntrySetup skip =
+        pacific(setup_from_config(atmo::skip_out_entry(), "Grazing lunar return (skip-out)"));
+    EntrySetup leo = apollo;
+    leo.name = "Low Earth orbit return";
+    leo.speed_m_s = 7'800.0;
+    leo.flight_path_angle_deg = -1.5;
+    // Mars Science Laboratory: 4.5 m 70-degree sphere-cone, 1.125 m nose
+    // radius, about 3.3 t, 5.8 km/s at the entry interface.
+    EntrySetup mars;
+    mars.name = "Mars entry (MSL-like)";
+    mars.planet = EntryPlanet::mars;
+    mars.mass_kg = 3'300.0;
+    mars.reference_area_m2 = 15.9;
+    mars.nose_radius_m = 1.125;
+    mars.cd_table = {{0.5, 1.00}, {1.5, 1.40}, {3.0, 1.60}, {10.0, 1.68}, {30.0, 1.68}};
+    mars.altitude_m = 125'000.0;
+    mars.speed_m_s = 5'800.0;
+    mars.flight_path_angle_deg = -15.5;
+    mars.latitude_deg = -4.6;
+    mars.longitude_deg = 137.4;
+    mars.heading_deg = 100.0;
+    return {{"Apollo-like lunar return", apollo},
+            {"Grazing lunar return (skip-out)", skip},
+            {"Low Earth orbit return", leo},
+            {"Mars entry (MSL-like)", mars}};
+}
 std::string_view cd_body_name(CdBody body) noexcept {
     switch (body) {
         case CdBody::apollo_capsule:
@@ -284,51 +349,35 @@ core::Result<CdSamples, std::string> sample_cd_table(const CdSampling& sampling)
     if (!(sampling.reference_area_m2 > 0.0) || !std::isfinite(sampling.reference_area_m2)) {
         return core::failure(std::string("the reference area must be positive"));
     }
-    if (sampling.mach.empty()) {
-        return core::failure(std::string("no Mach numbers to sample"));
-    }
-    scene::AeroExperiment experiment;
-    experiment.geometry.source = scene::GeometrySource::primitive;
-    experiment.geometry.shape =
+    scene::GeometryRef ref;
+    ref.source = scene::GeometrySource::primitive;
+    ref.shape =
         sampling.body == CdBody::sphere ? scene::AeroShape::sphere : scene::AeroShape::capsule;
-    experiment.geometry.capsule = sampling.body == CdBody::orion_capsule ? "orion" : "apollo";
-    experiment.geometry.dimensions.diameter_m =
-        std::sqrt(4.0 * sampling.reference_area_m2 / std::numbers::pi);
-    experiment.solver.solver = aero::SolverKind::newtonian;
-    experiment.solver.reference_area = geom::ReferenceAreaKind::frontal;
-    auto built = build_primitive(experiment.geometry);
+    ref.capsule = sampling.body == CdBody::orion_capsule ? "orion" : "apollo";
+    ref.dimensions.diameter_m = std::sqrt(4.0 * sampling.reference_area_m2 / std::numbers::pi);
+    auto built = build_primitive(ref);
     if (!built) {
         return core::failure(built.error().title + ": " + built.error().detail);
     }
-    AeroRunSpec spec;
-    spec.geometry = std::make_shared<const PreparedGeometry>(std::move(built).value());
+    scene::AeroSolverSettings settings;
+    settings.reference_area = geom::ReferenceAreaKind::frontal;
+    atmo::CdSamplingRequest request;
+    request.geometry = to_aero_geometry(built.value(), settings);
+    request.solver_override = aero::SolverKind::newtonian;
+    // Cold upper-atmosphere air: Newtonian Cd depends on Mach only.
+    request.freestream.temperature = 250.0;
+    request.freestream.density = 1.0e-3;
+    auto sampled = atmo::sample_cd_table(request, atmo::default_aero_solver_factory());
+    if (!sampled) {
+        return core::failure(sampled.error().message);
+    }
     CdSamples samples;
-    samples.label = spec.geometry->label;
-    // Cold upper-atmosphere air; Newtonian Cd depends on Mach only.
-    constexpr double kTemperature = 250.0;
-    constexpr double kGamma = 1.4;
-    constexpr double kGas = 287.05;
-    const double sound = std::sqrt(kGamma * kGas * kTemperature);
-    std::vector<double> mach = sampling.mach;
-    std::sort(mach.begin(), mach.end());
-    mach.erase(std::unique(mach.begin(), mach.end()), mach.end());
-    for (const double m : mach) {
-        if (!(m > 0.0) || !std::isfinite(m)) {
-            return core::failure(std::string("Mach numbers must be positive"));
-        }
-        spec.experiment = experiment;
-        spec.experiment.conditions.speed_m_s = m * sound;
-        spec.experiment.conditions.temperature_k = kTemperature;
-        spec.experiment.conditions.density_kg_m3 = 1.0e-3;
-        spec.experiment.conditions.angle_of_attack_deg = 0.0;
-        auto solved = solve(spec);
-        if (!solved) {
-            return core::failure("Mach " + format_significant(m, 3) + ": " + solved.error());
-        }
-        samples.table.push_back({m, solved.value().result.cd});
-        if (m < 5.0) {
-            samples.warnings.push_back("Mach " + format_significant(m, 3) +
-                                       ": below Mach 5, outside Newtonian theory's envelope");
+    samples.label = built.value().label;
+    for (const atmo::CdSamplingPoint& point : sampled.value().points) {
+        samples.table.push_back({point.mach, point.cd});
+        for (const std::string& warning : point.warnings) {
+            samples.warnings.push_back("Mach " + format_significant(point.mach, 3) + ": " +
+                                       warning);
         }
     }
     return samples;

@@ -219,6 +219,10 @@ void EntryRunner::publish(bool with_trace) {
         auto trace = std::make_shared<EntryTrace>();
         trace->series = run_->series;
         trace->summary = summarize(trace->series, run_->stepper->outcome());
+        // The full result record once the run has ended (what Save writes).
+        if (status_.state == EntryRunState::finished || status_.state == EntryRunState::stopped) {
+            trace->record = run_->stepper->record();
+        }
         published_.trace = std::move(trace);
         ++published_.revision;
     }

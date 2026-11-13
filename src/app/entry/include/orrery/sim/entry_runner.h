@@ -66,12 +66,6 @@ struct EntryRunStatus {
     friend bool operator==(const EntryRunStatus&, const EntryRunStatus&) = default;
 };
 
-// An immutable copy of the run so far.
-struct EntryTrace {
-    EntrySeries series;
-    EntrySummary summary;
-};
-
 struct EntryProgress {
     EntryRunStatus status;
     std::shared_ptr<const EntrySetup> setup; // of the run (null before any)
