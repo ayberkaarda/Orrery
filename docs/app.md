@@ -403,7 +403,9 @@ No failure is silent (spec 8):
   with the version to `<data dir>/crash.log` (creating the directory), says
   where on stderr, then aborts. An exception that reaches `main` is printed
   as `orrery_app: unexpected error: <what>`, also appended to the crash log,
-  and ends with exit code 1.
+  and ends with exit code 1 (`run_guard.h`); the next line names the log,
+  or says `orrery_app: cannot write the crash report to <log>` when it
+  cannot be written (tested with a log whose parent is a regular file).
 - The physics, aero and entry solver threads catch every exception, of any
   type, per tick and report it in their status (the simulation pauses).
   This matters beyond tidiness: the MSVC runtime keeps `std::terminate`

@@ -1,6 +1,4 @@
 #include <cstddef>
-#include <cstdio>
-#include <exception>
 #include <filesystem>
 #include <iostream>
 #include <optional>
@@ -216,37 +214,14 @@ int dispatch(const orrery::app::CliOptions& options, const std::filesystem::path
     return app::kExitFailure;
 }
 
-// An exception that reached main is recorded in the crash log as well, like
-// a termination (docs/app.md, "Error surface"). Never throws.
-void report_to_crash_log(const char* what) noexcept {
-    try {
-        const std::string reason = std::string("unexpected error: ") + what;
-        (void)orrery::app::append_crash_log(
-            orrery::app::default_crash_log(),
-            orrery::app::crash_log_entry(reason, orrery::core::version_string()));
-    } catch (...) {
-        std::fputs("orrery_app: the crash report could not be written\n", stderr);
-    }
-}
-
 } // namespace
 
 int main(int argc, char** argv) {
     // No silent crash: std::terminate reports its reason on stderr and in
-    // the crash log (docs/app.md, "Error surface").
-    orrery::app::install_terminate_handler(orrery::app::default_crash_log(),
-                                           orrery::core::version_string());
-    try {
-        return run(argc, argv);
-    } catch (const std::exception& error) {
-        // C stdio: reporting must not throw again.
-        std::fputs("orrery_app: unexpected error: ", stderr);
-        std::fputs(error.what(), stderr);
-        std::fputs("\n", stderr);
-        report_to_crash_log(error.what());
-    } catch (...) {
-        std::fputs("orrery_app: unexpected error\n", stderr);
-        report_to_crash_log("non-standard exception");
-    }
-    return orrery::app::kExitFailure;
+    // the crash log, and so does an exception that reaches main
+    // (docs/app.md, "Error surface").
+    const std::filesystem::path crash_log = orrery::app::default_crash_log();
+    orrery::app::install_terminate_handler(crash_log, orrery::core::version_string());
+    return orrery::app::run_reporting_errors([&] { return run(argc, argv); }, crash_log,
+                                             orrery::core::version_string(), std::cerr);
 }
