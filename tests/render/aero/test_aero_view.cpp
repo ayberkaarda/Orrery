@@ -273,10 +273,10 @@ TEST_CASE("Golden snapshots: cylinder vortex street at Re 150, three frames",
     // Particle traces over the vorticity: released along the inlet and
     // carried through the street.
     options.particles.enabled = true;
-    options.particles.count = 2200;
+    options.particles.count = 1500;
     options.particles.lifetime = 22.0;
-    options.particles.trace_points = 6;
-    options.particles.opacity = 0.34;
+    options.particles.trace_points = 5;
+    options.particles.opacity = 0.3;
     options.particles.width_px = 1.0;
     options.particles.color = {0.80, 0.83, 0.88};
     options.streamlines.seeds = seed_line({-3.9, -3.9, 0.0}, {-3.9, 3.9, 0.0}, 150);
@@ -327,8 +327,10 @@ TEST_CASE("Golden snapshots: cylinder vortex street at Re 150, three frames",
         const ImageRgba8& image = rendered.value();
         std::size_t blue = 0;
         std::size_t red = 0;
-        for (double x = 2.0; x < 14.0; x += 0.1) {
-            for (double y = -3.0; y < 3.0; y += 0.1) {
+        for (int ix = 0; ix < 120; ++ix) {
+            for (int iy = 0; iy < 60; ++iy) {
+                const double x = 2.0 + 0.1 * ix;
+                const double y = -3.0 + 0.1 * iy;
                 const glm::dvec2 p = project(camera, frame, {x, y, 0.0});
                 const Pixel q = pixel_at(image, p.x, p.y);
                 blue += q.b > q.r + 30.0 ? 1U : 0U;
