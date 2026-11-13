@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "domain": "aero",
+  "inputs": {
+    "name": "NACA 0012 at 4 deg, panel method",
+    "geometry": "primitive",
+    "shape": "naca_section",
+    "naca": "0012",
+    "chord_m": 1
+  },
+  "conditions": {
+    "speed_m_s": 30,
+    "density_kg_m3": 1.225,
+    "viscosity_pa_s": 1.789e-05,
+    "temperature_k": 288.15,
+    "angle_of_attack_deg": 4,
+    "sideslip_deg": 0
+  },
+  "solver": {
+    "name": "panel",
+    "version": "1",
+    "settings": { "reference_area": "planform" }
+  },
+  "result": {}
+}

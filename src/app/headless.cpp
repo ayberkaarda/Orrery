@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "orrery/app/aero_headless.h"
 #include "orrery/app/frame_stats.h"
 #include "orrery/app/space_view.h"
 #include "orrery/render/gl_context.h"
@@ -16,6 +17,9 @@
 #include "orrery/render/snapshot.h"
 #include "orrery/render/space_renderer.h"
 #include "orrery/render/trails.h"
+#include "orrery/scene/experiment.h"
+#include "orrery/scene/scenario.h"
+#include "orrery/sim/aero_flow.h"
 
 namespace orrery::app {
 
@@ -196,6 +200,61 @@ std::vector<std::filesystem::path> experiment_search_dirs(const std::filesystem:
     return dirs;
 }
 
+namespace {
+
+int run_aero_headless(const CliOptions& options, const std::filesystem::path& path,
+                      const scene::Experiment& generic, std::ostream& out, std::ostream& err) {
+    const auto experiment = scene::aero_from_experiment(generic);
+    if (!experiment) {
+        err << "orrery_app: experiment " << path.string() << ": " << experiment.error() << '\n';
+        return kExitFailure;
+    }
+    if (options.benchmark_frames > 0) {
+        err << "orrery_app: --benchmark times the space view; it is not available for aero "
+               "experiments\n";
+        return kExitFailure;
+    }
+    AeroHeadlessRequest request;
+    request.width = options.width.value_or(request.width);
+    request.height = options.height.value_or(request.height);
+    request.frames = options.frame;
+    const auto frame = render_aero_headless(experiment.value(), path.parent_path(), request);
+    if (!frame) {
+        if (frame.error().kind == HeadlessErrorKind::no_context) {
+            err << "orrery_app: no OpenGL 4.6 core context for headless rendering: "
+                << frame.error().message << '\n';
+            return kExitNoGlContext;
+        }
+        err << "orrery_app: " << frame.error().message << '\n';
+        return kExitFailure;
+    }
+    const auto written = render::write_png(options.out, frame.value().image);
+    if (!written) {
+        err << "orrery_app: cannot write " << options.out.string() << ": " << written.error()
+            << '\n';
+        return kExitFailure;
+    }
+    const sim::SolveOutcome& o = frame.value().outcome;
+    out << "wrote " << options.out.string() << " (" << request.width << 'x' << request.height
+        << "): " << frame.value().label << ", " << sim::solver_display_name(o.solver) << ", AoA "
+        << experiment.value().conditions.angle_of_attack_deg << " deg, Re "
+        << sim::format_significant(o.flow.reynolds, 3) << ", Mach "
+        << sim::format_significant(o.flow.mach, 3) << ": Cd " << o.result.cd << ", Cl "
+        << o.result.cl << ", Cm " << o.result.cm;
+    if (o.diagnostics.planned_steps > 0) {
+        out << ", " << o.diagnostics.lattice_steps << " of " << o.diagnostics.planned_steps
+            << " lattice steps";
+    }
+    out << (o.result.converged ? ", converged" : ", not converged") << ", "
+        << o.result.warnings.size() << " warning(s)\n";
+    for (const aero::ValidityWarning& warning : o.result.warnings) {
+        out << "  warning " << warning.code << ": " << warning.message << '\n';
+    }
+    return kExitOk;
+}
+
+} // namespace
+
 int run_headless_command(const CliOptions& options,
                          std::span<const std::filesystem::path> search_dirs, std::ostream& out,
                          std::ostream& err) {
@@ -203,6 +262,14 @@ int run_headless_command(const CliOptions& options,
     if (!path) {
         err << "orrery_app: " << path.error() << '\n';
         return kExitFailure;
+    }
+    // The domain decides the renderer; the space loader reports every
+    // problem of a file that is not an aero experiment.
+    if (const auto text = scene::read_text_file(path.value())) {
+        if (const auto generic = scene::parse_experiment(text.value());
+            generic && generic.value().domain == scene::Domain::aero) {
+            return run_aero_headless(options, path.value(), generic.value(), out, err);
+        }
     }
     const auto experiment = sim::load_space_experiment(path.value());
     if (!experiment) {

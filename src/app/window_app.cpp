@@ -15,9 +15,12 @@
 #include <variant>
 #include <vector>
 
+#include "orrery/app/aero_viewport.h"
+#include "orrery/app/aero_workspace.h"
 #include "orrery/app/cli.h"
 #include "orrery/app/frame_stats.h"
 #include "orrery/app/space_view.h"
+#include "orrery/app/workspace_strip.h"
 #include "orrery/core/sim_snapshot.h"
 #include "orrery/render/body_visuals.h"
 #include "orrery/render/camera.h"
@@ -103,11 +106,15 @@ public:
     WindowApp(WindowRequest request, render::GlContext& gl, render::UiContext& ui,
               render::SpaceRenderer& space, sim::PhysicsThread& physics, std::ostream& out)
         : request_(std::move(request)), gl_(gl), ui_(ui), space_(space), physics_(physics),
-          out_(out), trails_(trail_settings(settings_)) {
+          out_(out), trails_(trail_settings(settings_)), workspace_(request_.workspace),
+          aero_(aero_options(request_.config)) {
         for (const sim::ScenarioEntry& entry : request_.scenarios) {
             scenario_names_.push_back(entry.name);
         }
         current_scenario_ = scenario_index(request_.scenarios, request_.experiment.scenario_path);
+        if (request_.aero_experiment) {
+            aero_.open(*request_.aero_experiment, request_.aero_base_dir);
+        }
         take(physics_.latest());
     }
 
@@ -116,10 +123,21 @@ public:
     int run(std::ostream& err);
 
 private:
+    static AeroWorkspaceOptions aero_options(const AppConfig& config) {
+        AeroWorkspaceOptions options;
+        options.experiment_dir = config.experiment_dir;
+        options.model_cache_dir = config.model_cache_dir;
+        options.steps_per_frame = config.steps_per_frame;
+        return options;
+    }
+
     void take(const sim::PublishedFrame& frame);
     void reframe(const render::UiRect& scene, int window_height);
     void build_ui(double dt, int width, int height);
+    void draw_space_bar(double fps);
+    void build_space_ui(double dt, int height);
     void handle_scene_input(const render::SceneInput& input, double dt);
+    void draw_aero_scene(const render::FrameInfo& frame, double dt, std::ostream& err);
 
     WindowRequest request_;
     render::GlContext& gl_;
@@ -145,6 +163,14 @@ private:
     // scene area of the dock space is known in the next UI frame.
     bool reframe_pending_ = true;
     render::CameraInput camera_input_;
+
+    // Phase 8b: workspaces. The Aero workspace's view is created in the
+    // window's context the first time it is shown.
+    Workspace workspace_ = Workspace::space;
+    AeroWorkspace aero_;
+    std::optional<AeroViewport> aero_view_;
+    bool aero_view_failed_ = false;
+    render::UiRect aero_scene_;
 };
 
 void WindowApp::take(const sim::PublishedFrame& frame) {
@@ -220,6 +246,27 @@ void WindowApp::build_ui(double dt, int width, int height) {
     input.delta_time = dt;
     ui_.begin_frame(input);
 
+    const double fps = frame_seconds_ > 0.0 ? 1.0 / frame_seconds_ : 0.0;
+    if (workspace_ == Workspace::aero) {
+        aero_.draw_bar(fps);
+    } else {
+        draw_space_bar(fps);
+    }
+    if (const auto picked = draw_workspace_strip(workspace_)) {
+        workspace_ = *picked;
+    }
+    if (const auto key = read_workspace_shortcut()) {
+        workspace_ = *key;
+    }
+    if (workspace_ == Workspace::aero) {
+        aero_scene_ = aero_.draw_panels();
+        aero_.handle_scene_input(render::read_scene_input(), dt);
+        return;
+    }
+    build_space_ui(dt, height);
+}
+
+void WindowApp::draw_space_bar(double fps) {
     render::AppBarData bar;
     bar.paused = status_.paused;
     bar.time_warp = status_.time_warp;
@@ -229,7 +276,7 @@ void WindowApp::build_ui(double dt, int width, int height) {
     bar.scenarios = scenario_names_;
     bar.scenario = current_scenario_;
     bar.scenario_label = status_.scenario;
-    bar.fps = frame_seconds_ > 0.0 ? 1.0 / frame_seconds_ : 0.0;
+    bar.fps = fps;
     bar.message = status_.message;
     const render::AppBarIntent intent = render::draw_app_bar(bar);
     if (intent.reset) {
@@ -248,7 +295,9 @@ void WindowApp::build_ui(double dt, int width, int height) {
         requested_scenario_ = intent.load_scenario;
         physics_.send(sim::LoadScenario{request_.scenarios[*intent.load_scenario].path});
     }
+}
 
+void WindowApp::build_space_ui(double dt, int height) {
     const render::UiRect scene = ui_.dockspace();
     if (reframe_pending_) {
         reframe_pending_ = false;
@@ -302,6 +351,30 @@ void WindowApp::build_ui(double dt, int width, int height) {
     }
 }
 
+void WindowApp::draw_aero_scene(const render::FrameInfo& frame, double dt, std::ostream& err) {
+    if (!aero_view_ && !aero_view_failed_) {
+        gl_.make_current();
+        auto created = AeroViewport::create();
+        if (created) {
+            aero_view_.emplace(std::move(created).value());
+        } else {
+            // Reported once; the panels keep working without the 3D view.
+            aero_view_failed_ = true;
+            err << "orrery_app: aero view: " << created.error() << '\n';
+        }
+    }
+    if (!aero_view_) {
+        return;
+    }
+    const render::Camera& camera = aero_.camera(aero_scene_, frame.width, frame.height);
+    if (auto drawn = aero_view_->draw(aero_.view_state(), camera, frame, dt); !drawn) {
+        if (!aero_view_failed_) {
+            err << "orrery_app: aero view: " << drawn.error() << '\n';
+        }
+        aero_view_failed_ = true;
+    }
+}
+
 int WindowApp::run(std::ostream& err) {
     std::optional<render::HdrPipeline> pipeline;
     int pipeline_width = 0;
@@ -352,25 +425,38 @@ int WindowApp::run(std::ostream& err) {
             take(physics_.latest());
         }
 
+        if (workspace_ == Workspace::aero) {
+            aero_.update(dt);
+        }
         build_ui(dt, width, height);
-        camera_.update(dt, camera_input_, body_frames(snapshot_));
         const render::FrameInfo frame{width, height};
-        if (snapshot_) {
-            const render::PreparedBodies prepared =
-                render::prepare_bodies(*snapshot_, camera_, frame, settings_);
-            const std::vector<render::SceneLabel> labels =
-                render::make_scene_labels(*snapshot_, prepared.screen, selected_);
-            render::draw_scene_labels(labels);
+        if (workspace_ == Workspace::aero) {
+            pipeline->set_exposure(1.0); // the aero view's colours assume exposure 1
+            pipeline->begin_scene();
+            draw_aero_scene(frame, dt, err);
+            pipeline->resolve();
+            pipeline->begin_overlay();
+            if (aero_view_) {
+                aero_view_->draw_overlay(frame);
+            }
+        } else {
+            camera_.update(dt, camera_input_, body_frames(snapshot_));
+            if (snapshot_) {
+                const render::PreparedBodies prepared =
+                    render::prepare_bodies(*snapshot_, camera_, frame, settings_);
+                const std::vector<render::SceneLabel> labels =
+                    render::make_scene_labels(*snapshot_, prepared.screen, selected_);
+                render::draw_scene_labels(labels);
+            }
+            pipeline->set_exposure(settings_.exposure);
+            pipeline->begin_scene();
+            if (snapshot_) {
+                const render::SpaceView view{snapshot_.get(), &trails_, &camera_, settings_};
+                (void)space_.draw(view, frame);
+            }
+            pipeline->resolve();
+            pipeline->begin_overlay();
         }
-
-        pipeline->set_exposure(settings_.exposure);
-        pipeline->begin_scene();
-        if (snapshot_) {
-            const render::SpaceView view{snapshot_.get(), &trails_, &camera_, settings_};
-            (void)space_.draw(view, frame);
-        }
-        pipeline->resolve();
-        pipeline->begin_overlay();
         ui_.end_frame();
         pipeline->present(width, height);
         gl_.swap_buffers();

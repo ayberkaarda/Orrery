@@ -149,10 +149,12 @@ TEST_CASE("Headless command: exit codes and messages", "[app][headless][cli]") {
     CHECK(err.str().starts_with("orrery_app: experiment 'no_such_experiment' not found"));
     CHECK_FALSE(std::filesystem::exists(options.out));
 
+    // An aero experiment goes to the aero renderer, which reports what is
+    // wrong with this one (an unknown geometry source) before any rendering.
     err.str("");
     options.experiment = (app_test::test_source_dir() / "fixtures" / "aero_domain.json").string();
     CHECK(app::run_headless_command(options, dirs, out, err) == app::kExitFailure);
-    CHECK(err.str().find("domain 'aero'") != std::string::npos);
+    CHECK(err.str().find("inputs.geometry: unknown geometry source 'sphere'") != std::string::npos);
     CHECK_FALSE(std::filesystem::exists(options.out));
 }
 
@@ -189,6 +191,60 @@ TEST_CASE("Headless command writes the PNG", "[app][headless][cli][gl]") {
     options.out = output_dir() / "missing_dir" / "deeper" / "x.png";
     CHECK(app::run_headless_command(options, dirs, out, err) == app::kExitFailure);
     CHECK(err.str().find("cannot write") != std::string::npos);
+}
+
+// Phase 8b: aero experiments through the same command. The panel solve of
+// the bundled NACA 0012 section is direct; the image shows the body in the
+// Cp colours (blue suction above, red stagnation at the nose) on the dark
+// studio backdrop, with the Cp legend in the overlay.
+TEST_CASE("Headless command renders an aero experiment", "[app][headless][cli][gl][aero]") {
+    const std::array<std::filesystem::path, 1> dirs{app_test::experiment_dir()};
+    std::ostringstream out;
+    std::ostringstream err;
+    app::CliOptions options;
+    options.mode = app::RunMode::headless;
+    options.experiment = "aero_naca0012_panel";
+    options.width = 480;
+    options.height = 270;
+    options.out = output_dir() / "headless_aero_naca0012.png";
+    std::filesystem::remove(options.out);
+    const int code = app::run_headless_command(options, dirs, out, err);
+    if (code == app::kExitNoGlContext) {
+        if (environment_flag("ORRERY_REQUIRE_GL")) {
+            FAIL("OpenGL 4.6 required (ORRERY_REQUIRE_GL=1) but unavailable: " << err.str());
+        }
+        SKIP(err.str());
+    }
+    INFO(err.str());
+    REQUIRE(code == app::kExitOk);
+    CHECK(out.str().find("NACA 0012 section, chord 1 m, Panel method, AoA 4 deg") !=
+          std::string::npos);
+    CHECK(out.str().find("Cl 0.") != std::string::npos);
+    const auto written = render::read_png(options.out);
+    REQUIRE(written.has_value());
+    const render::ImageRgba8& image = written.value();
+    REQUIRE(image.width == 480);
+    REQUIRE(image.height == 270);
+    // Not blank: the backdrop is dark, the body adds saturated Cp colours.
+    std::size_t bluish = 0;
+    std::size_t reddish = 0;
+    double total = 0.0;
+    for (std::uint32_t y = 0; y < image.height; ++y) {
+        for (std::uint32_t x = 0; x < image.width; ++x) {
+            const std::size_t o = image.offset(x, y);
+            const int r = image.pixels[o];
+            const int g = image.pixels[o + 1];
+            const int b = image.pixels[o + 2];
+            total += 0.2126 * r + 0.7152 * g + 0.0722 * b;
+            bluish += (b > r + 40 && b > 80) ? 1U : 0U;
+            reddish += (r > b + 40 && r > 80) ? 1U : 0U;
+        }
+    }
+    const double mean = total / (480.0 * 270.0);
+    CHECK(mean > 2.0);
+    CHECK(mean < 120.0);
+    CHECK(bluish > 100);
+    CHECK(reddish > 20);
 }
 
 TEST_CASE("Framing camera centres the dominant body", "[app][headless]") {
