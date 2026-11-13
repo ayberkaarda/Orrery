@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <limits>
 #include <numbers>
+#include <utility>
 #include <vector>
 
 #include "../lbm/lbm_test_support.h"
@@ -143,6 +144,98 @@ inline InitialState3D uniform_state3d(double rho, double ux) {
     return [rho, ux](std::size_t, std::size_t, std::size_t) {
         return d3q19::Moments{rho, ux, 0.0, 0.0};
     };
+}
+
+// Manufactured shear for the Smagorinsky closure: a periodic 8^3 box at
+// density 1 with u_a = gamma (x_b - 3.5) along axis a, varying along axis
+// b != a, started at its equilibrium. The first step streams the
+// equilibrium, f_i(x) = f_eq,i(x - c_i) before the collision (exact at the
+// nodes 1 <= x_b <= 6, away from the periodic seam of the linear profile),
+// whose non-equilibrium stress is Pi_ab = -rho c_s^2 dU_a/dx_b = -gamma / 3
+// to first order, and collides it once.
+inline Lbm3DConfig shear_box(double tau, double constant) {
+    Lbm3DConfig config = periodic_box(8, 8, 8, tau);
+    config.smagorinsky = Smagorinsky{true, constant};
+    return config;
+}
+
+inline InitialState3D linear_shear(std::size_t a, std::size_t b, double gamma) {
+    return [a, b, gamma](std::size_t x, std::size_t y, std::size_t z) {
+        const std::array<std::size_t, 3> at{x, y, z};
+        std::array<double, 3> u{0.0, 0.0, 0.0};
+        u[a] = gamma * (static_cast<double>(at[b]) - 3.5);
+        return d3q19::Moments{1.0, u[0], u[1], u[2]};
+    };
+}
+
+// Effective relaxation time of the first collision at node `node`:
+// measured from the populations after the step (`after`, the solver
+// layout), tau_eff = 1 / (1 - r) with r the ratio of the off-diagonal
+// non-equilibrium stress Pi_ab after and before the collision (BGK scales it
+// by 1 - 1/tau_eff; the moments are conserved), against the closure
+//   tau_eff = (tau + sqrt(tau^2 + 18 sqrt(2) C^2 Q / rho)) / 2,
+// Q = |Pi_neq| of the streamed populations, and the continuum value with
+// Q = sqrt(2) rho c_s^2 |gamma|, tau_eff = (tau + sqrt(tau^2 + 12 C^2
+// |gamma|)) / 2. (At steady state Pi = -2 rho c_s^2 tau_eff S, and the same
+// relation gives the Smagorinsky viscosity nu_t = (C dx)^2 |S|.)
+struct ClosureProbe {
+    double measured = 0.0;
+    double predicted = 0.0;
+    double continuum = 0.0;
+};
+
+inline ClosureProbe probe_closure(const Lbm3DConfig& config, std::size_t a, std::size_t b,
+                                  double gamma, const std::vector<double>& after,
+                                  const std::array<std::size_t, 3>& node) {
+    const SolidMask3D mask = fluid_mask_3d(config.nx, config.ny, config.nz);
+    const std::vector<double> initial =
+        initial_populations(config, mask, linear_shear(a, b, gamma));
+    const std::size_t cells = mask.solid.size();
+    const std::size_t here = mask.index(node[0], node[1], node[2]);
+    // Non-equilibrium stress tensor of 19 populations.
+    const auto stress = [](const d3q19::Populations& f) {
+        const d3q19::Moments m = d3q19::moments(f);
+        std::array<std::array<double, 3>, 3> pi{};
+        for (std::size_t i = 0; i < d3q19::q; ++i) {
+            const double neq = f[i] - d3q19::equilibrium(i, m.rho, m.ux, m.uy, m.uz);
+            const std::array<double, 3> c{static_cast<double>(d3q19::cx[i]),
+                                          static_cast<double>(d3q19::cy[i]),
+                                          static_cast<double>(d3q19::cz[i])};
+            for (std::size_t p = 0; p < 3; ++p) {
+                for (std::size_t s = 0; s < 3; ++s) {
+                    pi[p][s] += c[p] * c[s] * neq;
+                }
+            }
+        }
+        return std::pair{pi, m.rho};
+    };
+    d3q19::Populations before{};
+    d3q19::Populations post{};
+    for (std::size_t i = 0; i < d3q19::q; ++i) {
+        const auto back = [&](std::size_t axis, int c) {
+            return static_cast<std::size_t>(static_cast<std::ptrdiff_t>(node[axis]) - c);
+        };
+        const std::size_t source =
+            mask.index(back(0, d3q19::cx[i]), back(1, d3q19::cy[i]), back(2, d3q19::cz[i]));
+        before[i] = initial[i * cells + source];
+        post[i] = after[i * cells + here];
+    }
+    const auto [pi_before, rho] = stress(before);
+    const auto pi_after = stress(post).first;
+    double q2 = 0.0;
+    for (const auto& row : pi_before) {
+        for (const double v : row) {
+            q2 += v * v;
+        }
+    }
+    const double tau = config.tau;
+    const double c2 = config.smagorinsky.constant * config.smagorinsky.constant;
+    ClosureProbe probe;
+    probe.measured = 1.0 / (1.0 - pi_after[a][b] / pi_before[a][b]);
+    probe.predicted =
+        0.5 * (tau + std::sqrt(tau * tau + 18.0 * std::numbers::sqrt2 * c2 * std::sqrt(q2) / rho));
+    probe.continuum = 0.5 * (tau + std::sqrt(tau * tau + 12.0 * c2 * std::abs(gamma)));
+    return probe;
 }
 
 // Sphere of diameter d in a channel with a velocity inlet, a convective

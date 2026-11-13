@@ -338,7 +338,17 @@ Directions: 0 rest, 1..6 the axes (+x, -x, +y, -y, +z, -z), 7..18 the twelve
 face diagonals in opposite pairs; weights 1/3, 1/18, 1/36; c_s^2 = 1/3
 (Qian, d'Humieres and Lallemand 1992). The equilibrium, BGK, Guo forcing
 and the Smagorinsky relaxation time (the factor 18 sqrt(2) holds in 3D as in
-2D; |Pi_neq| now has six components) are those of section 1. Memory layout
+2D; |Pi_neq| now has six components) are those of section 1. The closure
+is checked against a manufactured shear on both solvers: a periodic 8^3
+box started at the equilibrium of u_a = gamma x_b (gamma 0.01, every
+ordered pair of axes a != b, so the xy, xz and yz stresses each drive it
+alone), whose first collision scales the off-diagonal non-equilibrium
+stress by 1 - 1/tau_eff. The measured tau_eff (0.52907 at tau 0.52,
+C 0.4) matches the closure formula evaluated on the streamed populations
+to 1e-10 on the CPU and within 2 percent of tau_eff - tau on the GPU, and
+the continuum value (tau + sqrt(tau^2 + 12 C^2 gamma)) / 2 within 2 percent;
+with the yz term dropped from |Pi_neq| the yz cases fall back to 0.52007
+and fail. Memory layout
 f[i * cells + x + nx (y + ny z)], the index of `geom::GridSpec`.
 
 ## 11. 3D boundaries

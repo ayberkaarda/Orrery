@@ -165,6 +165,35 @@ TEST_CASE("A vendor memory query of zero is no free memory rather than unknown",
     }
 }
 
+TEST_CASE("GPU D3Q19: the Smagorinsky closure relaxes a manufactured shear at the predicted rate",
+          "[aero][lbm3d][gl]") {
+    GlCompute gl = gl_compute_or_skip();
+    const double tau = 0.52;
+    const double gamma = 0.01;
+    for (std::size_t a = 0; a < 3; ++a) {
+        for (std::size_t b = 0; b < 3; ++b) {
+            if (a == b) {
+                continue;
+            }
+            const Lbm3DConfig config = shear_box(tau, 0.4);
+            auto solver = take(make_gpu_solver(*gl.backend, config, fluid_mask_3d(8, 8, 8)));
+            require_ok(solver->initialize(linear_shear(a, b, gamma)));
+            require_ok(solver->step(1));
+            const std::vector<double> after = take(solver->populations());
+            for (const std::size_t k : {std::size_t{1}, std::size_t{3}, std::size_t{6}}) {
+                std::array<std::size_t, 3> node{2, 5, 4};
+                node[b] = k;
+                const ClosureProbe probe = probe_closure(config, a, b, gamma, after, node);
+                INFO("u along axis " << a << ", varying along " << b << ": tau_eff "
+                                     << probe.measured << ", closure " << probe.predicted);
+                // binary32 populations: within 2 percent of tau_eff - tau.
+                CHECK(std::abs(probe.measured - probe.predicted) < 0.02 * (probe.predicted - tau));
+            }
+        }
+    }
+    CHECK(gl.context.debug_error_count() == 0);
+}
+
 TEST_CASE("GPU and CPU D3Q19 agree on the analytic flows", "[aero][lbm3d][gl]") {
     GlCompute gl = gl_compute_or_skip();
     const Comparison poiseuille = compare(*gl.backend, poiseuille3d_config(4, 32, 4, 0.8, 1e-6),

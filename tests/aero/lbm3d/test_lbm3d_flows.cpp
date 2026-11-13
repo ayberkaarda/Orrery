@@ -343,6 +343,46 @@ TEST_CASE("Links with unusable wall distances reflect like the halfway wall", "[
     }
 }
 
+TEST_CASE("The Smagorinsky closure relaxes a manufactured shear at the predicted rate",
+          "[aero][lbm3d]") {
+    // Every ordered pair of axes, so each off-diagonal stress (xy, xz, yz)
+    // drives the closure on its own.
+    const double tau = 0.52;
+    const double gamma = 0.01;
+    for (std::size_t a = 0; a < 3; ++a) {
+        for (std::size_t b = 0; b < 3; ++b) {
+            if (a == b) {
+                continue;
+            }
+            for (const bool closure : {true, false}) {
+                Lbm3DConfig config = shear_box(tau, 0.4);
+                config.smagorinsky.enabled = closure;
+                auto solver = take(make_cpu_solver(config, fluid_mask_3d(8, 8, 8)));
+                require_ok(solver->initialize(linear_shear(a, b, gamma)));
+                require_ok(solver->step(1));
+                const std::vector<double> after = take(solver->populations());
+                for (const std::size_t k : {std::size_t{1}, std::size_t{3}, std::size_t{6}}) {
+                    std::array<std::size_t, 3> node{2, 5, 4};
+                    node[b] = k;
+                    const ClosureProbe probe = probe_closure(config, a, b, gamma, after, node);
+                    INFO("u along axis " << a << ", varying along " << b << ", closure " << closure
+                                         << ", node " << node[0] << " " << node[1] << " " << node[2]
+                                         << ": tau_eff " << probe.measured << ", closure "
+                                         << probe.predicted << ", continuum " << probe.continuum);
+                    if (!closure) {
+                        CHECK(probe.measured == Approx(tau).epsilon(1e-10));
+                        continue;
+                    }
+                    CHECK(probe.measured == Approx(probe.predicted).epsilon(1e-10));
+                    CHECK(std::abs(probe.measured - probe.continuum) <
+                          0.02 * (probe.continuum - tau));
+                    CHECK(probe.measured - tau > 0.005); // tau_eff - tau about 0.009
+                }
+            }
+        }
+    }
+}
+
 TEST_CASE("D3Q19 configurations are validated", "[aero][lbm3d]") {
     const SolidMask3D mask = fluid_mask_3d(8, 8, 8);
     Lbm3DConfig ok = periodic_box(8, 8, 8, 0.6);
