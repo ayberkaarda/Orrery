@@ -284,6 +284,7 @@ add_executable(orrery_test_app
     app/test_config.cpp
     app/test_shortcuts.cpp
     app/test_workspace_journeys.cpp
+    app/test_workspace_render.cpp
     app/test_aero_ui.cpp
     app/test_aero_viewport.cpp)
 target_link_libraries(orrery_test_app PRIVATE orrery_app_core Catch2::Catch2WithMain)
