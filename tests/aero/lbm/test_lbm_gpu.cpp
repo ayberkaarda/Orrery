@@ -159,7 +159,8 @@ TEST_CASE("The OpenGL compute backend manages buffers and kernels", "[aero][lbm]
     CHECK(backend.info().name == "opengl");
     CHECK(backend.info().executes_kernels);
     CHECK(backend.kernel_names() ==
-          std::vector<std::string>{"lbm_d2q9_force", "lbm_d2q9_moments", "lbm_d2q9_step"});
+          std::vector<std::string>{"lbm_d2q9_force", "lbm_d2q9_moments", "lbm_d2q9_step",
+                                   "lbm_d3q19_force", "lbm_d3q19_moments", "lbm_d3q19_step"});
     CHECK(backend.has_kernel(kernel_step));
     CHECK_FALSE(backend.has_kernel("lbm_d2q9_common"));
     {
