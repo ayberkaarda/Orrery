@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>try{var m=localStorage.getItem('orrery-motion')}catch(e){}document.documentElement.dataset.motion=m=='on'||m=='off'?m:matchMedia('(prefers-reduced-motion: reduce)').matches?'off':'on'</script>
   <title>Orrery: masaüstü fizik laboratuvarı</title>
   <meta name="description" content="Orrery, C++20 ve OpenGL 4.6 ile yazılmış, N-cisim uzay dinamiğini, aerodinamiği ve atmosferik girişi birbirine bağlayan bir masaüstü fizik laboratuvarıdır. Gözlemlenebilir, doğrulanabilir ve deterministik; her basitleştirme belgelenmiştir.">
   <meta name="theme-color" content="#0b0d11">
@@ -50,6 +51,10 @@
         </ul>
       </nav>
       <div class="header-tools">
+        <button class="motion-toggle" type="button" role="switch" aria-checked="true" data-motion-toggle>
+          <span class="motion-toggle__switch" aria-hidden="true"></span>
+          <span class="motion-toggle__label">Hareket</span>
+        </button>
         <div class="lang" role="group" aria-label="Dil">
           <a href="../" hreflang="en" lang="en" title="English">EN</a>
           <span aria-current="page" lang="tr">TR</span>

@@ -1,9 +1,11 @@
-// Page behaviour: copy buttons, scroll reveals and the hero orrery loader. Everything here is progressive: without JavaScript the
+// Page behaviour: the motion switch, copy buttons, scroll reveals and the
+// hero orrery loader. Everything here is progressive: without JavaScript the
 // page is complete and still.
 
 const root = document.documentElement;
 const lang = root.lang === 'tr' ? 'tr' : 'en';
 const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
+const MOTION_KEY = 'orrery-motion';
 
 const STRINGS = {
   en: {
@@ -40,14 +42,49 @@ const STRINGS = {
   },
 }[lang];
 
-// ---------------------------------------------------------------- motion
+// ---------------------------------------------------------------- motion switch
 //
-// Motion follows the system's reduced-motion setting.
+// An inline script in <head> sets data-motion before first paint from the
+// stored choice, falling back to the operating system preference.
+
+function storedMotion() {
+  try {
+    const value = window.localStorage.getItem(MOTION_KEY);
+    return value === 'on' || value === 'off' ? value : null;
+  } catch {
+    return null;
+  }
+}
 
 const motionListeners = [];
-const motionOn = () => !reducedMotion.matches;
+const motionOn = () => root.dataset.motion !== 'off';
+
+function applyMotion(on) {
+  root.dataset.motion = on ? 'on' : 'off';
+  for (const button of document.querySelectorAll('[data-motion-toggle]')) {
+    button.setAttribute('aria-checked', String(on));
+  }
+  for (const listener of motionListeners) listener(on);
+}
+
+if (!root.dataset.motion) root.dataset.motion = reducedMotion.matches ? 'off' : 'on';
+applyMotion(motionOn());
+
+for (const button of document.querySelectorAll('[data-motion-toggle]')) {
+  button.addEventListener('click', () => {
+    const on = !motionOn();
+    try {
+      window.localStorage.setItem(MOTION_KEY, on ? 'on' : 'off');
+    } catch {
+      // Storage refused (private mode, blocked site data): the choice lasts for this page.
+    }
+    applyMotion(on);
+  });
+}
+
+// Without a stored choice the page follows the system setting as it changes.
 reducedMotion.addEventListener('change', () => {
-  for (const listener of motionListeners) listener(motionOn());
+  if (!storedMotion()) applyMotion(!reducedMotion.matches);
 });
 
 // ---------------------------------------------------------------- copy buttons
@@ -100,9 +137,12 @@ for (const button of document.querySelectorAll('[data-copy]')) {
 }
 
 // ---------------------------------------------------------------- scroll reveals
+//
+// Sections are always marked as seen; the stylesheet only hides unseen ones
+// while animation is on, so turning it off shows everything at once.
 
 const revealables = document.querySelectorAll('[data-reveal]');
-if (motionOn() && 'IntersectionObserver' in window) {
+if ('IntersectionObserver' in window) {
   root.classList.add('reveal-on');
   const io = new IntersectionObserver(
     (entries) => {
