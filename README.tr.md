@@ -1,5 +1,7 @@
 # Orrery
 
+Proje sitesi: <https://ayberkaarda.github.io/Orrery/tr/>
+
 Orrery, OpenGL 4.6 arayüzlü, C++20 ile yazılmış bir masaüstü fizik
 laboratuvarıdır. İki alanı tek uygulamada bir araya getirir ve birbirine
 bağlar:
