@@ -43,6 +43,10 @@ struct CliOptions {
     // run), write its framebuffer with the panels to this PNG and exit
     // (docs/screenshots.md); empty: an interactive window.
     std::filesystem::path capture;
+    // Headless: an aero experiment whose model is not in the cache may
+    // download it from its recorded URL (docs/url-import-security.md,
+    // "Experiments"); without it such a run fails before any network access.
+    bool allow_download = false;
 };
 
 inline constexpr std::int64_t kMaxFrames = 1'000'000;
@@ -59,9 +63,9 @@ inline constexpr int kExitNoGlContext = 3; // no OpenGL 4.6 context could be cre
 // the next argument or after '=' (--frame=10). --help and --version win over
 // everything else; otherwise every argument must be valid, no option may be
 // repeated, and the combination must make sense (--out only with --headless,
-// which requires --experiment and --out; --frame with --headless or
-// --capture; --capture neither with --headless nor with --benchmark). The error is one line
-// suitable for stderr.
+// --allow-download only with --headless, which requires --experiment and
+// --out; --frame with --headless or --capture; --capture neither with
+// --headless nor with --benchmark). The error is one line suitable for stderr.
 [[nodiscard]] core::Result<CliOptions, std::string>
 parse_command_line(std::span<const std::string_view> args);
 

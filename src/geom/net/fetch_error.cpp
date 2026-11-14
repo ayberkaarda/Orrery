@@ -40,6 +40,10 @@ std::string_view fetch_error_kind_name(FetchErrorKind kind) noexcept {
             return "cache_failure";
         case FetchErrorKind::io_failure:
             return "io_failure";
+        case FetchErrorKind::cancelled:
+            return "cancelled";
+        case FetchErrorKind::digest_mismatch:
+            return "digest_mismatch";
     }
     return "unknown";
 }

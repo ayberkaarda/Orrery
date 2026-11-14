@@ -164,7 +164,8 @@ sRGB target      read back as 8-bit RGBA (glGetTextureImage: stored bytes, no co
   is checked against the GPU result for constant HDR colours from 0 to 100 at
   several exposures: identical within one 8-bit level on the reference
   machine.
-- Bloom (dual filter, spec 7.6) is not part of Phase 4a.
+- A dual-filter bloom pass was planned but is not part of V1
+  ([limitations.md](limitations.md)).
 
 ## 5. OpenGL layer
 
@@ -269,7 +270,7 @@ current again (nothing is current afterwards if it was the renderer's own).
 `render` makes its context current again after the scene callback, and
 `render_snapshot` restores the caller's context, so a snapshot nested in
 another renderer's frame leaves that renderer working.
-The `--headless` application flags (spec 7.7) are described in `app.md`
+The `--headless` application flags are described in `app.md`
 (Phase 4c); they use this offscreen path with a hidden GLFW window. EGL/Mesa
 contexts for display-less CI are not part of V1 Phase 4: there the `[gl]`
 tests skip unless `ORRERY_REQUIRE_GL=1`.
@@ -687,7 +688,7 @@ GPU median plus CPU submit below 16 ms.
 
 The black-hole view (section 17: lensing pass with the disk, 512 steps, same
 resolution and MSAA) has its own `[perf]` test: GPU median 1.07 ms (933 fps),
-p95 1.16 ms on the same GPU, against the spec's 30 fps; the headless
+p95 1.16 ms on the same GPU, against the V1 target of 30 fps; the headless
 `--benchmark` of `app.md` measures the full frame without a window.
 
 ## 16. Approximations
@@ -725,7 +726,7 @@ Every item is marked `// APPROXIMATION:` in the code.
 
 ## 17. Black hole (Phase 5)
 
-Spec 7.3, ADR-003 (Schwarzschild, Kerr deferred) and ADR-017 (half-resolution
+ADR-003 (Schwarzschild, Kerr deferred) and ADR-017 (half-resolution
 strategy, step budget). Sources: `black_hole.h` (CPU side: selection, sample
 grid, rays), `black_hole_pass.{h,cpp}` (GPU side, private), `blackbody_spectrum.h`,
 shaders `black_hole_trace.comp.glsl`, `black_hole_composite.frag.glsl`,
@@ -902,7 +903,7 @@ AMD Radeon RX 9060 XT, OpenGL 4.6, Release MSVC:
 | Doppler asymmetry, 80 M, 9 degrees, boxes at 12 and 18 M on both sides | mean luma approaching 235.5, receding 20.2 (required: more than twice); blue/red 0.93 against 0.08 |
 | Weak lens far behind the camera, 1440 x 810 | Milky Way SSIM 0.998, mean luma 8.42 against 8.48 unlensed; summed star luma within 7 percent; brightest star at the same pixel |
 | No NaN or Inf in the HDR target | checked on both golden scenes |
-| Frame time, 1920 x 1080, 4x MSAA, disk on, 512 steps, 65 frames | GPU median 1.07 ms (933 fps), p95 1.16 ms (spec: at least 30 fps, i.e. below 33.3 ms; the test requires p95 below 33.3 ms) |
+| Frame time, 1920 x 1080, 4x MSAA, disk on, 512 steps, 65 frames | GPU median 1.07 ms (933 fps), p95 1.16 ms (V1 target: at least 30 fps, i.e. below 33.3 ms; the test requires p95 below 33.3 ms) |
 
 The core tests (`tests/core/test_schwarzschild_geodesic.cpp`) check the
 reference on its own: deflection within the second-order expansion

@@ -24,6 +24,13 @@ Checks:
      approximation ID quoted next to such a marker (A8, E10, D3, ...) is the
      first cell of a row in one of the approximation tables of
      docs/physics.md.
+  4. Specification references. The documents cite no numbered section,
+     phase or item of the project specification ("spec 7.6", "spec section
+     8", "specification phase 11", "FAZ 9", a table column headed "Spec"):
+     that document is not part of the repository, so a reader cannot follow
+     such a number. Describe the item itself instead; ADR numbers and the
+     numbered sections of the documents here are fine. Code spans and fenced
+     blocks are not checked.
 
 With --tree DIR only the links are checked, in every Markdown file under
 DIR, and no link may point outside DIR: this validates the documentation of
@@ -62,6 +69,18 @@ ROW_ID_RE = re.compile(r"^\|\s*`([a-z0-9_.]+)`\s*\|")
 REPO_PATH_RE = re.compile(r"`((?:src|tests|tools|docs|assets|cmake)/[^`\s]+)`")
 APPROX_TABLE_ROW_RE = re.compile(r"^\|\s*([A-Z]\d{1,2})\s*\|")
 APPROX_ID_RE = re.compile(r"\b([ABDEGLPRV]\d{1,2})\b")
+# A numbered reference into the specification, which is not in the
+# repository: "spec 7.6", "spec (7.3)", "spec section 8", "the spec's 30 fps",
+# "specification phase 11", "spec target: at least 30 fps", "FAZ 9", the
+# Turkish words for specification, and a table column headed "Spec". The
+# text is matched across line breaks.
+SPEC_REF_RE = re.compile(
+    r"\b(?:spec|specification|şartname|belirtim)(?:'s|'in|in|nin)?\s*[(:]?\s*"
+    r"(?:(?:section|sections|phase|phases|node|item|items|target|targets|limit|limits"
+    r"|bölüm\w*|madde\w*|faz)\b\s*:?\s*)?(?:(?:at least|at most|below|under|above)\s+)?\d+(?:\.\d+)*"
+    r"|\bFAZ\s*\d"
+    r"|^[ \t]*\|[ \t]*spec(?:ification)?[ \t]*\|",
+    re.I | re.M)
 SOURCE_SUFFIXES = {".h", ".hpp", ".cpp", ".glsl"}
 EXTERNAL_PREFIXES = ("http://", "https://", "mailto:")
 
@@ -219,6 +238,27 @@ def check_tree(tree: Path) -> list[str]:
         errors.append(f"{tree.as_posix()}: no Markdown file")
     check_files(files, errors, tree)
     return errors
+
+
+def spec_reference_problems(source: Path, text: str) -> list[str]:
+    """Numbered references into the specification, which a reader cannot follow."""
+    problems: list[str] = []
+    stripped = "\n".join(strip_code(text.splitlines()))
+    for match in SPEC_REF_RE.finditer(stripped):
+        number = stripped.count("\n", 0, match.start()) + 1
+        quoted = " ".join(match.group(0).split())
+        problems.append(f"{rel(source)}:{number}: '{quoted}' cites the specification by "
+                        "number, which is not in the repository; describe the item instead")
+    return problems
+
+
+def check_spec_references(errors: list[str]) -> int:
+    files = markdown_files()
+    for source in files:
+        text = read_text(source, errors)
+        if text is not None:
+            errors.extend(spec_reference_problems(source, text))
+    return len(files)
 
 
 def section_lines(text: str, title: str) -> list[str]:
@@ -407,6 +447,8 @@ def main() -> int:
     print(f"physics index: {len(entries)} entries, {len(approx_ids)} approximation IDs")
     markers = check_approximations(entries, approx_ids, errors)
     print(f"approximations: {markers} markers checked")
+    spec_files = check_spec_references(errors)
+    print(f"specification references: {spec_files} files checked")
     return report(errors)
 
 

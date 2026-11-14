@@ -1,6 +1,6 @@
 # Aero Workspace
 
-The Aero workspace of `orrery_app` (spec 8, Phase 8b) puts the geometry
+The Aero workspace of `orrery_app` (Phase 8b) puts the geometry
 pipeline (Phase 6), the aerodynamic solvers (Phase 7) and the aero view
 (Phase 8a, `orrery/render/aero_view.h`) behind one user
 interface, and records every run as an experiment. Sources: the
@@ -65,7 +65,7 @@ models what repair changed (boundary, non-manifold and inconsistent edges
 before and after, components, welded vertices, removed and flipped
 triangles, filled holes) with warnings for an orientation conflict or a body
 still open after repair. User models carry the **UNVALIDATED GEOMETRY**
-badge (spec 5.4: no validation case exists for them) and a **licence /
+badge (no validation case exists for them) and a **licence /
 source note** that is stored with the experiment and never checked.
 Reference quantities: frontal, planform and wetted area, length, span,
 volume.
@@ -115,7 +115,7 @@ thread of the space workspace (ADR-011): the UI sends `AeroCommand`s
 through a lock-free queue, wakes it once per frame, and reads immutable
 progress from a triple buffer. No frame waits for a solve.
 
-**Pacing** (spec 8, "steps per frame" and "run to convergence"): a
+**Pacing** ("steps per frame" and "run to convergence"): a
 time-marching run advances `steps_per_frame` lattice steps for every frame
 that woke the thread (in calls of 50 lattice steps in 2D, 20 in 3D; frames
 that arrive while a batch runs merge), so the view animates with the frame
@@ -204,7 +204,13 @@ A run's record is an experiment of domain `aero` in the schema of
   `chord_m`, `span_m`, `thickness_m`, `half_angle_deg`) plus `naca` or
   `capsule`; user models store `path` (relative paths resolve against the
   experiment file), `unit_scale`, `up_axis`, `license`, and for URLs `url`
-  and `sha256` (a re-download that hashes differently is reported).
+  and `sha256`. Opening an experiment whose URL model is no longer in the
+  cache never downloads on its own: the **Download model?** prompt names
+  the host, the URL and the recorded SHA-256 and waits for Download or
+  Cancel (headless runs need `--allow-download`, app.md, "Command line").
+  The download must hash to the recorded `sha256` before the importer sees
+  it; a mismatch is reported ("The model changed at its source") and the
+  bytes are discarded (url-import-security.md, "Experiments").
 - `solver.name`: `auto` (the recommendation), `panel`, `newtonian`, `lbm`;
   settings `reference_area`, `reference_length_m`, `lbm_cells_per_length`,
   `lbm_duration`, `steps_per_frame`.
@@ -269,12 +275,15 @@ numbers, coefficients, lattice steps, convergence and each warning.
   lattices are slow there, and the 3D node budget is 4.2 M.
 - User models are repaired automatically after the unit confirmation; the
   report says what changed, and the result stays marked unvalidated.
-- Background work is cancelled at stage boundaries only. Closing the window
-  (or replacing a running import) requests the stop of the task and joins
-  its thread; the work checks the request before downloading, importing and
-  repairing and then ends with "Cancelled". A call already running -
-  `geom::net::fetch_model`, `geom::import_mesh_file`, `geom::repair_mesh` -
-  has no cancellation hook in orrery_geom and finishes first: a stalled
-  download ends at the fetch limits (`geom::net::FetchLimits`: below
-  1 KiB/s for 30 s, or 300 s in all), so closing during one can wait that
-  long.
+- Background work is cancelled by the **Cancel** button next to the
+  "Working" line, by closing the window and by replacing a running import:
+  each requests the stop of the task (closing also joins its thread). A
+  download stops within about a second, also when the server stalls or
+  trickles bytes: `geom::net::FetchOptions::cancel_requested` is polled
+  from libcurl's progress and body callbacks, and the partial download is
+  removed (url-import-security.md, "Cancellation"). Importing and repairing
+  stop at their next stage boundary only: `geom::import_mesh_file` and
+  `geom::repair_mesh` have no cancellation hook in orrery_geom, so a large
+  model being parsed or repaired finishes that call first. A cancellation
+  the user asked for is shown in the status line, not in the problem
+  modal.

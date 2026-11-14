@@ -1,9 +1,9 @@
 # Orrery Performance
 
-The numeric acceptance criteria of spec section 8 ("SAYISAL KABUL
-KRITERLERI"), measured; the benchmark suite that measures them; and the
-release profile with link-time optimisation (spec phase 11: "bench targets,
-nightly large LBM test, release profile (LTO)"). Deviations are reported with
+The numeric acceptance targets of V1 (the table of section 3), measured;
+the benchmark suite that measures them; and the release profile with
+link-time optimisation, which Phase 11 added together with the benchmark
+targets and the nightly large lattice Boltzmann test. Deviations are reported with
 the measurement, the reason and a recommendation, never hidden. The CI time
 row is in [ci.md](ci.md).
 
@@ -105,7 +105,7 @@ Link-time optimisation buys nothing measurable here: the hot loops already
 sit in single translation units. The panel method (dense Eigen LU, inlined
 into `orrery_aero`) is about 25 percent slower with MSVC's whole-program
 optimisation, still 4.5 times under its target; the Newtonian difference is
-0.2 ms. Recommendation: keep the release profile as the spec asks (it is
+0.2 ms. Recommendation: keep the release profile with LTO as planned (it is
 also what the installer builds), and if the panel slowdown matters, exclude
 `orrery_aero`'s `panel3d.cpp` from `/GL` or try profile-guided optimisation;
 GCC's LTO speed has not been measured.
@@ -126,11 +126,11 @@ CPUs (single-thread times are listed as context).
 | Memory | 32 GB |
 | GPU | AMD Radeon RX 9060 XT class (RDNA 4 mid-range desktop) |
 
-All rows of the section 8 table. Performance rows come from the benchmark
+Every numeric acceptance target of V1. Performance rows come from the benchmark
 suite; accuracy rows from the tests that check them, re-run in the release
 build to print their values (`ctest` hides the output of passing tests).
 
-| Section 8 metric | Target | Measured | Result | Source |
+| V1 metric | Target | Measured | Result | Source |
 |---|---|---|---|---|
 | Energy drift, solar system 1000 years, Yoshida4 | abs(dE/E0) < 1e-9 | max 1.41e-10 (final 2.6e-14) | pass | `Sun and eight planets, 1000 years with Yoshida4` (orrery_test_core) |
 | Two-body circular, 100 orbits, Leapfrog | < 1e-6 AU | 3.77e-7 AU | pass | `circular two-body orbit, 100 orbits with Leapfrog` |
@@ -151,7 +151,7 @@ build to print their values (`ctest` hides the output of passing tests).
 | Binary + asset | < 80 MB | 17.4 MB (executable 3.5, libraries 13.9, assets 0.02) | pass | `run_benchmarks.py` |
 | Idle RAM (solar system) | < 400 MB | 172 MB peak working set (headless; peak commit 429 MB) | pass, with the caveat of section 4 | `run_benchmarks.py` |
 | Cold start to first frame | < 3 s | 0.59 s (upper bound, headless, warm file cache) | pass | `run_benchmarks.py` |
-| CI time (full, nightly excluded) | < 20 min | 38 to 49 min before; 10 to 17 min estimated after | see [ci.md](ci.md) | step logs |
+| CI time (full, nightly excluded) | < 20 min | **35.5 to 36.2 min** in the first two runs (Windows vcpkg cache cold); 15.7 to 19.8 min without the Windows job; 38 to 49 min before the restructuring | **not met yet**: no run with every cache warm measured ([ci.md](ci.md#2-time-budget-measured)) | `gh run view` job timings |
 
 Context measurements of the same run:
 
@@ -169,8 +169,11 @@ Context measurements of the same run:
 **Force N = 10k and 100k: missed by a factor of 1.7 and 1.9.** Measured
 13.3 ms and 226 ms with all 12 logical CPUs of a 6-core machine (the targets
 assume 8 cores, which this machine does not have); one thread takes 73.8 ms
-and 1301 ms, so the parallel speed-up is 5.5 and 5.8. Reason (unchanged since phase
-3a, physics.md "Barnes-Hut"): the walk is scalar double arithmetic with a
+and 1301 ms, so the parallel speed-up is 5.5 and 5.8. The Phase 3a figures in
+physics.md (11.7 ms and 191 to 205 ms) come from an earlier Catch2 timing
+test in a build without LTO; the numbers here are the benchmark suite's and
+are the reference. Reason (unchanged since Phase 3a, physics.md
+"Barnes-Hut"): the walk is scalar double arithmetic with a
 correctly rounded square root and division per interaction and a quadrupole
 term, under the determinism contract (`/fp:precise`, no contraction, no
 approximate reciprocal square root), and MSVC does not vectorise the receiver
@@ -223,10 +226,14 @@ on 12 threads).
 slope it should approach is 6.86, matched within 0.5 percent, so the margin
 reflects the thickness effect, not an error.
 
-**CI time.** Before: 38 to 49 minutes. After the restructuring of
-[ci.md](ci.md): an estimate of 10 to 17 minutes with warm caches, from the
-step logs; a run with a cold vcpkg cache (manifest or runner image change)
-can still exceed 20 minutes. The first runs on `main` will confirm it.
+**CI time: not met yet.** Before the restructuring: 38 to 49 minutes.
+Measured on the first two runs of the restructured workflow (PR #18 and the
+push to `main` that merged it, [ci.md](ci.md#2-time-budget-measured)): 36.2
+and 35.5 minutes, both set by the Windows job, whose vcpkg cache was cold
+(24 minutes of configure); without it the longest job took 15.7 to 19.8
+minutes, with a cold ccache. The target can only be met with warm caches,
+and no such run has been measured yet; a run after a manifest or runner
+image change will exceed 20 minutes.
 
 ## 5. Raw data
 

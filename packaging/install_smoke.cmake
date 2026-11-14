@@ -44,6 +44,7 @@ else()
 endif()
 foreach(required IN ITEMS "${exe}" "${prefix}/${ASSET_DIR}/experiments/solar_system.json"
         "${prefix}/${ASSET_DIR}/scenarios/sun_earth.json" "${prefix}/share/doc/orrery/notice.txt"
+        "${prefix}/share/doc/orrery/LICENSE"
         "${prefix}/share/doc/orrery/README.md")
     if(NOT EXISTS "${required}")
         message(FATAL_ERROR "missing from the installed tree: ${required}")

@@ -8,6 +8,7 @@
 #include "orrery/core/result.h"
 #include "orrery/render/image.h"
 #include "orrery/scene/aero_experiment.h"
+#include "orrery/sim/aero_import.h"
 #include "orrery/sim/aero_solve.h"
 
 // Headless rendering of an aero experiment (spec 7.7 for the Aero workspace;
@@ -27,6 +28,9 @@ struct AeroHeadlessRequest {
     int height = 720;
     std::int64_t frames = 0;
     int msaa_samples = 4;
+    // Whether a URL model missing from the cache may be downloaded
+    // (--allow-download); refused by default.
+    sim::ExperimentDownload download;
 };
 
 struct AeroHeadlessFrame {

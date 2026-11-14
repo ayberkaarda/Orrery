@@ -222,6 +222,7 @@ int run_aero_headless(const CliOptions& options, const std::filesystem::path& pa
     request.width = options.width.value_or(request.width);
     request.height = options.height.value_or(request.height);
     request.frames = options.frame;
+    request.download.allowed = options.allow_download;
     const auto frame = render_aero_headless(experiment.value(), path.parent_path(), request);
     if (!frame) {
         if (frame.error().kind == HeadlessErrorKind::no_context) {

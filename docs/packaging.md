@@ -1,6 +1,6 @@
 # Packaging
 
-How Orrery is installed and packaged (Phase 11, spec section 8: binary and
+How Orrery is installed and packaged (Phase 11; V1 targets: binary and
 assets under 80 MB, cold start to the first frame under 3 s). The install
 rules and the CPack configuration live in `cmake/Packaging.cmake`, the
 installer resources and scripts in `packaging/`, the release workflow in
@@ -39,7 +39,7 @@ The same relative layout on every platform:
 ```
 bin/orrery_app[.exe]             the application (Windows: and the DLLs it loads)
 share/orrery/assets/             bundled experiments/ and scenarios/
-share/doc/orrery/                README.md, README.tr.md, docs/, notice.txt, third_party/<library>/
+share/doc/orrery/                README.md, README.tr.md, LICENSE, docs/, notice.txt, third_party/<library>/
 share/applications/orrery.desktop                Linux only
 share/icons/hicolor/{256x256,scalable}/apps/     Linux only
 ```
@@ -59,7 +59,14 @@ applies the conditions of `packaging/package_checks.cmake`, which also
 reject the MSI under a CMake older than 4.3. The ctests `packaging.checks`
 and `packaging.refuses_fallback` (in builds with tests) cover both.
 
-### Third-party notices
+### Licence and third-party notices
+
+Orrery itself is under the MIT License (`LICENSE` at the repository root,
+installed as `share/doc/orrery/LICENSE`). `packaging/notice.txt`, installed
+beside it and shown as the licence page of the MSI, reproduces that text and
+says that the bundled libraries keep their own licences; the ctest
+`packaging.checks` fails when the notice no longer contains `LICENSE`
+verbatim, and `install.relocated` requires both files in the installed tree.
 
 `share/doc/orrery/third_party` holds the licence notice of every vcpkg
 library of the build (vcpkg's `copyright` file per port; build helpers and
@@ -255,7 +262,7 @@ Measured on Windows (MSVC 19.44, `package` preset, version 0.0.1):
 | `.msi` | 9.2 MiB (9,675,112 bytes) |
 | `.zip` | 10.3 MiB (10,846,080 bytes) |
 
-The spec limit for binary and assets is 80 MB: the whole installed tree,
+The V1 limit for binary and assets is 80 MB: the whole installed tree,
 runtime libraries included, uses about a quarter of it. The Linux numbers
 are reported by the release workflow in its job summary.
 
@@ -270,7 +277,7 @@ PNG written; five runs each):
 | `black_hole`, 1920x1080 | 0.81 to 1.22 s |
 | `solar_system`, 160x90 | 0.39 to 2.6 s |
 
-The spec target is under 3 s. The very first runs of a freshly installed
+The V1 target is under 3 s. The very first runs of a freshly installed
 or unpacked tree were slower, 1.5 to 4.5 s (the 4.5 s for a 1080p frame):
 the antivirus scans the new binaries and the driver compiles the shaders
 into its cache once. So a first launch after installation can exceed 3 s
@@ -353,3 +360,11 @@ it too; Linux uses the PNG and SVG through the desktop entry.
 | MSI contents and the installed application | locally: administrative extract, then the extracted `orrery_app.exe` run headless with a system-only `PATH` |
 | Linux: build, install test, tarball, AppImage of the real application | release workflow only (no Linux build environment locally) |
 | `build-appimage.sh` end to end | locally under WSL with a stand-in executable: tools downloaded and verified, AppDir built, AppImage packed and run (`--version` found the assets) |
+
+Status of the Linux packages: the first release-workflow run (run
+43515216687, 2026-11-13) built `linux-package` and ran the relocated
+executable's `--version`, then failed `install.relocated` because the
+statically linked OpenSSL and curl keep build-tree paths in the
+executable. No tarball or AppImage of the real application has been
+produced or run yet, and the hosted runner has no display, so the headless
+renders there exit with code 3.

@@ -87,6 +87,11 @@ TEST_CASE("Command line: headless", "[app][cli]") {
     const auto no_frame = parse({"--headless", "-e", "x", "-o", "y.png"});
     REQUIRE(no_frame.has_value());
     CHECK(no_frame.value().frame == 0);
+    // Downloads of experiment models need an explicit flag.
+    CHECK_FALSE(no_frame.value().allow_download);
+    const auto download = parse({"--headless", "-e", "x", "-o", "y.png", "--allow-download"});
+    REQUIRE(download.has_value());
+    CHECK(download.value().allow_download);
 }
 
 TEST_CASE("Command line: errors are one clear line", "[app][cli]") {
@@ -108,12 +113,16 @@ TEST_CASE("Command line: errors are one clear line", "[app][cli]") {
     expect_error({"--experiment="}, "non-empty value");
     expect_error({"--modules", "-e", "x"}, "--modules");
     expect_error({"--benchmark", "0"}, "--benchmark");
+    expect_error({"--allow-download"}, "--allow-download is only valid with --headless");
+    expect_error({"--headless", "-e", "x", "-o", "a.png", "--allow-download=yes"},
+                 "takes no value");
 }
 
 TEST_CASE("Usage text lists every option", "[app][cli]") {
     const std::string usage = usage_text();
-    for (const char* option : {"--headless", "--experiment", "--frame", "--out", "--size",
-                               "--benchmark", "--version", "--help", "--modules"}) {
+    for (const char* option :
+         {"--headless", "--experiment", "--frame", "--out", "--size", "--benchmark", "--version",
+          "--help", "--modules", "--allow-download"}) {
         CHECK(usage.find(option) != std::string::npos);
     }
 }

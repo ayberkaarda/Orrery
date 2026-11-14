@@ -27,6 +27,8 @@ enum class FetchErrorKind : std::uint8_t {
     archive_invalid,       // the archive cannot be read
     cache_failure,         // cache directory or entry cannot be written or verified
     io_failure,            // local file system error
+    cancelled,             // FetchOptions::cancel_requested asked the fetch to stop
+    digest_mismatch,       // the download does not hash to FetchOptions::expected_sha256
 };
 
 struct FetchError {
