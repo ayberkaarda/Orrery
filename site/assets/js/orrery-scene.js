@@ -1,58 +1,53 @@
 // Hero motif: a mechanical orrery drawn with three.js.
 //
-// Circular, coplanar orbits whose angular speeds follow Kepler's third law
-// (omega proportional to a^-3/2). Each planet rides on a brass arm from the
-// central column, as on a mechanical orrery. Decorative only: the screenshots
-// further down the page come from the application itself.
+// The model (orbits paced by Kepler's third law) lives in orrery-model.js.
+// Each planet rides on a brass arm from the central column, as on a
+// mechanical orrery. Decorative: the screenshots further down the page come
+// from the application itself.
+//
+// The scene is interactive. Pointing at a planet highlights it, a click or tap
+// follows it with the camera, a drag turns the camera and the wheel or a pinch
+// zooms. This module never touches the DOM, so it runs in a worker on an
+// OffscreenCanvas where available (orrery-worker.js) and on the main thread
+// otherwise; site.js owns the DOM side: events, labels and announcements.
 
 import * as THREE from '../vendor/three/three.module.min.js';
+import { PLANETS, ZOOM_MAX, ZOOM_MIN, omega } from './orrery-model.js';
 
 const BRASS = 0xe2a75c;
 const STEEL = 0x74aacc;
 const ORBIT = 0x8e96a4;
 
-// Orbit radius, planet radius, colour, starting phase (radians).
-const PLANETS = [
-  { a: 1.05, r: 0.07, color: 0xb9b2a7, phase: 0.6 },
-  { a: 1.65, r: 0.11, color: 0xe0c08f, phase: 2.5 },
-  { a: 2.35, r: 0.12, color: 0x74aacc, phase: 4.3, moon: true },
-  { a: 3.15, r: 0.09, color: 0xd9825f, phase: 1.2 },
-  { a: 4.05, r: 0.21, color: 0xd8b98a, phase: 3.4 },
-  { a: 5.0, r: 0.17, color: 0xc9a46a, phase: 5.5, ring: true },
-];
 const SCALE_RING = 5.75;
-const BASE_OMEGA = 0.3; // rad/s of the innermost planet
-const TILT = THREE.MathUtils.degToRad(23); // camera elevation above the plane
+const TILT = THREE.MathUtils.degToRad(23); // default camera elevation above the plane
+const PITCH_MIN = THREE.MathUtils.degToRad(4);
+const PITCH_MAX = THREE.MathUtils.degToRad(72);
+const FOCUS_ZOOM = 0.62;
+const IDLE_SPIN = 0.02; // rad/s of idle camera rotation
+const IDLE_DELAY = 2500; // ms after the last interaction before idle rotation resumes
+const PICK_INTERVAL = 40; // ms between pointer picks
+const PICK_SLOP = 16; // px added to a planet's projected radius when picking
+const DRAG_THRESHOLD = 5; // px before a press becomes a drag
+const CENTRE = new THREE.Vector3(0, -0.35, 0);
 
-function glowTexture() {
-  const size = 128;
+// Works in a worker (OffscreenCanvas) and on the main thread.
+function makeCanvas(size) {
+  if (typeof OffscreenCanvas !== 'undefined') return new OffscreenCanvas(size, size);
   const canvas = document.createElement('canvas');
   canvas.width = canvas.height = size;
+  return canvas;
+}
+
+function radialTexture(size, stops) {
+  const canvas = makeCanvas(size);
   const g = canvas.getContext('2d');
   const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  grad.addColorStop(0, 'rgba(255, 236, 205, 1)');
-  grad.addColorStop(0.18, 'rgba(255, 206, 140, 0.55)');
-  grad.addColorStop(0.45, 'rgba(226, 167, 92, 0.14)');
-  grad.addColorStop(1, 'rgba(226, 167, 92, 0)');
+  for (const [at, colour] of stops) grad.addColorStop(at, colour);
   g.fillStyle = grad;
   g.fillRect(0, 0, size, size);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
   return texture;
-}
-
-function dotTexture() {
-  const size = 32;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = size;
-  const g = canvas.getContext('2d');
-  const grad = g.createRadialGradient(size / 2, size / 2, 0, size / 2, size / 2, size / 2);
-  grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
-  grad.addColorStop(0.45, 'rgba(255, 255, 255, 0.7)');
-  grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
-  g.fillStyle = grad;
-  g.fillRect(0, 0, size, size);
-  return new THREE.CanvasTexture(canvas);
 }
 
 function circlePoints(radius, segments, y = 0) {
@@ -86,7 +81,14 @@ function buildScene() {
     track(new THREE.MeshBasicMaterial({ color: 0xffd7a0 })),
   );
   scene.add(sun);
-  const glowMap = track(glowTexture());
+  const glowMap = track(
+    radialTexture(128, [
+      [0, 'rgba(255, 236, 205, 1)'],
+      [0.18, 'rgba(255, 206, 140, 0.55)'],
+      [0.45, 'rgba(226, 167, 92, 0.14)'],
+      [1, 'rgba(226, 167, 92, 0)'],
+    ]),
+  );
   const glow = new THREE.Sprite(
     track(
       new THREE.SpriteMaterial({
@@ -99,6 +101,15 @@ function buildScene() {
   );
   glow.scale.setScalar(2.9);
   scene.add(glow);
+
+  // Halo used to highlight a planet; tinted per planet.
+  const haloMap = track(
+    radialTexture(64, [
+      [0, 'rgba(255, 255, 255, 0.9)'],
+      [0.3, 'rgba(255, 255, 255, 0.35)'],
+      [1, 'rgba(255, 255, 255, 0)'],
+    ]),
+  );
 
   // Central column under the sun and the drum the arms turn on.
   const columnMat = track(lineMaterial(BRASS, 0.5));
@@ -130,9 +141,9 @@ function buildScene() {
   );
 
   // Orbits, planets and arms.
-  const orbitMat = track(lineMaterial(ORBIT, 0.24));
   const armMat = track(lineMaterial(BRASS, 0.55));
   const bodies = PLANETS.map((p, i) => {
+    const orbitMat = track(lineMaterial(ORBIT, 0.24));
     scene.add(
       new THREE.LineLoop(
         track(new THREE.BufferGeometry().setFromPoints(circlePoints(p.a, 192))),
@@ -145,10 +156,25 @@ function buildScene() {
 
     const planet = new THREE.Mesh(
       track(new THREE.SphereGeometry(p.r, 32, 16)),
-      track(new THREE.MeshStandardMaterial({ color: p.color, roughness: 0.8, metalness: 0.05 })),
+      track(new THREE.MeshLambertMaterial({ color: p.color })),
     );
     planet.position.set(p.a, 0, 0);
     pivot.add(planet);
+
+    const haloMat = track(
+      new THREE.SpriteMaterial({
+        map: haloMap,
+        color: p.color,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+        transparent: true,
+        opacity: 0,
+      }),
+    );
+    const halo = new THREE.Sprite(haloMat);
+    halo.scale.setScalar(Math.max(p.r * 7, 0.5));
+    halo.visible = false;
+    planet.add(halo);
 
     // Arm: horizontal at its own level below the plane, then up to the body.
     const level = -0.42 - i * 0.17;
@@ -188,7 +214,7 @@ function buildScene() {
       moonPivot.add(moonOrbit);
       const moon = new THREE.Mesh(
         track(new THREE.SphereGeometry(0.035, 16, 8)),
-        track(new THREE.MeshStandardMaterial({ color: 0xd4d6da, roughness: 0.9 })),
+        track(new THREE.MeshLambertMaterial({ color: 0xd4d6da })),
       );
       moon.position.set(0.3, 0, 0);
       moonPivot.add(moon);
@@ -197,8 +223,16 @@ function buildScene() {
     return {
       pivot,
       moonPivot,
+      planet,
+      halo,
+      haloMat,
+      orbitMat,
+      a: p.a,
+      r: p.r,
       phase: p.phase,
-      omega: BASE_OMEGA * Math.pow(p.a / PLANETS[0].a, -1.5),
+      omega: omega(i),
+      glow: 0, // eased highlight, 0..1
+      world: new THREE.Vector3(),
     };
   });
 
@@ -225,7 +259,13 @@ function buildScene() {
   starGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
   const starMaterial = track(
     new THREE.PointsMaterial({
-      map: track(dotTexture()),
+      map: track(
+        radialTexture(32, [
+          [0, 'rgba(255, 255, 255, 1)'],
+          [0.45, 'rgba(255, 255, 255, 0.7)'],
+          [1, 'rgba(255, 255, 255, 0)'],
+        ]),
+      ),
       size: 2.4,
       sizeAttenuation: false,
       vertexColors: true,
@@ -238,12 +278,26 @@ function buildScene() {
   return { scene, bodies, starMaterial, disposables };
 }
 
+// Exponential approach of `value` to `goal` with rate k (1/s).
+function approach(value, goal, k, dt) {
+  return value + (goal - value) * (1 - Math.exp(-k * dt));
+}
+
 /**
- * Mounts the orrery on a canvas.
- * Returns { start, stop, dispose }. With `still: true` it draws one frame and
- * never animates (reduced motion).
+ * Creates the orrery on a canvas: an HTMLCanvasElement on the main thread or
+ * an OffscreenCanvas in a worker. It never touches the DOM. Input arrives as
+ * messages through handle(); changes go out through emit():
+ *
+ *   { t: 'ready' }                       after the first frame
+ *   { t: 'state', seq, hovered, keyed, followed, zoom, cursor }
+ *   { t: 'anchor', x, y }                canvas px of the lit planet (or the
+ *                                        centre) while a label is wanted
+ *
+ * Messages in: size, active, motion, label, pdown, pmove, pup, pcancel,
+ * pleave, zoom, choose, follow, reset (see handle below). Nothing is drawn
+ * while inactive.
  */
-export function mountOrrery(canvas, { still = false, onFirstFrame = () => {} } = {}) {
+export function createOrrery(canvas, { width: w0, height: h0, pixelRatio, motion: motion0, emit }) {
   const renderer = new THREE.WebGLRenderer({
     canvas,
     antialias: true,
@@ -251,115 +305,483 @@ export function mountOrrery(canvas, { still = false, onFirstFrame = () => {} } =
     powerPreference: 'low-power',
   });
   renderer.setClearColor(0x000000, 0);
-  const pixelRatio = Math.min(window.devicePixelRatio || 1, 1.75);
   renderer.setPixelRatio(pixelRatio);
 
   const { scene, bodies, starMaterial, disposables } = buildScene();
   starMaterial.size = 2.4 * pixelRatio;
   const camera = new THREE.PerspectiveCamera(30, 1, 0.1, 200);
-  const fovFactor = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  const halfFovTan = Math.tan(THREE.MathUtils.degToRad(camera.fov) / 2);
+  const raf =
+    typeof requestAnimationFrame === 'function'
+      ? (cb) => requestAnimationFrame(cb)
+      : (cb) => setTimeout(() => cb(performance.now()), 16);
+  const caf =
+    typeof cancelAnimationFrame === 'function' ? (id) => cancelAnimationFrame(id) : (id) => clearTimeout(id);
 
-  let distance = 20;
+  let motion = motion0;
+  let active = false;
   let width = 1;
   let height = 1;
-  let simTime = still ? 9 : 0;
-  let azimuth = 0.35;
-  const pointer = { x: 0, y: 0 };
-  const eased = { x: 0, y: 0 };
+  let frameDistance = 20;
+  let wide = true;
+  let offsetY = 0.5; // vertical position of the view centre, fraction of the height
+  let simTime = 9; // a pleasing arrangement for the still frame
 
-  function layout() {
-    width = Math.max(1, canvas.clientWidth);
-    height = Math.max(1, canvas.clientHeight);
+  // Camera: goal values set by input, current values ease towards them.
+  const goal = { azimuth: 0.35, pitch: TILT, zoom: 1 };
+  const cur = { azimuth: 0.35, pitch: TILT, zoom: 1 };
+  const target = CENTRE.clone();
+  const targetGoal = CENTRE.clone();
+  let idleSpin = motion ? IDLE_SPIN : 0;
+  let lastInput = -Infinity;
+
+  // Selection state.
+  let hovered = -1; // under the pointer
+  let keyed = -1; // chosen from the keyboard
+  let followed = -1; // camera follows it
+  let seq = 0; // last command sequence number handled
+  let cursor = '';
+  let stateDirty = true;
+  let labelWanted = false;
+  let anchorX = NaN;
+  let anchorY = NaN;
+
+  // Pointer state.
+  const pointer = { x: 0, y: 0, inside: false };
+  let pickPending = false;
+  let lastPick = 0;
+  const presses = new Map(); // pointerId -> { x, y }
+  let pressX = 0;
+  let pressY = 0;
+  let dragging = false;
+  let pinchStart = 0;
+  let pinchZoom = 1;
+
+  const projected = new THREE.Vector3();
+
+  function resize(w, h) {
+    width = Math.max(1, w);
+    height = Math.max(1, h);
     renderer.setSize(width, height, false);
-    const wide = width >= 900;
+    wide = width >= 900;
     // Where the orrery's centre sits in the canvas, and its outer radius in px.
-    const cx = wide ? 0.69 : 0.5;
-    const cy = wide ? 0.5 : 0.6;
     const radiusPx = wide ? Math.min(height * 0.48, width * 0.3) : Math.min(width * 0.47, height * 0.75);
-    distance = ((SCALE_RING + 0.3) * height) / (radiusPx * fovFactor);
+    frameDistance = ((SCALE_RING + 0.3) * height) / (radiusPx * 2 * halfFovTan);
     camera.aspect = width / height;
-    camera.setViewOffset(width, height, -(cx - 0.5) * width, -(cy - 0.5) * height, width, height);
-    camera.updateProjectionMatrix();
+    offsetY = offsetGoal();
+    applyOffset();
   }
 
-  function place() {
-    const yaw = azimuth + eased.x * 0.08;
-    const pitch = TILT + eased.y * 0.04;
-    camera.position.set(
-      Math.sin(yaw) * Math.cos(pitch) * distance,
-      Math.sin(pitch) * distance,
-      Math.cos(yaw) * Math.cos(pitch) * distance,
-    );
-    camera.lookAt(0, -0.35, 0);
+  // On narrow screens the hero band is short: a followed planet sits lower so
+  // its card fits above it.
+  function offsetGoal() {
+    if (wide) return 0.5;
+    return followed >= 0 ? 0.7 : 0.6;
+  }
+
+  function applyOffset() {
+    const cx = wide ? 0.69 : 0.5;
+    camera.setViewOffset(width, height, -(cx - 0.5) * width, -(offsetY - 0.5) * height, width, height);
+    camera.updateProjectionMatrix();
   }
 
   function pose() {
     for (const b of bodies) {
-      b.pivot.rotation.y = -(b.phase + b.omega * simTime);
+      const angle = b.phase + b.omega * simTime;
+      b.pivot.rotation.y = -angle;
+      b.world.set(Math.cos(angle) * b.a, 0, Math.sin(angle) * b.a);
       if (b.moonPivot) b.moonPivot.rotation.y = -simTime * 1.4;
     }
   }
 
+  function place() {
+    const d = frameDistance * cur.zoom;
+    const cp = Math.cos(cur.pitch);
+    camera.position.set(
+      target.x + Math.sin(cur.azimuth) * cp * d,
+      target.y + Math.sin(cur.pitch) * d,
+      target.z + Math.cos(cur.azimuth) * cp * d,
+    );
+    camera.lookAt(target);
+    camera.updateMatrixWorld();
+  }
+
+  // Projects a world point into canvas pixels; false when behind the camera.
+  function projectPoint(v) {
+    projected.copy(v).project(camera);
+    if (projected.z > 1) return false;
+    projected.x = (projected.x + 1) * 0.5 * width;
+    projected.y = (1 - projected.y) * 0.5 * height;
+    return true;
+  }
+
+  // Nearest planet whose projected disc, plus some slop, contains (x, y).
+  function pick(x, y) {
+    let best = -1;
+    let bestD2 = Infinity;
+    for (let i = 0; i < bodies.length; i += 1) {
+      if (!projectPoint(bodies[i].world)) continue;
+      const dist = camera.position.distanceTo(bodies[i].world);
+      const rpx = (bodies[i].r * height) / (2 * dist * halfFovTan);
+      const dx = projected.x - x;
+      const dy = projected.y - y;
+      const d2 = dx * dx + dy * dy;
+      const reach = rpx + PICK_SLOP;
+      if (d2 <= reach * reach && d2 < bestD2) {
+        best = i;
+        bestD2 = d2;
+      }
+    }
+    return best;
+  }
+
+  function highlighted() {
+    if (keyed >= 0) return keyed;
+    if (hovered >= 0) return hovered;
+    return followed;
+  }
+
+  function sendState() {
+    if (!stateDirty) return;
+    stateDirty = false;
+    emit({ t: 'state', seq, hovered, keyed, followed, zoom: goal.zoom, cursor });
+  }
+
+  function sendAnchor() {
+    if (!labelWanted) return;
+    const lit = highlighted();
+    if (!projectPoint(lit >= 0 ? bodies[lit].world : CENTRE)) return;
+    const x = Math.round(projected.x);
+    const y = Math.round(projected.y);
+    if (x === anchorX && y === anchorY) return;
+    anchorX = x;
+    anchorY = y;
+    emit({ t: 'anchor', x, y });
+  }
+
   let first = true;
-  let running = false;
   function draw() {
     pose();
     place();
     renderer.render(scene, camera);
+    sendAnchor();
     if (first) {
       first = false;
-      onFirstFrame();
+      emit({ t: 'ready' });
     }
   }
 
+  // ------------------------------------------------------------- frame loop
+
+  let rafId = 0;
   let last = 0;
+  let dirty = true;
+  let compiled = false;
+
+  function kick() {
+    dirty = true;
+    if (active && compiled && !rafId) {
+      last = 0;
+      rafId = raf(frame);
+    }
+  }
+
   function frame(now) {
+    rafId = 0;
+    if (!active) return;
     const dt = last ? Math.min((now - last) / 1000, 0.05) : 0;
     last = now;
-    simTime += dt;
-    azimuth += dt * 0.012;
-    eased.x += (pointer.x - eased.x) * Math.min(1, dt * 2.5);
-    eased.y += (pointer.y - eased.y) * Math.min(1, dt * 2.5);
-    draw();
+    let settling = false;
+
+    if (motion) {
+      simTime += dt;
+      const idle = !dragging && presses.size === 0 && hovered < 0 && now - lastInput > IDLE_DELAY;
+      idleSpin = approach(idleSpin, idle ? IDLE_SPIN : 0, 1.2, dt);
+      goal.azimuth += idleSpin * dt;
+      cur.azimuth += idleSpin * dt;
+    }
+
+    // The followed planet moves, so the target goal is refreshed each frame.
+    if (followed >= 0) {
+      pose();
+      targetGoal.copy(bodies[followed].world);
+    }
+
+    if (motion) {
+      cur.azimuth = approach(cur.azimuth, goal.azimuth, dragging ? 30 : 6, dt);
+      cur.pitch = approach(cur.pitch, goal.pitch, dragging ? 30 : 6, dt);
+      cur.zoom = approach(cur.zoom, goal.zoom, 5, dt);
+      target.x = approach(target.x, targetGoal.x, 4, dt);
+      target.y = approach(target.y, targetGoal.y, 4, dt);
+      target.z = approach(target.z, targetGoal.z, 4, dt);
+    } else {
+      cur.azimuth = goal.azimuth;
+      cur.pitch = goal.pitch;
+      cur.zoom = goal.zoom;
+      target.copy(targetGoal);
+    }
+    const wantY = offsetGoal();
+    if (offsetY !== wantY) {
+      offsetY = motion ? approach(offsetY, wantY, 4, dt) : wantY;
+      if (Math.abs(offsetY - wantY) < 1e-4) offsetY = wantY;
+      applyOffset();
+      settling = true;
+    }
+    if (
+      Math.abs(cur.azimuth - goal.azimuth) > 1e-4 ||
+      Math.abs(cur.pitch - goal.pitch) > 1e-4 ||
+      Math.abs(cur.zoom - goal.zoom) > 1e-4 ||
+      target.distanceToSquared(targetGoal) > 1e-8
+    ) {
+      settling = true;
+    }
+
+    // Highlight: halo, slightly larger body, brighter orbit.
+    const lit = highlighted();
+    for (let i = 0; i < bodies.length; i += 1) {
+      const b = bodies[i];
+      const want = i === lit ? 1 : 0;
+      let next = motion ? approach(b.glow, want, 10, dt) : want;
+      if (Math.abs(next - want) < 1e-3) next = want;
+      if (next !== b.glow) {
+        b.glow = next;
+        settling = true;
+      }
+      b.planet.scale.setScalar(1 + 0.35 * b.glow);
+      b.halo.visible = b.glow > 0.001;
+      b.haloMat.opacity = 0.75 * b.glow;
+      b.orbitMat.opacity = 0.24 + 0.36 * b.glow;
+    }
+
+    if (pickPending && now - lastPick >= PICK_INTERVAL) {
+      pickPending = false;
+      lastPick = now;
+      pose();
+      place();
+      const hit = pointer.inside && !dragging ? pick(pointer.x, pointer.y) : -1;
+      if (hit !== hovered) {
+        hovered = hit;
+        if (!dragging) setCursor(hit >= 0 ? 'pointer' : '');
+        stateDirty = true;
+        settling = true;
+      }
+    }
+
+    if (motion || settling || dirty) {
+      dirty = false;
+      draw();
+    }
+    sendState();
+    if (motion || settling || pickPending) rafId = raf(frame);
   }
 
-  function onPointer(event) {
-    pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-    pointer.y = (event.clientY / window.innerHeight) * 2 - 1;
+  // ------------------------------------------------------------- actions
+
+  function setCursor(value) {
+    if (cursor !== value) {
+      cursor = value;
+      stateDirty = true;
+    }
   }
 
-  const resizeObserver = new ResizeObserver(() => {
-    layout();
-    if (still || !running) draw();
-  });
-  resizeObserver.observe(canvas);
-  layout();
-
-  function start() {
-    if (still || running) return;
-    running = true;
-    last = 0;
-    renderer.setAnimationLoop(frame);
-  }
-  function stop() {
-    if (!running) return;
-    running = false;
-    renderer.setAnimationLoop(null);
+  function follow(index) {
+    followed = index;
+    if (index >= 0) {
+      pose();
+      targetGoal.copy(bodies[index].world);
+      goal.zoom = FOCUS_ZOOM;
+    } else {
+      targetGoal.copy(CENTRE);
+      goal.zoom = 1;
+      goal.pitch = TILT;
+    }
+    stateDirty = true;
   }
 
-  if (still) {
-    draw();
-  } else {
-    window.addEventListener('pointermove', onPointer, { passive: true });
+  function setZoom(z) {
+    goal.zoom = THREE.MathUtils.clamp(z, ZOOM_MIN, ZOOM_MAX);
+    stateDirty = true;
   }
+
+  // ------------------------------------------------------------- pointer input
+
+  function pointerMove(id, x, y) {
+    pointer.x = x;
+    pointer.y = y;
+    pointer.inside = true;
+    const press = presses.get(id);
+    if (!press) {
+      pickPending = true;
+      return;
+    }
+    if (presses.size === 2) {
+      press.x = x;
+      press.y = y;
+      let d = 0;
+      let px = 0;
+      let py = 0;
+      let n = 0;
+      for (const p of presses.values()) {
+        if (n === 0) {
+          px = p.x;
+          py = p.y;
+        } else {
+          d = Math.hypot(p.x - px, p.y - py);
+        }
+        n += 1;
+      }
+      if (pinchStart > 0 && d > 0) {
+        setZoom((pinchZoom * pinchStart) / d);
+        cur.zoom = goal.zoom;
+      }
+      lastInput = performance.now();
+      return;
+    }
+    const dx = x - press.x;
+    const dy = y - press.y;
+    if (!dragging && Math.hypot(x - pressX, y - pressY) > DRAG_THRESHOLD) {
+      dragging = true;
+      setCursor('grabbing');
+    }
+    if (dragging) {
+      goal.azimuth -= dx * 0.006;
+      goal.pitch = THREE.MathUtils.clamp(goal.pitch + dy * 0.005, PITCH_MIN, PITCH_MAX);
+      lastInput = performance.now();
+    }
+    press.x = x;
+    press.y = y;
+  }
+
+  function pointerDown(id, x, y) {
+    presses.set(id, { x, y });
+    if (presses.size === 1) {
+      pressX = x;
+      pressY = y;
+      dragging = false;
+    } else if (presses.size === 2) {
+      let px = 0;
+      let py = 0;
+      let n = 0;
+      for (const p of presses.values()) {
+        if (n === 0) {
+          px = p.x;
+          py = p.y;
+        } else {
+          pinchStart = Math.hypot(p.x - px, p.y - py);
+        }
+        n += 1;
+      }
+      pinchZoom = goal.zoom;
+      dragging = true;
+    }
+    lastInput = performance.now();
+  }
+
+  function pointerEnd(id, x, y, cancelled) {
+    if (!presses.has(id)) return;
+    presses.delete(id);
+    if (presses.size > 0) return;
+    pinchStart = 0;
+    const wasDrag = dragging;
+    dragging = false;
+    setCursor(hovered >= 0 ? 'pointer' : '');
+    lastInput = performance.now();
+    if (cancelled || wasDrag) return;
+    // A click or tap: follow the planet under it, or reset on empty sky.
+    pose();
+    place();
+    const hit = pick(x, y);
+    keyed = -1;
+    stateDirty = true;
+    if (hit >= 0) follow(hit === followed ? -1 : hit);
+    else if (followed >= 0 || goal.zoom !== 1 || goal.pitch !== TILT) follow(-1);
+  }
+
+  // ------------------------------------------------------------- messages
+
+  function handle(m) {
+    if (m.seq) {
+      seq = m.seq;
+      stateDirty = true;
+    }
+    switch (m.t) {
+      case 'size':
+        resize(m.w, m.h);
+        break;
+      case 'active':
+        active = m.on;
+        if (!active && rafId) {
+          caf(rafId);
+          rafId = 0;
+        }
+        break;
+      case 'motion':
+        motion = m.on;
+        if (!motion) idleSpin = 0;
+        break;
+      case 'label':
+        labelWanted = m.on;
+        anchorX = NaN;
+        break;
+      case 'pdown':
+        pointerDown(m.id, m.x, m.y);
+        break;
+      case 'pmove':
+        pointerMove(m.id, m.x, m.y);
+        break;
+      case 'pup':
+        pointerEnd(m.id, m.x, m.y, false);
+        break;
+      case 'pcancel':
+        pointerEnd(m.id, 0, 0, true);
+        break;
+      case 'pleave':
+        pointer.inside = false;
+        pickPending = true;
+        break;
+      case 'zoom':
+        setZoom(m.z);
+        lastInput = performance.now();
+        break;
+      case 'choose':
+        keyed = m.i;
+        stateDirty = true;
+        lastInput = performance.now();
+        break;
+      case 'follow':
+        keyed = -1;
+        follow(m.i);
+        lastInput = performance.now();
+        break;
+      case 'reset':
+        keyed = -1;
+        follow(-1);
+        lastInput = performance.now();
+        break;
+      default:
+        return;
+    }
+    kick();
+  }
+
+  resize(w0, h0);
+  pose();
+  place();
+  // Shaders compile in the background where the driver allows it.
+  renderer
+    .compileAsync(scene, camera)
+    .catch(() => {})
+    .then(() => {
+      compiled = true;
+      kick();
+    });
 
   function dispose() {
-    stop();
-    resizeObserver.disconnect();
-    window.removeEventListener('pointermove', onPointer);
+    active = false;
+    if (rafId) caf(rafId);
     for (const d of disposables) d.dispose();
     renderer.dispose();
   }
 
-  return { start, stop, dispose, draw };
+  return { handle, dispose };
 }

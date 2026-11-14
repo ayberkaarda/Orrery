@@ -63,10 +63,6 @@
 
   <main id="main">
     <section class="hero" data-orrery aria-labelledby="hero-title">
-      <div class="hero__sky" aria-hidden="true">
-        <img class="hero__still" src="../assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
-        <canvas></canvas>
-      </div>
       <div class="wrap">
         <div class="hero__copy">
           <ul class="hero__meta label" aria-label="Sürüm bilgileri">
@@ -90,8 +86,13 @@
           </div>
           <p class="hero__platforms"><strong>Windows x64</strong> geliştirildi ve test edildi · <strong>Linux x86_64</strong> CI'da derlenir, paketler test edilmedi · macOS kapsam dışı</p>
         </div>
-        <p class="hero__note">Buradaki orrery tarayıcınızda çiziliyor: hızları Kepler'in üçüncü yasasına uyan dairesel yörüngeler. Aşağıdaki her görüntüyü Orrery'nin kendisi çizdi.</p>
+        <p class="hero__note">Buradaki orrery tarayıcınızda çiziliyor: hızları Kepler'in üçüncü yasasına uyan dairesel yörüngeler. Döndürmek için sürükleyin, izlemek için bir gezegen seçin. Aşağıdaki her görüntüyü Orrery'nin kendisi çizdi.</p>
       </div>
+      <div class="hero__sky">
+        <img class="hero__still" src="../assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
+        <canvas></canvas>
+      </div>
+      <p class="visually-hidden" aria-live="polite" data-orrery-live></p>
     </section>
 
     <section class="coupling" aria-label="Alanlar nasıl bağlanır">

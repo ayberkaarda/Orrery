@@ -435,6 +435,93 @@ h3 {
   opacity: 0;
 }
 
+/* The live orrery takes the pointer wherever the copy does not. Horizontal
+   drags turn it; vertical swipes still scroll the page. */
+.hero > .wrap {
+  pointer-events: none;
+}
+.hero__copy,
+.hero__note {
+  pointer-events: auto;
+}
+.hero.is-live .hero__sky canvas {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: pan-y;
+  -webkit-tap-highlight-color: transparent;
+}
+.hero__sky canvas:focus {
+  outline: none;
+}
+.hero__sky canvas:focus-visible {
+  outline: 1px solid var(--brass-deep);
+  outline-offset: -10px;
+  border-radius: 10px;
+}
+
+/* Name and period of the planet under the pointer or followed by the camera. */
+.orrery-label {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 2;
+  max-width: min(280px, calc(100% - 24px));
+  padding: 0.6rem 0.8rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(12, 14, 18, 0.88);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font: 400 0.75rem/1.45 var(--mono);
+  color: var(--muted);
+  pointer-events: none;
+  will-change: transform;
+}
+.orrery-label[hidden] {
+  display: none;
+}
+.orrery-label > * {
+  margin: 0;
+}
+.orrery-label .orrery-label__name {
+  font: 400 1.25rem/1.1 var(--serif);
+  color: var(--text-strong);
+  margin-bottom: 0.25rem;
+}
+.orrery-label__fact {
+  color: var(--brass);
+}
+.orrery-label .orrery-label__more {
+  white-space: pre-line;
+  margin-top: 0.4rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--line-soft);
+}
+.orrery-label__more:empty {
+  display: none;
+}
+.orrery-label[data-mode='card'] {
+  border-color: rgba(185, 135, 74, 0.6);
+}
+.orrery-label[data-mode='hint'] .orrery-label__fact {
+  color: var(--text);
+}
+@media (max-width: 600px) {
+  .orrery-label {
+    max-width: calc(100% - 24px);
+    padding: 0.45rem 0.65rem 0.5rem;
+    font-size: 0.6875rem;
+    line-height: 1.4;
+  }
+  .orrery-label .orrery-label__name {
+    font-size: 1.0625rem;
+    margin-bottom: 0.15rem;
+  }
+  .orrery-label .orrery-label__more {
+    margin-top: 0.3rem;
+    padding-top: 0.3rem;
+  }
+}
+
 /* Keeps the copy legible over the orbits. */
 .hero::after {
   content: '';
