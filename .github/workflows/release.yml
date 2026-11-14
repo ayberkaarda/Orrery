@@ -250,12 +250,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
         run: |
-          ls -l dist
+          # upload-artifact keeps the folder of the AppImage (dist/appimage/...):
+          # hand the files over, never the folders.
+          mapfile -t files < <(find dist -type f | sort)
+          ls -l "${files[@]}"
           if gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --clobber
+            gh release upload "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --clobber
           else
             prerelease=()
             case "$TAG" in *-*) prerelease=(--prerelease) ;; esac
-            gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --verify-tag \
+            gh release create "$TAG" "${files[@]}" --repo "$GITHUB_REPOSITORY" --verify-tag \
               --title "Orrery ${TAG#v}" --generate-notes "${prerelease[@]}"
           fi
