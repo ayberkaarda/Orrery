@@ -20,7 +20,7 @@ araçtır. Her fiziksel basitleştirme kodda işaretlenir ve
 [docs/physics.md](docs/physics.md) içinde listelenir; hiçbir çözücü
 doğrulanmış CFD iddiasında bulunmaz.
 
-Sürüm 0.0.1. Windows (MSVC 2022), uygulamanın geliştirildiği ve test edildiği
+Sürüm 0.1.0. Windows (MSVC 2022), uygulamanın geliştirildiği ve test edildiği
 platformdur: pencere, GPU testleri ve paketlenmiş uygulama orada
 çalıştırılmıştır. Linux (GCC 13, Clang 17): headless derleme ve testleri CI'da
 çalışır, pencereli derleme de orada derlenir (sanitizer ve gecelik işler),

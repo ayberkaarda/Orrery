@@ -13,7 +13,7 @@ if(ORRERY_TRACY)
 endif()
 
 project(Orrery
-    VERSION 0.0.1
+    VERSION 0.1.0
     DESCRIPTION "Physics laboratory: space dynamics, aerodynamics and atmospheric entry"
     LANGUAGES CXX)
 

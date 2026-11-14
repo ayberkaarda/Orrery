@@ -1,7 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "orrery",
-  "version-semver": "0.0.1",
+  "version-semver": "0.1.0",
   "description": "Physics laboratory: space dynamics, aerodynamics and atmospheric entry.",
   "builtin-baseline": "2ec0f1747d8186a5c9babe276e2ad57cd2b12d2a",
   "dependencies": [

@@ -17,7 +17,7 @@ The aim is an observable, verifiable and deterministic tool, not a game. Every
 physical simplification is marked in the code and listed in
 [docs/physics.md](docs/physics.md); no solver claims to be validated CFD.
 
-Version 0.0.1. Windows (MSVC 2022) is the platform it is developed and tested
+Version 0.1.0. Windows (MSVC 2022) is the platform it is developed and tested
 on: the window, the GPU tests and the packaged application have run there.
 Linux (GCC 13, Clang 17): the headless build and its tests run in CI, and the
 windowed build compiles there (sanitizer and nightly jobs), but the CI runners
