@@ -7,8 +7,12 @@ const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
 async function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) {
-    await navigator.clipboard.writeText(text);
-    return;
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Permission denied or no focus: fall back to a selection copy.
+    }
   }
   const area = document.createElement('textarea');
   area.value = text;
