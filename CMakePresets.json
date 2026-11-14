@@ -138,7 +138,10 @@
       "displayName": "Release packages: tarball and AppImage tree (the linux-release preset)",
       "inherits": [ "cfg-package", "linux-release" ],
       "cacheVariables": {
-        "CMAKE_EXE_LINKER_FLAGS": "-static-libstdc++ -static-libgcc"
+        "CMAKE_EXE_LINKER_FLAGS": "-static-libstdc++ -static-libgcc",
+        "CMAKE_C_FLAGS": "-ffile-prefix-map=${sourceDir}=orrery",
+        "CMAKE_CXX_FLAGS": "-ffile-prefix-map=${sourceDir}=orrery",
+        "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/packaging/linux/triplets"
       }
     }
   ],
