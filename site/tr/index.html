@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="tr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orrery: masaüstü fizik laboratuvarı</title>
+  <meta name="description" content="Orrery, C++20 ve OpenGL 4.6 ile yazılmış, N-cisim uzay dinamiğini, aerodinamiği ve atmosferik girişi birbirine bağlayan bir masaüstü fizik laboratuvarıdır. Gözlemlenebilir, doğrulanabilir ve deterministik; her basitleştirme belgelenmiştir.">
+  <meta name="theme-color" content="#0b0d11">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://ayberkaarda.github.io/Orrery/tr/">
+  <link rel="alternate" hreflang="en" href="https://ayberkaarda.github.io/Orrery/">
+  <link rel="alternate" hreflang="tr" href="https://ayberkaarda.github.io/Orrery/tr/">
+  <link rel="alternate" hreflang="x-default" href="https://ayberkaarda.github.io/Orrery/">
+  <link rel="icon" href="../favicon.svg" type="image/svg+xml">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Orrery">
+  <meta property="og:title" content="Orrery: masaüstü fizik laboratuvarı">
+  <meta property="og:description" content="Uzay dinamiği, aerodinamik ve atmosferik giriş tek bir deterministik masaüstü uygulamasında. C++20, OpenGL 4.6, MIT lisanslı.">
+  <meta property="og:url" content="https://ayberkaarda.github.io/Orrery/tr/">
+  <meta property="og:image" content="https://ayberkaarda.github.io/Orrery/assets/img/og-black-hole.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="Orrery'nin çizdiği bir kara delik: Schwarzschild merceklenmesiyle bükülmüş ince bir birikim diski">
+  <meta property="og:locale" content="tr_TR">
+  <meta property="og:locale:alternate" content="en_GB">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="preload" href="../assets/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="../assets/fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="../assets/css/site.css">
+  <script type="module" src="../assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">İçeriğe geç</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./" aria-label="Orrery, ana sayfa">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="none" stroke="#e2a75c" stroke-width="2"/><circle cx="16" cy="16" r="3.6" fill="#e2a75c"/><circle cx="23.07" cy="8.93" r="2.7" fill="#dadee5" stroke="#0b0d11" stroke-width="1.4"/></svg>
+        Orrery
+      </a>
+      <nav class="nav" aria-label="Bölümler">
+        <ul>
+          <li><a href="#workspaces">Çalışma alanları</a></li>
+          <li><a href="#trust">Güven</a></li>
+          <li><a href="#download">İndir</a></li>
+          <li><a href="#status">Durum</a></li>
+          <li><a href="#docs">Belgeler</a></li>
+        </ul>
+      </nav>
+      <div class="header-tools">
+        <div class="lang" role="group" aria-label="Dil">
+          <a href="../" hreflang="en" lang="en" title="English">EN</a>
+          <span aria-current="page" lang="tr">TR</span>
+        </div>
+        <a class="icon-link" href="https://github.com/ayberkaarda/Orrery" aria-label="GitHub'da Orrery">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" data-orrery aria-labelledby="hero-title">
+      <div class="hero__sky" aria-hidden="true">
+        <img class="hero__still" src="../assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
+        <canvas></canvas>
+      </div>
+      <div class="wrap">
+        <div class="hero__copy">
+          <ul class="hero__meta label" aria-label="Sürüm bilgileri">
+            <li>v0.1.0</li>
+            <li>C++20</li>
+            <li>OpenGL 4.6</li>
+            <li>MIT</li>
+          </ul>
+          <h1 id="hero-title">Orrery</h1>
+          <p class="hero__lede">Uzay dinamiğini, aerodinamiği ve atmosferik girişi tek bir uygulamada bir araya getirip birbirine bağlayan bir masaüstü fizik laboratuvarı.</p>
+          <p class="hero__tagline">Gözlemlenebilir, doğrulanabilir, deterministik. Bir oyun değil, bir araç.</p>
+          <div class="actions">
+            <a class="btn btn--primary" href="https://github.com/ayberkaarda/Orrery/releases/tag/v0.1.0">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12"/></svg>
+              0.1.0'ı indir
+            </a>
+            <a class="btn" href="https://github.com/ayberkaarda/Orrery">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+              GitHub'da kaynak kod
+            </a>
+          </div>
+          <p class="hero__platforms"><strong>Windows x64</strong> geliştirildi ve test edildi · <strong>Linux x86_64</strong> CI'da derlenir, paketler test edilmedi · macOS kapsam dışı</p>
+        </div>
+        <p class="hero__note">Buradaki orrery tarayıcınızda çiziliyor: hızları Kepler'in üçüncü yasasına uyan dairesel yörüngeler. Aşağıdaki her görüntüyü Orrery'nin kendisi çizdi.</p>
+      </div>
+    </section>
+
+    <section class="coupling" aria-label="Alanlar nasıl bağlanır">
+      <div class="wrap">
+        <p><strong>Tek zincir, üç alan.</strong> Atmosfer modelleri ve aerodinamik çözücüden örneklenen bir sürüklenme katsayısı tablosu, bir sondanın girişini sürer; giriş, Space çalışma alanıyla aynı integratörlerle adımlanır.</p>
+        <ol class="chain">
+          <li><span>Kütleçekim</span></li>
+          <li><span>Atmosfer</span></li>
+          <li><span>Aero</span></li>
+          <li><span>Sürüklenme</span></li>
+          <li><span>Yörünge</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="workspaces" aria-labelledby="workspaces-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">01 · Çalışma alanları</p>
+          <h2 id="workspaces-title">Üç çalışma alanı, <em>tek bir alet</em></h2>
+          <p>Space, Aero ve Entry'nin her birinin kendi ana çubuğu, yerleştirilmiş panelleri ve kamerası vardır. Fizik kendi iş parçacıklarında çalışır ve render tarafına değişmez anlık görüntülerle ulaşır; hiçbir kare bir çözücüyü beklemez. Her çalıştırma bir deney olarak kaydedilebilir, listelenebilir, karşılaştırılabilir ve yeniden açılabilir.</p>
+        </header>
+
+        <article class="plate" aria-labelledby="space-title">
+          <div class="plate__media" data-reveal>
+            <figure class="shot">
+              <a href="../assets/img/space-solar-system-1600.webp">
+                <img src="../assets/img/space-solar-system-960.webp" srcset="../assets/img/space-solar-system-960.webp 960w, ../assets/img/space-solar-system-1600.webp 1600w" sizes="(max-width: 960px) 100vw, 700px" width="1600" height="900" loading="lazy" decoding="async" alt="Orrery'nin Space çalışma alanı: Güneş çevresinde yörünge izleriyle J2000 iç Güneş sistemi, Body Inspector ve System Monitor panelleri">
+              </a>
+              <figcaption>Yaklaşık 590 gün sonra yörünge izleriyle J2000 Güneş sistemi.</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="../assets/img/space-black-hole-1600.webp">
+                <img src="../assets/img/space-black-hole-960.webp" srcset="../assets/img/space-black-hole-960.webp 960w, ../assets/img/space-black-hole-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Schwarzschild merceklenmesiyle bükülmüş ince birikim diskli kara delik">
+              </a>
+              <figcaption>İnce diskin Schwarzschild merceklenmesi: gölge, merceklenmiş uzak taraf, Doppler ile parlayan yaklaşan taraf.</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="../assets/img/space-figure-eight-1600.webp">
+                <img src="../assets/img/space-figure-eight-960.webp" srcset="../assets/img/space-figure-eight-960.webp 960w, ../assets/img/space-figure-eight-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Sekiz figürü yörüngesindeki üç eşit yıldız">
+              </a>
+              <figcaption>Üç cisimli sekiz figürü koreografisi (4. mertebe Yoshida).</figcaption>
+            </figure>
+          </div>
+          <div class="plate__text" data-reveal>
+            <p class="plate__index"><span class="plate__numeral">I</span><span class="label">Uzay dinamiği</span></p>
+            <h3 id="space-title">Space</h3>
+            <p class="plate__summary">Simplektik ve uyarlamalı integratörlerle N-cisim kütleçekimi, kara delikler, çarpışmalar ve gelgit parçalanması.</p>
+            <ul class="specs">
+              <li><span>Deneyler</span><span>J2000 Güneş sistemi, Güneş-Dünya-Ay, üç cisimli sekiz figürü, <strong>Sgr A* ve S2 yıldızı</strong> ve tek başına bir kara delik.</span></li>
+              <li><span>İntegratörler</span><span>Leapfrog (kick-drift-kick, varsayılan), <strong>4. mertebe Yoshida</strong>, <strong>IAS15</strong> (uyarlamalı) ve karşılaştırma için RK4; doğrudan toplam ya da Barnes-Hut sekizli ağacı.</span></li>
+              <li><span>Kara delikler</span><span>Dinamik için Paczynski-Wiita potansiyeli; <strong>ışın yürütmeli Schwarzschild merceklenme</strong> geçişi ve Doppler parlaması ile kütleçekimsel kırmızıya kaymalı ince bir birikim diski.</span></li>
+              <li><span>Zaman</span><span>1x ile 1e7x arasında zaman hızlandırma, bir zaman hızlandırma bütçesi içinde.</span></li>
+              <li><span>Paneller</span><span>Body Inspector (oskülatör yörünge), System Monitor (enerji kayması, adım süresi, hızlandırma), Experiment, Render Settings.</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="plate plate--flip" aria-labelledby="aero-title">
+          <div class="plate__media" data-reveal>
+            <figure class="shot">
+              <a href="../assets/img/aero-naca0012-stall-wake-1600.webp">
+                <img src="../assets/img/aero-naca0012-stall-wake-960.webp" srcset="../assets/img/aero-naca0012-stall-wake-960.webp 960w, ../assets/img/aero-naca0012-stall-wake-1600.webp 1600w" sizes="(max-width: 960px) 100vw, 700px" width="1600" height="900" loading="lazy" decoding="async" alt="Orrery'nin Aero çalışma alanı: girdap sokağı bırakan, perdövites durumundaki NACA 0012 kesiti; geometri, akış koşulları ve sonuç panelleri">
+              </a>
+              <figcaption>20 derecede perdövites durumunda NACA 0012, Re 500: izde girdap sokağı (lattice Boltzmann).</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="../assets/img/aero-naca0012-lbm-1600.webp">
+                <img src="../assets/img/aero-naca0012-lbm-960.webp" srcset="../assets/img/aero-naca0012-lbm-960.webp 960w, ../assets/img/aero-naca0012-lbm-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Yüzeyinde basınç katsayısı ve çevresinde hız alanı olan NACA 0012 kesiti">
+              </a>
+              <figcaption>4 derecede NACA 0012, Re 400, lattice Boltzmann: Cp ve hız alanı.</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="../assets/img/aero-apollo-newtonian-1600.webp">
+                <img src="../assets/img/aero-apollo-newtonian-960.webp" srcset="../assets/img/aero-apollo-newtonian-960.webp 960w, ../assets/img/aero-apollo-newtonian-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Mach 20'de basınç katsayısına göre renklendirilmiş Apollo tipi kapsül">
+              </a>
+              <figcaption>Mach 20 ve 20 derecede Apollo tipi kapsül, değiştirilmiş Newton Cp.</figcaption>
+            </figure>
+          </div>
+          <div class="plate__text" data-reveal>
+            <p class="plate__index"><span class="plate__numeral">II</span><span class="label">Aerodinamik</span></p>
+            <h3 id="aero-title">Aero</h3>
+            <p class="plate__summary">Seçilen ya da içe aktarılan bir 3B cisim etrafında akış; üç rejim için üç çözücü: kuvvet katsayıları, basınç haritaları ve akış alanları.</p>
+            <ul class="specs">
+              <li><span>Çözücüler</span><span>2B ve 3B <strong>panel yöntemi</strong>; Sutton-Graves durma noktası ısı akısı tahminiyle <strong>değiştirilmiş Newton</strong> teorisi; Smagorinsky alt ızgara modelli D2Q9 ve D3Q19 <strong>lattice Boltzmann</strong>.</span></li>
+              <li><span>Rejimler</span><span>Akış koşulları Reynolds ve Mach sayılarını verir; rejim seçici bir çözücü önerir ve geçerlilik aralığı dışında, çalıştırmayı engellemeden uyarır.</span></li>
+              <li><span>Geometri</span><span>Küre ve kamadan Apollo ve Orion tipi kapsüllere, NACA 4 haneli kesit ve kanatlara primitifler; diskten ya da bir https URL'sinden OBJ, STL, glTF/GLB, PLY ve FBX içe aktarma, sınırlar, SHA-256 önbelleği ve otomatik onarımla.</span></li>
+              <li><span>Sonuçlar</span><span>Ayrıntılı dökümle Cd, Cl, Cm ve yakınsama grafikleri; cisim üzerinde Cp, kuvvet okları, kesit düzlemleri, akım çizgileri, parçacıklar ve Q-kriteri eş yüzeyi. Hücum açısına göre karşılaştırma, CSV dışa aktarma.</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="plate" aria-labelledby="entry-title">
+          <div class="plate__media" data-reveal>
+            <figure class="shot">
+              <a href="../assets/img/entry-apollo-1600.webp">
+                <img src="../assets/img/entry-apollo-960.webp" srcset="../assets/img/entry-apollo-960.webp 960w, ../assets/img/entry-apollo-1600.webp 1600w" sizes="(max-width: 960px) 100vw, 700px" width="1600" height="900" loading="lazy" decoding="async" alt="Apollo benzeri girişten sonra Orrery'nin Entry çalışma alanı: kurulum paneli, Dünya üzerinde yörünge şeridi, yer izi ve profil grafikleri">
+              </a>
+              <figcaption>11 km/s hızla Apollo benzeri balistik giriş: g yüküne göre renklendirilmiş yörünge, yer izi ve profil grafikleri (tepe 6.78 g).</figcaption>
+            </figure>
+          </div>
+          <div class="plate__text" data-reveal>
+            <p class="plate__index"><span class="plate__numeral">III</span><span class="label">Atmosferik giriş</span></p>
+            <h3 id="entry-title">Entry</h3>
+            <p class="plate__summary">Atmosfer modelleri ve aerodinamik çözücüden örneklenen bir sürüklenme tablosu, bir sondayı Dünya ya da Mars atmosferinden geçirir.</p>
+            <ul class="specs">
+              <li><span>Atmosferler</span><span><strong>US Standard Atmosphere 1976</strong>, ortalama bir Mars profili (NASA Glenn uyumu) ve üstel atmosferler.</span></li>
+              <li><span>Sonda</span><span>Sabit kütleli, kaldırmasız; <strong>Cd(Mach) tablosu</strong> elle düzenlenir ya da Newton çözücüsünden örneklenir; adımın kütleçekim kısmı için IAS15, Yoshida 4 ya da leapfrog.</span></li>
+              <li><span>Profil</span><span>Zamana karşı irtifa, hız, g yükü, dinamik basınç ve ısı akısı; yer izi; g yüküne ya da ısı akısına göre renklendirilmiş 3B yörünge.</span></li>
+              <li><span>Sonuçlar</span><span>İniş, sekme (skip-out) ya da yörüngede kalma.</span></li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section--panel" id="trust" aria-labelledby="trust-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">02 · Güven</p>
+          <h2 id="trust-title"><em>Denetlenmek</em> için yapıldı</h2>
+          <p>Orrery işini açıkça gösterir. Çalıştırmalar yeniden üretilebilir, basitleştirmeler bulundukları yerde yazılıdır ve bildirdiği sayılar test takımında referanslarla karşılaştırılır.</p>
+        </header>
+
+        <div class="ledger" data-reveal>
+          <article>
+            <p class="label">Determinizm</p>
+            <h3>Bit düzeyinde aynı adımlar</h3>
+            <p>Tamsayı zaman tutan sabit adımlı biriktirici: N adımdan sonraki durum, kare hızı ne olursa olsun bit düzeyinde aynıdır. Bir durum özeti (hash) bunu her kare temposunda ve zaman hızlandırma bütçesi devredeyken de denetler.</p>
+          </article>
+          <article>
+            <p class="label">Zaman hızlandırma bütçesi</p>
+            <h3>Hız konusunda dürüst</h3>
+            <p>Fizik, duvar saati zamanının bir payı içinde kalır. İstenen hız sığmadığında sığan en yüksek düzeye iner ve bunu söyler: bir <span class="chip">LIMITED</span> etiketi, System Monitor'da istenen ve ulaşılan hız. Yük düştüğünde histerezisle geri gelir.</p>
+          </article>
+          <article>
+            <p class="label">Yaklaşıklıklar</p>
+            <h3>Kayıtlı basitleştirmeler</h3>
+            <p>Her fiziksel basitleştirme kodda işaretlenir ve <code>docs/physics.md</code> içinde listelenir. Bir denetleyici formül dizinini, kaynak dosyalarını ve testlerini uyumlu tutar; işaretli bir dosyanın dizin kaydı yoksa CI başarısız olur.</p>
+          </article>
+          <article>
+            <p class="label">İş parçacıkları</p>
+            <h3>Çözücü kareyi bekletmez</h3>
+            <p>Fizik kendi iş parçacıklarında çalışır ve render tarafına değişmez anlık görüntüler verir. Çekirdek kütüphaneler hiçbir zaman OpenGL, GLFW ya da Dear ImGui'ye bağlanmaz; bu sınırı bir CI denetimi korur.</p>
+          </article>
+          <article>
+            <p class="label">Sürekli entegrasyon</p>
+            <h3>Üç derleyici, sanitizer'lar</h3>
+            <p>Her pull request GCC 13, Clang 17 ve MSVC ile derlenip test edilir; AddressSanitizer ve UBSan, clang-format, clang-tidy ve cppcheck çalışır. Link-time optimizasyonlu gecelik bir derleme determinizm özetlerini yeniden denetler.</p>
+          </article>
+          <article>
+            <p class="label">Hatalar</p>
+            <h3>Sessiz hata yok</h3>
+            <p>Hatalar oluştukları yerde görünür: durum satırı, paneller, içe aktarma hataları için bir modal pencere. Bilinmeyen yapılandırma anahtarları satırlarıyla raporlanır; ölümcül bir hata nedenini bir çökme günlüğüne yazar.</p>
+          </article>
+        </div>
+
+        <div class="measure" data-reveal>
+          <h3>Referanslara karşı ölçüldü</h3>
+          <p>Doğrulama tablosundan bir seçki. Kurulumlar, kalan satırlar ve ayarlanmış (doğrulanmamış) bir giriş durumu README'de ve <a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/physics.md">docs/physics.md</a> içindedir.</p>
+          <div class="table-scroll" tabindex="0" role="region" aria-label="Doğrulama sonuçları">
+            <table>
+              <thead>
+                <tr><th scope="col">Durum</th><th scope="col">Referans</th><th scope="col">Sonuç</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">İki cisim yörüngeleri</th><td data-label="Referans">Analitik Kepler çözümü</td><td class="num" data-label="Sonuç">10 yörünge sonra 2.7e-8 AU (Yoshida4); periyot hatası 2.4e-10</td></tr>
+                <tr><th scope="row">Güneş ve sekiz gezegen, 1000 yıl</th><td data-label="Referans">Enerji korunumu</td><td class="num" data-label="Sonuç">en büyük |dE/E0| 1.4e-10 (hedef 1e-9)</td></tr>
+                <tr><th scope="row">Kara delik merceklenmesi</th><td data-label="Referans">Zayıf ve güçlü sapma (Bozza 2002), CPU jeodezikleri</td><td class="num" data-label="Sonuç">Einstein halkası 143.52 px, öngörülen 143.52 px</td></tr>
+                <tr><th scope="row">Silindir, Re 100, LBM 2B</th><td data-label="Referans">Strouhal 0.16 ile 0.20, Cd 1.2 ile 1.5</td><td class="num" data-label="Sonuç">St 0.167, Cd 1.468, CPU ve GPU'da aynı</td></tr>
+                <tr><th scope="row">Apollo kapsülü, Mach 20, Newton</th><td data-label="Referans">Yayımlanmış Cd yaklaşık 1.3</td><td class="num" data-label="Sonuç">20 derece trimde Cd 1.367 (yüzde 5 üstünde)</td></tr>
+                <tr><th scope="row">Allen-Eggers balistik giriş</th><td data-label="Referans">Analitik tepe yavaşlama</td><td class="num" data-label="Sonuç">yüzde 0.5 içinde</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="download" aria-labelledby="download-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">03 · İndir</p>
+          <h2 id="download-title">Orrery <em>0.1.0</em></h2>
+          <p>Pencereli uygulamanın Release derlemeleri; aynı uygulama <code>--headless</code> çizim de yapar. OpenGL 4.6 destekli bir GPU sürücüsü gerekir.</p>
+        </header>
+
+        <ul class="downloads" data-reveal>
+          <li class="download">
+            <span class="download__name">Windows kurulum paketi</span>
+            <span class="badge badge--ok">Test edildi</span>
+            <span class="download__file">orrery-0.1.0-windows-x64.msi · 9.0 MiB</span>
+            <p class="download__desc">Kullanıcı başına kurulum, yönetici yetkisi gerekmez; Başlat menüsü kısayolu ve kaldırma kaydı.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.msi">.msi indir</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.msi.sha256">SHA-256</a>
+            </span>
+          </li>
+          <li class="download">
+            <span class="download__name">Windows taşınabilir</span>
+            <span class="badge badge--ok">Test edildi</span>
+            <span class="download__file">orrery-0.1.0-windows-x64.zip · 10.2 MiB</span>
+            <p class="download__desc">Aynı kurulu ağaç bir zip olarak; açın ve <code>orrery_app.exe</code> dosyasını çalıştırın.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.zip">.zip indir</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.zip.sha256">SHA-256</a>
+            </span>
+          </li>
+          <li class="download">
+            <span class="download__name">Linux tarball</span>
+            <span class="badge badge--warn">Test edilmedi</span>
+            <span class="download__file">orrery-0.1.0-linux-x86_64.tar.gz · 11.5 MiB</span>
+            <p class="download__desc">Kurulu ağaç (<code>bin/</code>, <code>share/</code>). CI'da derlendi; hiç pencereyle çalıştırılmadı.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.tar.gz">.tar.gz indir</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.tar.gz.sha256">SHA-256</a>
+            </span>
+          </li>
+          <li class="download">
+            <span class="download__name">Linux AppImage</span>
+            <span class="badge badge--warn">Test edilmedi</span>
+            <span class="download__file">orrery-0.1.0-linux-x86_64.AppImage · 11.4 MiB</span>
+            <p class="download__desc">glibc 2.35 ya da daha yenisi için tek dosya. CI'da derlendi; hiç pencereyle çalıştırılmadı.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.AppImage">.AppImage indir</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.AppImage.sha256">SHA-256</a>
+            </span>
+          </li>
+        </ul>
+
+        <div class="callout" data-reveal>
+          <p><strong>Paketler imzalı değildir.</strong> Windows'ta SmartScreen “Windows protected your PC” uyarısı gösterir; “More info”, ardından “Run anyway” seçin. Her dosyayı yanındaki <code>.sha256</code> ile karşılaştırın. Tüm dosyalar ve sürüm notları <a href="https://github.com/ayberkaarda/Orrery/releases/tag/v0.1.0">sürüm sayfasında</a>.</p>
+        </div>
+
+        <h3 class="subhead" id="build" data-reveal>Kaynaktan derleme</h3>
+        <p data-reveal>CMake 4.1 ya da daha yenisi, Ninja, bir C++20 derleyicisi (MSVC 2022, GCC 13 ya da Clang 17) ve manifest kipinde <a href="https://github.com/microsoft/vcpkg">vcpkg</a>; vcpkg GLFW, glad, Dear ImGui, ImPlot, glm, Eigen, assimp, libcurl, miniz, oneTBB, nlohmann/json, toml++ ve Catch2'yi getirir.</p>
+
+        <div class="code-grid" data-reveal>
+          <div class="code">
+            <div class="code__bar">
+              <span class="label">Windows · Developer PowerShell (x64)</span>
+              <button class="copy" type="button" data-copy="code-win" data-copied="Kopyalandı" data-failed="Kopyalanamadı" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3"/></svg><span class="copy__label">Kopyala</span><span class="visually-hidden"> Windows derleme komutları</span></button>
+            </div>
+            <pre><code id="code-win">$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+cmake --preset release
+cmake --build --preset release
+ctest --preset release</code></pre>
+          </div>
+          <div class="code">
+            <div class="code__bar">
+              <span class="label">Linux · kabuk</span>
+              <button class="copy" type="button" data-copy="code-linux" data-copied="Kopyalandı" data-failed="Kopyalanamadı" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3"/></svg><span class="copy__label">Kopyala</span><span class="visually-hidden"> Linux derleme komutları</span></button>
+            </div>
+            <pre><code id="code-linux">export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release</code></pre>
+          </div>
+        </div>
+
+        <div class="code code--wide" data-reveal>
+          <div class="code__bar">
+            <span class="label">Çalıştırma</span>
+            <button class="copy" type="button" data-copy="code-run" data-copied="Kopyalandı" data-failed="Kopyalanamadı" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3"/></svg><span class="copy__label">Kopyala</span><span class="visually-hidden"> çalıştırma komutları</span></button>
+          </div>
+          <pre><code id="code-run">orrery_app                                   <span class="c"># pencere, Güneş sistemi</span>
+orrery_app --experiment figure_eight         <span class="c"># adıyla hazır bir deney</span>
+orrery_app --headless --experiment black_hole --out bh.png --size 1920x1080
+orrery_app --headless --experiment entry_apollo_like --out entry.png</code></pre>
+        </div>
+        <p class="code-note" data-reveal>Kısayollar için pencerede F1'e basın. <code>--headless</code> ekran dışında tek bir PNG çizer ve hiç pencere göstermez; OpenGL 4.6 sürücüsü yoksa 3 çıkış koduyla sonlanır.</p>
+        <p id="copy-status" class="visually-hidden" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="section section--panel" id="status" aria-labelledby="status-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">04 · Durum</p>
+          <h2 id="status-title">Durum ve <em>sınırlamalar</em></h2>
+          <p>Sürüm 0.1.0. Neyin nerede çalıştığı ve modellerin neyi dışarıda bıraktığı, açıkça.</p>
+        </header>
+
+        <div class="status">
+          <ul class="platforms" data-reveal aria-label="Platformlar">
+            <li>
+              <div class="row"><strong>Windows · MSVC 2022</strong><span class="badge badge--ok">Test edildi</span></div>
+              <p>Burada geliştirilir ve test edilir: pencere, GPU testleri ve paketlenmiş uygulama çalıştırılmıştır.</p>
+            </li>
+            <li>
+              <div class="row"><strong>Linux · GCC 13, Clang 17</strong><span class="badge badge--warn">Yalnız CI</span></div>
+              <p>Headless derleme ve testleri CI'da çalışır, pencereli derleme de derlenir; ancak CI makinelerinde OpenGL yoktur: pencere ve GPU testleri Linux'ta hiç çalıştırılmamıştır, tarball ve AppImage test edilmemiştir.</p>
+            </li>
+            <li>
+              <div class="row"><strong>macOS</strong><span class="badge badge--off">Kapsam dışı</span></div>
+              <p>OpenGL 4.6 yok.</p>
+            </li>
+          </ul>
+
+          <ol class="limits" data-reveal>
+            <li><strong>Hiçbir çözücü doğrulanmış CFD değildir.</strong> Panel yöntemi viskozsuzdur (yüzey sürtünmesi ayrı bir düz plaka tahminidir), Newton teorisi Mach 5 ve üstü içindir, lattice Boltzmann düşük Mach yöntemidir; her biri kendi aralığı dışında uyarır.</li>
+            <li><strong>Kara delikler yalnız Schwarzschild'dir</strong>, dönme yoktur; yakınlarındaki dinamik genel görelilik değil, sözde-Newton potansiyeli kullanır.</li>
+            <li><strong>Giriş basitleştirilmiştir:</strong> sabit kütle, kaldırma yok, dönme yok, ablasyon yok. Isı akısı gösterim amaçlı bir durma noktası bağıntısıdır.</li>
+            <li><strong>J2000 Güneş sistemi on noktasal kütledir</strong>, JPL Horizons durum vektörlerinden: asteroit, basıklık ve görelilik yok.</li>
+            <li><strong>Aero çalışma alanı lattice Boltzmann'ı CPU üzerinde çalıştırır</strong>; büyük 3B ızgaralar orada yavaştır. Girdap kopmasının başlangıcında GPU ve CPU çözümleri 1e-4 ölçütünün üstünde, 7.1e-4'e kadar (göreli L2) ayrışır.</li>
+            <li><strong>Performans değerleri tek bir makinede ölçülmüştür</strong> (AMD Radeon RX 9060 XT).</li>
+            <li><strong>V1'de olmayan planlı maddeler:</strong> bloom, Hill küreleri ve hayalet yörüngeler, Rayleigh ve Mie atmosferi; bkz. <a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/limitations.md">docs/limitations.md</a>. Akışkanlar, ısı ve dalgalar (V2) ve sonraki alanlar kod değil, yol haritasıdır.</li>
+            <li><strong>İçe aktarılan modeller doğrulanmaz</strong>, indirilen modellerin lisansları denetlenmez.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="docs" aria-labelledby="docs-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">05 · Belgeler</p>
+          <h2 id="docs-title">İşin <em>ayrıntısı</em></h2>
+          <p>Başvuru belgeleri ve mimari karar kayıtları, depoda. Belgeler İngilizcedir; Türkçe bir genel bakış <a href="https://github.com/ayberkaarda/Orrery/blob/main/README.tr.md">README.tr.md</a> içindedir.</p>
+        </header>
+        <ul class="docs" data-reveal>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/physics.md"><span>physics.md</span><small>Formül dizini, kaynaklar, yaklaşıklıklar, ölçülen sonuçlar</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/app.md"><span>app.md</span><small>Uygulama döngüsü, zaman hızlandırma bütçesi, çalışma alanları, kısayollar</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/rendering.md"><span>rendering.md</span><small>Render, kara delik merceklenmesi, altın görüntüler</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/aero.md"><span>aero.md</span><small>Panel yöntemi, Newton teorisi, rejim seçimi</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/lbm.md"><span>lbm.md</span><small>Lattice Boltzmann D2Q9 ve D3Q19, GPU hassasiyeti</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/atmosphere.md"><span>atmosphere.md</span><small>Atmosferler, Cd(Mach) köprüsü, giriş</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/limitations.md"><span>limitations.md</span><small>Planlanıp V1'de gerçeklenmeyen maddeler</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/roadmap.md"><span>roadmap.md</span><small>V1, V2 ve V3 ile bağlaşım deseni</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/ci.md"><span>ci.md</span><small>CI işleri, önbellekler ve ölçülen süreler</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/packaging.md"><span>packaging.md</span><small>Kurulum paketleri, kurulum düzeni, lisans bildirimleri</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/adr/README.md"><span>adr/</span><small>Mimari karar kayıtları</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/README.md"><span>docs/README.md</span><small>Tüm belgelerin dizini</small></a></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p>Orrery <a href="https://github.com/ayberkaarda/Orrery/blob/main/LICENSE">MIT Lisansı</a> ile yayımlanır.</p>
+        <p class="fine">Bu site çerez ya da izleyici kullanmaz. Yazı tipleri: IBM Plex (<a href="../assets/fonts/LICENSE-IBM-Plex.txt">OFL</a>) ve Instrument Serif (<a href="../assets/fonts/LICENSE-Instrument-Serif.txt">OFL</a>). Giriş çizimi three.js ile (<a href="../assets/vendor/three/LICENSE">MIT</a>).</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/ayberkaarda/Orrery">Depo</a></li>
+        <li><a href="https://github.com/ayberkaarda/Orrery/releases">Sürümler</a></li>
+        <li><a href="https://github.com/ayberkaarda/Orrery/issues">Sorunlar</a></li>
+        <li><a href="../" hreflang="en" lang="en">English</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>
