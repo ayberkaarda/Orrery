@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>try{var m=localStorage.getItem('orrery-motion')}catch(e){}document.documentElement.dataset.motion=m=='on'||m=='off'?m:matchMedia('(prefers-reduced-motion: reduce)').matches?'off':'on'</script>
   <title>Orrery: masaüstü fizik laboratuvarı</title>
   <meta name="description" content="Orrery, C++20 ve OpenGL 4.6 ile yazılmış, N-cisim uzay dinamiğini, aerodinamiği ve atmosferik girişi birbirine bağlayan bir masaüstü fizik laboratuvarıdır. Gözlemlenebilir, doğrulanabilir ve deterministik; her basitleştirme belgelenmiştir.">
   <meta name="theme-color" content="#0b0d11">
@@ -50,6 +51,10 @@
         </ul>
       </nav>
       <div class="header-tools">
+        <button class="motion-toggle" type="button" role="switch" aria-checked="true" data-motion-toggle>
+          <span class="motion-toggle__switch" aria-hidden="true"></span>
+          <span class="motion-toggle__label">Hareket</span>
+        </button>
         <div class="lang" role="group" aria-label="Dil">
           <a href="../" hreflang="en" lang="en" title="English">EN</a>
           <span aria-current="page" lang="tr">TR</span>
@@ -63,10 +68,6 @@
 
   <main id="main">
     <section class="hero" data-orrery aria-labelledby="hero-title">
-      <div class="hero__sky" aria-hidden="true">
-        <img class="hero__still" src="../assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
-        <canvas></canvas>
-      </div>
       <div class="wrap">
         <div class="hero__copy">
           <ul class="hero__meta label" aria-label="Sürüm bilgileri">
@@ -90,8 +91,13 @@
           </div>
           <p class="hero__platforms"><strong>Windows x64</strong> geliştirildi ve test edildi · <strong>Linux x86_64</strong> CI'da derlenir, paketler test edilmedi · macOS kapsam dışı</p>
         </div>
-        <p class="hero__note">Buradaki orrery tarayıcınızda çiziliyor: hızları Kepler'in üçüncü yasasına uyan dairesel yörüngeler. Aşağıdaki her görüntüyü Orrery'nin kendisi çizdi.</p>
+        <p class="hero__note">Buradaki orrery tarayıcınızda çiziliyor: hızları Kepler'in üçüncü yasasına uyan dairesel yörüngeler. Döndürmek için sürükleyin, izlemek için bir gezegen seçin. Aşağıdaki her görüntüyü Orrery'nin kendisi çizdi.</p>
       </div>
+      <div class="hero__sky">
+        <img class="hero__still" src="../assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
+        <canvas></canvas>
+      </div>
+      <p class="visually-hidden" aria-live="polite" data-orrery-live></p>
     </section>
 
     <section class="coupling" aria-label="Alanlar nasıl bağlanır">
@@ -125,13 +131,13 @@
             </figure>
             <figure class="shot">
               <a href="../assets/img/space-black-hole-1600.webp">
-                <img src="../assets/img/space-black-hole-960.webp" srcset="../assets/img/space-black-hole-960.webp 960w, ../assets/img/space-black-hole-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Schwarzschild merceklenmesiyle bükülmüş ince birikim diskli kara delik">
+                <img src="../assets/img/space-black-hole-960.webp" srcset="../assets/img/space-black-hole-480.webp 480w, ../assets/img/space-black-hole-960.webp 960w, ../assets/img/space-black-hole-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Schwarzschild merceklenmesiyle bükülmüş ince birikim diskli kara delik">
               </a>
               <figcaption>İnce diskin Schwarzschild merceklenmesi: gölge, merceklenmiş uzak taraf, Doppler ile parlayan yaklaşan taraf.</figcaption>
             </figure>
             <figure class="shot">
               <a href="../assets/img/space-figure-eight-1600.webp">
-                <img src="../assets/img/space-figure-eight-960.webp" srcset="../assets/img/space-figure-eight-960.webp 960w, ../assets/img/space-figure-eight-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Sekiz figürü yörüngesindeki üç eşit yıldız">
+                <img src="../assets/img/space-figure-eight-960.webp" srcset="../assets/img/space-figure-eight-480.webp 480w, ../assets/img/space-figure-eight-960.webp 960w, ../assets/img/space-figure-eight-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Sekiz figürü yörüngesindeki üç eşit yıldız">
               </a>
               <figcaption>Üç cisimli sekiz figürü koreografisi (4. mertebe Yoshida).</figcaption>
             </figure>
@@ -160,13 +166,13 @@
             </figure>
             <figure class="shot">
               <a href="../assets/img/aero-naca0012-lbm-1600.webp">
-                <img src="../assets/img/aero-naca0012-lbm-960.webp" srcset="../assets/img/aero-naca0012-lbm-960.webp 960w, ../assets/img/aero-naca0012-lbm-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Yüzeyinde basınç katsayısı ve çevresinde hız alanı olan NACA 0012 kesiti">
+                <img src="../assets/img/aero-naca0012-lbm-960.webp" srcset="../assets/img/aero-naca0012-lbm-480.webp 480w, ../assets/img/aero-naca0012-lbm-960.webp 960w, ../assets/img/aero-naca0012-lbm-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Yüzeyinde basınç katsayısı ve çevresinde hız alanı olan NACA 0012 kesiti">
               </a>
               <figcaption>4 derecede NACA 0012, Re 400, lattice Boltzmann: Cp ve hız alanı.</figcaption>
             </figure>
             <figure class="shot">
               <a href="../assets/img/aero-apollo-newtonian-1600.webp">
-                <img src="../assets/img/aero-apollo-newtonian-960.webp" srcset="../assets/img/aero-apollo-newtonian-960.webp 960w, ../assets/img/aero-apollo-newtonian-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Mach 20'de basınç katsayısına göre renklendirilmiş Apollo tipi kapsül">
+                <img src="../assets/img/aero-apollo-newtonian-960.webp" srcset="../assets/img/aero-apollo-newtonian-480.webp 480w, ../assets/img/aero-apollo-newtonian-960.webp 960w, ../assets/img/aero-apollo-newtonian-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Mach 20'de basınç katsayısına göre renklendirilmiş Apollo tipi kapsül">
               </a>
               <figcaption>Mach 20 ve 20 derecede Apollo tipi kapsül, değiştirilmiş Newton Cp.</figcaption>
             </figure>

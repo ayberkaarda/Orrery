@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script>try{var m=localStorage.getItem('orrery-motion')}catch(e){}document.documentElement.dataset.motion=m=='on'||m=='off'?m:matchMedia('(prefers-reduced-motion: reduce)').matches?'off':'on'</script>
   <title>Orrery: a desktop physics laboratory</title>
   <meta name="description" content="Orrery is a desktop physics laboratory in C++20 and OpenGL 4.6 that couples N-body space dynamics, aerodynamics and atmospheric entry. Observable, verifiable and deterministic; every simplification documented.">
   <meta name="theme-color" content="#0b0d11">
@@ -50,6 +51,10 @@
         </ul>
       </nav>
       <div class="header-tools">
+        <button class="motion-toggle" type="button" role="switch" aria-checked="true" data-motion-toggle>
+          <span class="motion-toggle__switch" aria-hidden="true"></span>
+          <span class="motion-toggle__label">Motion</span>
+        </button>
         <div class="lang" role="group" aria-label="Language">
           <span aria-current="page" lang="en">EN</span>
           <a href="tr/" hreflang="tr" lang="tr" title="Türkçe">TR</a>
@@ -63,10 +68,6 @@
 
   <main id="main">
     <section class="hero" data-orrery aria-labelledby="hero-title">
-      <div class="hero__sky" aria-hidden="true">
-        <img class="hero__still" src="assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
-        <canvas></canvas>
-      </div>
       <div class="wrap">
         <div class="hero__copy">
           <ul class="hero__meta label" aria-label="Release facts">
@@ -90,8 +91,13 @@
           </div>
           <p class="hero__platforms"><strong>Windows x64</strong> developed and tested · <strong>Linux x86_64</strong> built in CI, packages untested · macOS out of scope</p>
         </div>
-        <p class="hero__note">The orrery here is drawn in your browser: circular orbits paced by Kepler's third law. Every image below is rendered by Orrery itself.</p>
+        <p class="hero__note">The orrery here is drawn in your browser: circular orbits paced by Kepler's third law. Drag to turn it, select a planet to follow it. Every image below is rendered by Orrery itself.</p>
       </div>
+      <div class="hero__sky">
+        <img class="hero__still" src="assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
+        <canvas></canvas>
+      </div>
+      <p class="visually-hidden" aria-live="polite" data-orrery-live></p>
     </section>
 
     <section class="coupling" aria-label="How the domains couple">
@@ -125,13 +131,13 @@
             </figure>
             <figure class="shot">
               <a href="assets/img/space-black-hole-1600.webp">
-                <img src="assets/img/space-black-hole-960.webp" srcset="assets/img/space-black-hole-960.webp 960w, assets/img/space-black-hole-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="A black hole with a thin accretion disk bent by Schwarzschild lensing">
+                <img src="assets/img/space-black-hole-960.webp" srcset="assets/img/space-black-hole-480.webp 480w, assets/img/space-black-hole-960.webp 960w, assets/img/space-black-hole-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="A black hole with a thin accretion disk bent by Schwarzschild lensing">
               </a>
               <figcaption>Schwarzschild lensing of a thin disk: shadow, lensed far side, Doppler-bright approaching side.</figcaption>
             </figure>
             <figure class="shot">
               <a href="assets/img/space-figure-eight-1600.webp">
-                <img src="assets/img/space-figure-eight-960.webp" srcset="assets/img/space-figure-eight-960.webp 960w, assets/img/space-figure-eight-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Three equal stars on the figure-eight three-body orbit">
+                <img src="assets/img/space-figure-eight-960.webp" srcset="assets/img/space-figure-eight-480.webp 480w, assets/img/space-figure-eight-960.webp 960w, assets/img/space-figure-eight-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Three equal stars on the figure-eight three-body orbit">
               </a>
               <figcaption>Figure-eight three-body choreography (Yoshida 4th order).</figcaption>
             </figure>
@@ -160,13 +166,13 @@
             </figure>
             <figure class="shot">
               <a href="assets/img/aero-naca0012-lbm-1600.webp">
-                <img src="assets/img/aero-naca0012-lbm-960.webp" srcset="assets/img/aero-naca0012-lbm-960.webp 960w, assets/img/aero-naca0012-lbm-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="NACA 0012 section with the pressure coefficient on its surface and the speed field around it">
+                <img src="assets/img/aero-naca0012-lbm-960.webp" srcset="assets/img/aero-naca0012-lbm-480.webp 480w, assets/img/aero-naca0012-lbm-960.webp 960w, assets/img/aero-naca0012-lbm-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="NACA 0012 section with the pressure coefficient on its surface and the speed field around it">
               </a>
               <figcaption>NACA 0012 at 4 degrees, Re 400, lattice Boltzmann: Cp and speed field.</figcaption>
             </figure>
             <figure class="shot">
               <a href="assets/img/aero-apollo-newtonian-1600.webp">
-                <img src="assets/img/aero-apollo-newtonian-960.webp" srcset="assets/img/aero-apollo-newtonian-960.webp 960w, assets/img/aero-apollo-newtonian-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Apollo-type capsule coloured by pressure coefficient at Mach 20">
+                <img src="assets/img/aero-apollo-newtonian-960.webp" srcset="assets/img/aero-apollo-newtonian-480.webp 480w, assets/img/aero-apollo-newtonian-960.webp 960w, assets/img/aero-apollo-newtonian-1600.webp 1600w" sizes="(max-width: 960px) calc(50vw - 24px), 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Apollo-type capsule coloured by pressure coefficient at Mach 20">
               </a>
               <figcaption>Apollo-type capsule at Mach 20 and 20 degrees, modified Newtonian Cp.</figcaption>
             </figure>

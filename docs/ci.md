@@ -204,3 +204,10 @@ The site is plain HTML, CSS and JavaScript. Its fonts and three.js (the hero
 drawing) are vendored under `site/assets` with their licences; it loads
 nothing from other hosts. All links inside it are relative, because the site
 is served under the `/Orrery/` path.
+
+The hero orrery is interactive (pointer, touch and keyboard). It renders in a
+module worker on an `OffscreenCanvas` where the browser supports one, and on
+the main thread otherwise, and starts only after the first contentful paint so
+the static drawing stays the largest paint. A Motion switch in the header
+turns all page motion on or off; the choice is kept in `localStorage`, and
+without one the page follows the system's reduced-motion setting.
