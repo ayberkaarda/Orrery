@@ -29,6 +29,7 @@ add_executable(orrery_test_geom_net
     test_url_policy.cpp
     test_model_format.cpp
     test_zip_extract.cpp
+    test_ca_certificates.cpp
     test_model_fetch.cpp)
 target_link_libraries(orrery_test_geom_net PRIVATE
     orrery_geom_net test_net_support Catch2::Catch2WithMain)

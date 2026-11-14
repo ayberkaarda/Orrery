@@ -1,5 +1,6 @@
 #include "https_download.h"
 
+#include "orrery/geom/net/ca_certificates.h"
 #include "orrery/geom/net/sha256.h"
 #include "orrery/geom/net/url_policy.h"
 
@@ -216,7 +217,9 @@ long clamp_ms(std::chrono::milliseconds value) noexcept {
 }
 
 // Options shared by every hop. Returns false if libcurl rejects one.
-bool configure(CURL* handle, const FetchOptions& options, char* error_buffer) {
+// `system_ca` is used outside Windows when no override is set.
+bool configure(CURL* handle, const FetchOptions& options,
+               [[maybe_unused]] const CaCertificates& system_ca, char* error_buffer) {
     const FetchLimits& limits = options.limits;
     bool ok = true;
     const auto set = [&ok](CURLcode code) { ok = ok && code == CURLE_OK; };
@@ -252,6 +255,14 @@ bool configure(CURL* handle, const FetchOptions& options, char* error_buffer) {
 #ifdef _WIN32
         // OpenSSL has no default bundle on Windows: use the system store.
         set(curl_easy_setopt(handle, CURLOPT_SSL_OPTIONS, CURLSSLOPT_NATIVE_CA));
+#else
+        // The certificates of this machine (find_ca_certificates), never the
+        // locations compiled into the static libcurl and OpenSSL.
+        const std::string bundle = system_ca.bundle.string();
+        set(curl_easy_setopt(handle, CURLOPT_CAINFO, bundle.empty() ? nullptr : bundle.c_str()));
+        set(curl_easy_setopt(handle, CURLOPT_CAPATH,
+                             system_ca.directories.empty() ? nullptr
+                                                           : system_ca.directories.c_str()));
 #endif
     } else {
         const std::string bundle = options.ca_bundle_override.string();
@@ -270,6 +281,17 @@ core::Result<Download, FetchError> download_https(std::string_view url,
     if (!checked) {
         return failure(copy_error(checked.error()));
     }
+    CaCertificates system_ca;
+#ifndef _WIN32
+    if (options.ca_bundle_override.empty()) {
+        auto found = find_ca_certificates(ca_environment_from_process(), kDefaultCaBundles,
+                                          kDefaultCaDirectories);
+        if (!found) {
+            return failure(copy_error(found.error()));
+        }
+        system_ca = std::move(found).value();
+    }
+#endif
     if (!curl_ready()) {
         return failure(error(FetchErrorKind::network, "libcurl initialisation failed"));
     }
@@ -278,7 +300,7 @@ core::Result<Download, FetchError> download_https(std::string_view url,
         return failure(error(FetchErrorKind::network, "libcurl handle allocation failed"));
     }
     std::array<char, CURL_ERROR_SIZE> error_buffer{};
-    if (!configure(handle.get(), options, error_buffer.data())) {
+    if (!configure(handle.get(), options, system_ca, error_buffer.data())) {
         return failure(error(FetchErrorKind::network, "libcurl rejected the transfer options"));
     }
 

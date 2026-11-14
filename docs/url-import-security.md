@@ -53,7 +53,8 @@ target before it is contacted:
   is therefore refused before the `http` server is contacted;
 - peer and host name verification are always on, TLS 1.2 or newer. On
   Windows the system certificate store is used (`CURLSSLOPT_NATIVE_CA`);
-  elsewhere OpenSSL's system bundle;
+  elsewhere the certificates the loader finds on the machine it runs on (see
+  [CA certificates](#ca-certificates));
 - only a final `200` is accepted; redirect bodies are discarded (capped at
   64 KiB);
 - the `Content-Type` is checked as soon as the headers arrive (see below);
@@ -276,6 +277,43 @@ author, source). It is carried unchanged into `FetchedModel::license_note`,
 together with `source_url` and the SHA-256, so the UI can show where a model
 came from. The program does not check licences; responsibility stays with the
 user (ADR-010).
+
+## CA certificates
+
+The Linux release links libcurl and OpenSSL statically. The CA locations
+compiled into them are those of the build machine (curl's configure records
+the Ubuntu runner's `/etc/ssl/certs/ca-certificates.crt`, OpenSSL's
+defaults are under `/etc/ssl`), and on a distribution that keeps its
+certificates elsewhere every download would fail. So outside Windows the
+loader does not rely on them: before each download,
+`find_ca_certificates` (`orrery/geom/net/ca_certificates.h`) selects the
+certificates and the loader passes them as `CURLOPT_CAINFO` and
+`CURLOPT_CAPATH`, replacing the compiled-in values.
+
+1. If `CURL_CA_BUNDLE`, `SSL_CERT_FILE` or `SSL_CERT_DIR` is set, only these
+   count: `CURL_CA_BUNDLE`, or else `SSL_CERT_FILE`, is the PEM bundle, and
+   `SSL_CERT_DIR` the hashed certificate directories (`:`-separated, as for
+   OpenSSL). A variable that names no non-empty file (or, for
+   `SSL_CERT_DIR`, no directory) fails the download with `tls_failure`
+   naming the variable; it is never silently replaced by a default.
+2. Otherwise the first non-empty bundle of `/etc/ssl/certs/ca-certificates.crt`
+   (Debian, Ubuntu, Arch), `/etc/pki/tls/certs/ca-bundle.crt` (Fedora, RHEL),
+   `/etc/ssl/ca-bundle.pem` (openSUSE), `/etc/pki/tls/cacert.pem`,
+   `/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem` and `/etc/ssl/cert.pem`
+   (Alpine).
+3. Otherwise the first of `/etc/ssl/certs` and `/etc/pki/tls/certs` that holds
+   a hashed certificate (`<8 hex digits>.<n>`).
+4. Otherwise the download fails with `tls_failure` before any connection,
+   and the message lists every variable and path tried.
+
+Verification is never turned off for want of certificates. Windows keeps the
+system store (`CURLSSLOPT_NATIVE_CA`) and ignores these variables;
+`FetchOptions::ca_bundle_override` (below) takes precedence over all of this.
+The selection is tested with candidate paths in a temporary directory
+(`net.*` cases tagged `[ca]`); on Linux and macOS a further case sets
+`SSL_CERT_FILE` to the mock server's certificate and downloads through the
+real transport without the override, and one sets it to a missing file and
+checks that the server is never contacted.
 
 ## Design decisions
 

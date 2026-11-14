@@ -6,6 +6,7 @@ find_package(miniz CONFIG REQUIRED)
 
 add_library(orrery_geom_net STATIC
     fetch_error.cpp
+    ca_certificates.cpp
     sha256.cpp
     url_policy.cpp
     model_format.cpp
@@ -17,6 +18,7 @@ add_library(orrery_geom_net STATIC
     model_cache.cpp
     model_cache.h
     model_fetch.cpp
+    include/orrery/geom/net/ca_certificates.h
     include/orrery/geom/net/fetch_error.h
     include/orrery/geom/net/sha256.h
     include/orrery/geom/net/url_policy.h
