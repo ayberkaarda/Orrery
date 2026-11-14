@@ -116,7 +116,7 @@
   --text: #dadee5;
   --text-strong: #f1f2f5;
   --muted: #9aa2b0;
-  --faint: #6f7786;
+  --faint: #78808f; /* 4.5:1 or better on every panel colour */
   --brass: #e2a75c;
   --brass-bright: #ecba7a;
   --brass-deep: #b9874a;
