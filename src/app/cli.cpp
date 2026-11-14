@@ -140,6 +140,67 @@ std::optional<std::string> combination_problem(const CliOptions& options,
     return std::nullopt;
 }
 
+// Stores the value of one option; returns the problem with it, if any. Kept apart
+// from the parsing loop: clang-tidy 17 does not finish bugprone-unchecked-optional-access
+// on a function this size.
+std::optional<std::string> apply_option(const Option option, const std::string_view value,
+                                        CliOptions& options) {
+    switch (option) {
+        case Option::help:
+        case Option::version:
+            break;
+        case Option::modules:
+            options.mode = RunMode::modules;
+            break;
+        case Option::headless:
+            options.mode = RunMode::headless;
+            break;
+        case Option::experiment:
+            options.experiment = std::string(value);
+            break;
+        case Option::frame: {
+            const auto frame = parse_integer(value);
+            if (!frame || *frame < 0 || *frame > kMaxFrames) {
+                return "--frame: expected an integer in [0, " + std::to_string(kMaxFrames) +
+                       "], got '" + std::string(value) + "'";
+            }
+            options.frame = *frame;
+            break;
+        }
+        case Option::out:
+            options.out = std::filesystem::path(std::string(value));
+            break;
+        case Option::size: {
+            const auto size = parse_size(value);
+            if (!size) {
+                return size.error();
+            }
+            options.width = size.value().first;
+            options.height = size.value().second;
+            break;
+        }
+        case Option::benchmark: {
+            const auto frames = parse_integer(value);
+            if (!frames || *frames < 1 || *frames > kMaxFrames) {
+                return "--benchmark: expected a frame count in [1, " + std::to_string(kMaxFrames) +
+                       "], got '" + std::string(value) + "'";
+            }
+            options.benchmark_frames = *frames;
+            break;
+        }
+        case Option::trace:
+            options.trace = std::filesystem::path(std::string(value));
+            break;
+        case Option::capture:
+            options.capture = std::filesystem::path(std::string(value));
+            break;
+        case Option::allow_download:
+            options.allow_download = true;
+            break;
+    }
+    return std::nullopt;
+}
+
 } // namespace
 
 core::Result<CliOptions, std::string> parse_command_line(std::span<const std::string_view> args) {
@@ -197,60 +258,8 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
             return core::failure("option " + std::string(spec->name) + " takes no value");
         }
 
-        switch (spec->option) {
-            case Option::help:
-            case Option::version:
-                break;
-            case Option::modules:
-                options.mode = RunMode::modules;
-                break;
-            case Option::headless:
-                options.mode = RunMode::headless;
-                break;
-            case Option::experiment:
-                options.experiment = std::string(value);
-                break;
-            case Option::frame: {
-                const auto frame = parse_integer(value);
-                if (!frame || *frame < 0 || *frame > kMaxFrames) {
-                    return core::failure("--frame: expected an integer in [0, " +
-                                         std::to_string(kMaxFrames) + "], got '" +
-                                         std::string(value) + "'");
-                }
-                options.frame = *frame;
-                break;
-            }
-            case Option::out:
-                options.out = std::filesystem::path(std::string(value));
-                break;
-            case Option::size: {
-                const auto size = parse_size(value);
-                if (!size) {
-                    return core::failure(size.error());
-                }
-                options.width = size.value().first;
-                options.height = size.value().second;
-                break;
-            }
-            case Option::benchmark: {
-                const auto frames = parse_integer(value);
-                if (!frames || *frames < 1 || *frames > kMaxFrames) {
-                    return core::failure("--benchmark: expected a frame count in [1, " +
-                                         std::to_string(kMaxFrames) + "], got '" +
-                                         std::string(value) + "'");
-                }
-                options.benchmark_frames = *frames;
-                break;
-            }
-            case Option::trace:
-                options.trace = std::filesystem::path(std::string(value));
-                break;
-            case Option::capture:
-                options.capture = std::filesystem::path(std::string(value));
-                break;
-            case Option::allow_download:
-                options.allow_download = true;
-                break;
+        if (auto problem = apply_option(spec->option, value, options)) {
+            return core::failure(std::move(*problem));
         }
     }
 
