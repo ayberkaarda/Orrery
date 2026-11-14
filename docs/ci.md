@@ -189,3 +189,18 @@ python tools/check_deps.py --build-dir build/ci-headless
 The workflow files are checked with `actionlint` (with shellcheck): no error;
 the remaining shellcheck notes are the deliberate word splitting of `$APT`
 and `$LINUX_DEPS` and one single-quoted `$1`, all present before.
+
+## 5. Pages workflow
+
+`pages.yml` publishes the static project site in `site/` to GitHub Pages
+(<https://ayberkaarda.github.io/Orrery/>). It runs on pushes to `main` that
+change `site/` or the workflow itself, and on demand (`workflow_dispatch`);
+it is not a pull-request check. There is no build step: the directory is
+uploaded as it is (`actions/upload-pages-artifact`) and deployed by
+`actions/deploy-pages`, one deployment at a time (concurrency group `pages`).
+The repository's Pages source must be set to GitHub Actions.
+
+The site is plain HTML, CSS and JavaScript. Its fonts and three.js (the hero
+drawing) are vendored under `site/assets` with their licences; it loads
+nothing from other hosts. All links inside it are relative, because the site
+is served under the `/Orrery/` path.

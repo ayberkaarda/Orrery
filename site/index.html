@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Orrery: a desktop physics laboratory</title>
+  <meta name="description" content="Orrery is a desktop physics laboratory in C++20 and OpenGL 4.6 that couples N-body space dynamics, aerodynamics and atmospheric entry. Observable, verifiable and deterministic; every simplification documented.">
+  <meta name="theme-color" content="#0b0d11">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://ayberkaarda.github.io/Orrery/">
+  <link rel="alternate" hreflang="en" href="https://ayberkaarda.github.io/Orrery/">
+  <link rel="alternate" hreflang="tr" href="https://ayberkaarda.github.io/Orrery/tr/">
+  <link rel="alternate" hreflang="x-default" href="https://ayberkaarda.github.io/Orrery/">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Orrery">
+  <meta property="og:title" content="Orrery: a desktop physics laboratory">
+  <meta property="og:description" content="Space dynamics, aerodynamics and atmospheric entry coupled in one deterministic desktop application. C++20, OpenGL 4.6, MIT licensed.">
+  <meta property="og:url" content="https://ayberkaarda.github.io/Orrery/">
+  <meta property="og:image" content="https://ayberkaarda.github.io/Orrery/assets/img/og-black-hole.jpg">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="A black hole rendered by Orrery: a thin accretion disk bent by Schwarzschild lensing">
+  <meta property="og:locale" content="en_GB">
+  <meta property="og:locale:alternate" content="tr_TR">
+  <meta name="twitter:card" content="summary_large_image">
+
+  <link rel="preload" href="assets/fonts/instrument-serif-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/ibm-plex-sans-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="assets/css/site.css">
+  <script type="module" src="assets/js/site.js"></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to content</a>
+
+  <header class="site-header">
+    <div class="wrap">
+      <a class="brand" href="./" aria-label="Orrery, home">
+        <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="10" fill="none" stroke="#e2a75c" stroke-width="2"/><circle cx="16" cy="16" r="3.6" fill="#e2a75c"/><circle cx="23.07" cy="8.93" r="2.7" fill="#dadee5" stroke="#0b0d11" stroke-width="1.4"/></svg>
+        Orrery
+      </a>
+      <nav class="nav" aria-label="Sections">
+        <ul>
+          <li><a href="#workspaces">Workspaces</a></li>
+          <li><a href="#trust">Trust</a></li>
+          <li><a href="#download">Download</a></li>
+          <li><a href="#status">Status</a></li>
+          <li><a href="#docs">Docs</a></li>
+        </ul>
+      </nav>
+      <div class="header-tools">
+        <div class="lang" role="group" aria-label="Language">
+          <span aria-current="page" lang="en">EN</span>
+          <a href="tr/" hreflang="tr" lang="tr" title="Türkçe">TR</a>
+        </div>
+        <a class="icon-link" href="https://github.com/ayberkaarda/Orrery" aria-label="Orrery on GitHub">
+          <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="main">
+    <section class="hero" data-orrery aria-labelledby="hero-title">
+      <div class="hero__sky" aria-hidden="true">
+        <img class="hero__still" src="assets/img/orrery-still.svg" alt="" width="1300" height="580" fetchpriority="high">
+        <canvas></canvas>
+      </div>
+      <div class="wrap">
+        <div class="hero__copy">
+          <ul class="hero__meta label" aria-label="Release facts">
+            <li>v0.1.0</li>
+            <li>C++20</li>
+            <li>OpenGL 4.6</li>
+            <li>MIT</li>
+          </ul>
+          <h1 id="hero-title">Orrery</h1>
+          <p class="hero__lede">A desktop physics laboratory that brings space dynamics, aerodynamics and atmospheric entry into one application and couples them.</p>
+          <p class="hero__tagline">Observable, verifiable, deterministic. A tool, not a game.</p>
+          <div class="actions">
+            <a class="btn btn--primary" href="https://github.com/ayberkaarda/Orrery/releases/tag/v0.1.0">
+              <svg viewBox="0 0 20 20" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" d="M10 3v10m0 0-4-4m4 4 4-4M4 16h12"/></svg>
+              Download 0.1.0
+            </a>
+            <a class="btn" href="https://github.com/ayberkaarda/Orrery">
+              <svg viewBox="0 0 16 16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+              Source on GitHub
+            </a>
+          </div>
+          <p class="hero__platforms"><strong>Windows x64</strong> developed and tested · <strong>Linux x86_64</strong> built in CI, packages untested · macOS out of scope</p>
+        </div>
+        <p class="hero__note">The orrery here is drawn in your browser: circular orbits paced by Kepler's third law. Every image below is rendered by Orrery itself.</p>
+      </div>
+    </section>
+
+    <section class="coupling" aria-label="How the domains couple">
+      <div class="wrap">
+        <p><strong>One chain, three domains.</strong> Atmosphere models and a drag coefficient table sampled from the aerodynamic solver drive a probe's entry, stepped by the same integrators as the Space workspace.</p>
+        <ol class="chain">
+          <li><span>Gravity</span></li>
+          <li><span>Atmosphere</span></li>
+          <li><span>Aero</span></li>
+          <li><span>Drag</span></li>
+          <li><span>Orbit</span></li>
+        </ol>
+      </div>
+    </section>
+
+    <section class="section" id="workspaces" aria-labelledby="workspaces-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">01 · Workspaces</p>
+          <h2 id="workspaces-title">Three workspaces, <em>one instrument</em></h2>
+          <p>Space, Aero and Entry each have their own main bar, docked panels and camera. Physics runs on its own threads and reaches the renderer through immutable snapshots, so no frame waits for a solver. Every run can be saved as an experiment, listed, compared and opened again.</p>
+        </header>
+
+        <article class="plate" aria-labelledby="space-title">
+          <div class="plate__media" data-reveal>
+            <figure class="shot">
+              <a href="assets/img/space-solar-system-1600.webp">
+                <img src="assets/img/space-solar-system-960.webp" srcset="assets/img/space-solar-system-960.webp 960w, assets/img/space-solar-system-1600.webp 1600w" sizes="(max-width: 960px) 100vw, 700px" width="1600" height="900" loading="lazy" decoding="async" alt="Orrery's Space workspace: the inner solar system from J2000 with orbit trails around the Sun, Body Inspector and System Monitor panels">
+              </a>
+              <figcaption>J2000 solar system after about 590 days, with orbit trails.</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="assets/img/space-black-hole-1600.webp">
+                <img src="assets/img/space-black-hole-960.webp" srcset="assets/img/space-black-hole-960.webp 960w, assets/img/space-black-hole-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="A black hole with a thin accretion disk bent by Schwarzschild lensing">
+              </a>
+              <figcaption>Schwarzschild lensing of a thin disk: shadow, lensed far side, Doppler-bright approaching side.</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="assets/img/space-figure-eight-1600.webp">
+                <img src="assets/img/space-figure-eight-960.webp" srcset="assets/img/space-figure-eight-960.webp 960w, assets/img/space-figure-eight-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Three equal stars on the figure-eight three-body orbit">
+              </a>
+              <figcaption>Figure-eight three-body choreography (Yoshida 4th order).</figcaption>
+            </figure>
+          </div>
+          <div class="plate__text" data-reveal>
+            <p class="plate__index"><span class="plate__numeral">I</span><span class="label">Space dynamics</span></p>
+            <h3 id="space-title">Space</h3>
+            <p class="plate__summary">N-body gravity with symplectic and adaptive integrators, black holes, collisions and tidal disruption.</p>
+            <ul class="specs">
+              <li><span>Experiments</span><span>The J2000 solar system, Sun-Earth-Moon, the three-body figure eight, <strong>Sgr A* with the star S2</strong> and a lone black hole.</span></li>
+              <li><span>Integrators</span><span>Leapfrog (kick-drift-kick, default), <strong>Yoshida 4th order</strong>, <strong>IAS15</strong> (adaptive) and RK4 for comparison; direct summation or a Barnes-Hut octree.</span></li>
+              <li><span>Black holes</span><span>Paczynski-Wiita potential for the dynamics; a <strong>ray-marched Schwarzschild lensing</strong> pass and a thin accretion disk with Doppler beaming and gravitational redshift.</span></li>
+              <li><span>Time warp</span><span>From 1x to 1e7x, held inside a time-warp budget.</span></li>
+              <li><span>Panels</span><span>Body Inspector (osculating orbit), System Monitor (energy drift, step time, warp), Experiment, Render Settings.</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="plate plate--flip" aria-labelledby="aero-title">
+          <div class="plate__media" data-reveal>
+            <figure class="shot">
+              <a href="assets/img/aero-naca0012-stall-wake-1600.webp">
+                <img src="assets/img/aero-naca0012-stall-wake-960.webp" srcset="assets/img/aero-naca0012-stall-wake-960.webp 960w, assets/img/aero-naca0012-stall-wake-1600.webp 1600w" sizes="(max-width: 960px) 100vw, 700px" width="1600" height="900" loading="lazy" decoding="async" alt="Orrery's Aero workspace: a stalled NACA 0012 section shedding a vortex street, with geometry, flow conditions and results panels">
+              </a>
+              <figcaption>NACA 0012 stalled at 20 degrees, Re 500: vortex street in the wake (lattice Boltzmann).</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="assets/img/aero-naca0012-lbm-1600.webp">
+                <img src="assets/img/aero-naca0012-lbm-960.webp" srcset="assets/img/aero-naca0012-lbm-960.webp 960w, assets/img/aero-naca0012-lbm-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="NACA 0012 section with the pressure coefficient on its surface and the speed field around it">
+              </a>
+              <figcaption>NACA 0012 at 4 degrees, Re 400, lattice Boltzmann: Cp and speed field.</figcaption>
+            </figure>
+            <figure class="shot">
+              <a href="assets/img/aero-apollo-newtonian-1600.webp">
+                <img src="assets/img/aero-apollo-newtonian-960.webp" srcset="assets/img/aero-apollo-newtonian-960.webp 960w, assets/img/aero-apollo-newtonian-1600.webp 1600w" sizes="(max-width: 560px) 100vw, (max-width: 960px) 50vw, 345px" width="1600" height="900" loading="lazy" decoding="async" alt="Apollo-type capsule coloured by pressure coefficient at Mach 20">
+              </a>
+              <figcaption>Apollo-type capsule at Mach 20 and 20 degrees, modified Newtonian Cp.</figcaption>
+            </figure>
+          </div>
+          <div class="plate__text" data-reveal>
+            <p class="plate__index"><span class="plate__numeral">II</span><span class="label">Aerodynamics</span></p>
+            <h3 id="aero-title">Aero</h3>
+            <p class="plate__summary">Flow around a chosen or imported 3D body, with three solvers for three regimes: force coefficients, pressure maps and flow fields.</p>
+            <ul class="specs">
+              <li><span>Solvers</span><span>2D and 3D <strong>panel method</strong>; <strong>modified Newtonian</strong> theory with a Sutton-Graves stagnation heat flux estimate; <strong>lattice Boltzmann</strong> D2Q9 and D3Q19 with a Smagorinsky subgrid model.</span></li>
+              <li><span>Regimes</span><span>Flow conditions give the Reynolds and Mach numbers; the regime selector recommends a solver and warns outside its validity range without blocking the run.</span></li>
+              <li><span>Geometry</span><span>Primitives from spheres and wedges to Apollo and Orion type capsules and NACA 4-digit sections and wings; OBJ, STL, glTF/GLB, PLY and FBX import from disk or an https URL, with limits, a SHA-256 cache and automatic repair.</span></li>
+              <li><span>Results</span><span>Cd, Cl, Cm with a breakdown and convergence plots; Cp on the body, force arrows, section planes, streamlines, particles and the Q-criterion iso-surface. Compared by angle of attack, exported as CSV.</span></li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="plate" aria-labelledby="entry-title">
+          <div class="plate__media" data-reveal>
+            <figure class="shot">
+              <a href="assets/img/entry-apollo-1600.webp">
+                <img src="assets/img/entry-apollo-960.webp" srcset="assets/img/entry-apollo-960.webp 960w, assets/img/entry-apollo-1600.webp 1600w" sizes="(max-width: 960px) 100vw, 700px" width="1600" height="900" loading="lazy" decoding="async" alt="Orrery's Entry workspace after an Apollo-like entry: setup panel, trajectory ribbon over the Earth, ground track and profile plots">
+              </a>
+              <figcaption>Apollo-like ballistic entry at 11 km/s: trajectory coloured by g-load, ground track and profile plots (peak 6.78 g).</figcaption>
+            </figure>
+          </div>
+          <div class="plate__text" data-reveal>
+            <p class="plate__index"><span class="plate__numeral">III</span><span class="label">Atmospheric entry</span></p>
+            <h3 id="entry-title">Entry</h3>
+            <p class="plate__summary">Atmosphere models and a drag table sampled from the aerodynamic solver drive a probe through the atmosphere of Earth or Mars.</p>
+            <ul class="specs">
+              <li><span>Atmospheres</span><span><strong>US Standard Atmosphere 1976</strong>, a mean Mars profile (NASA Glenn fit) and exponential atmospheres.</span></li>
+              <li><span>Probe</span><span>Constant mass, no lift, with a <strong>Cd(Mach) table</strong> edited by hand or sampled from the Newtonian solver; IAS15, Yoshida 4 or leapfrog for the gravity part of the step.</span></li>
+              <li><span>Profile</span><span>Altitude, speed, g-load, dynamic pressure and heat flux against time; the ground track; a 3D trajectory coloured by g-load or heat flux.</span></li>
+              <li><span>Outcomes</span><span>Landed, skip-out or orbiting.</span></li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section section--panel" id="trust" aria-labelledby="trust-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">02 · Trust</p>
+          <h2 id="trust-title">Built to be <em>checked</em></h2>
+          <p>Orrery shows its working. Runs are reproducible, simplifications are written down where they live, and the numbers it reports are compared against references in the test suite.</p>
+        </header>
+
+        <div class="ledger" data-reveal>
+          <article>
+            <p class="label">Determinism</p>
+            <h3>Bit-identical stepping</h3>
+            <p>A fixed-timestep accumulator with integral time keeping: the state after N steps is bit-identical whatever the frame rate. A state hash checks it for any frame pacing, with the time-warp budget active too.</p>
+          </article>
+          <article>
+            <p class="label">Time-warp budget</p>
+            <h3>Honest about speed</h3>
+            <p>Physics keeps to a share of wall-clock time. When a requested warp does not fit, it drops to the highest level that does and says so: a <span class="chip">LIMITED</span> chip, and the requested and achieved warp in the System Monitor. It recovers when the load drops, with hysteresis.</p>
+          </article>
+          <article>
+            <p class="label">Approximations</p>
+            <h3>Simplifications on record</h3>
+            <p>Every physical simplification is marked in the code and listed in <code>docs/physics.md</code>. A checker keeps the formula index, its source files and its tests in step, and fails CI when a marked file has no entry.</p>
+          </article>
+          <article>
+            <p class="label">Threads</p>
+            <h3>Solvers never stall a frame</h3>
+            <p>Physics runs on its own threads and hands the renderer immutable snapshots. The core libraries never link OpenGL, GLFW or Dear ImGui; a CI check enforces the boundary.</p>
+          </article>
+          <article>
+            <p class="label">Continuous integration</p>
+            <h3>Three compilers, sanitizers</h3>
+            <p>Every pull request builds and tests with GCC 13, Clang 17 and MSVC, runs AddressSanitizer and UBSan, clang-format, clang-tidy and cppcheck. A nightly build with link-time optimisation re-checks the determinism hashes.</p>
+          </article>
+          <article>
+            <p class="label">Errors</p>
+            <h3>No silent failure</h3>
+            <p>Errors appear where they happen: the status line, the panels, a modal for import errors. Unknown configuration keys are reported with their line; a fatal error writes its reason to a crash log.</p>
+          </article>
+        </div>
+
+        <div class="measure" data-reveal>
+          <h3>Measured against references</h3>
+          <p>A selection from the validation table. Setups, the remaining rows and a calibrated (not validated) entry case are in the README and <a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/physics.md">docs/physics.md</a>.</p>
+          <div class="table-scroll" tabindex="0" role="region" aria-label="Validation results">
+            <table>
+              <thead>
+                <tr><th scope="col">Case</th><th scope="col">Reference</th><th scope="col">Result</th></tr>
+              </thead>
+              <tbody>
+                <tr><th scope="row">Two-body orbits</th><td data-label="Reference">Analytic Kepler solution</td><td class="num" data-label="Result">2.7e-8 AU after 10 orbits (Yoshida4); period error 2.4e-10</td></tr>
+                <tr><th scope="row">Sun and eight planets, 1000 years</th><td data-label="Reference">Energy conservation</td><td class="num" data-label="Result">max |dE/E0| 1.4e-10 (target 1e-9)</td></tr>
+                <tr><th scope="row">Black hole lensing</th><td data-label="Reference">Weak and strong deflection (Bozza 2002), CPU geodesics</td><td class="num" data-label="Result">Einstein ring 143.52 px, predicted 143.52 px</td></tr>
+                <tr><th scope="row">Cylinder, Re 100, LBM 2D</th><td data-label="Reference">Strouhal 0.16 to 0.20, Cd 1.2 to 1.5</td><td class="num" data-label="Result">St 0.167, Cd 1.468, same on CPU and GPU</td></tr>
+                <tr><th scope="row">Apollo capsule, Mach 20, Newtonian</th><td data-label="Reference">Published Cd about 1.3</td><td class="num" data-label="Result">Cd 1.367 at 20 degree trim (5 percent above)</td></tr>
+                <tr><th scope="row">Allen-Eggers ballistic entry</th><td data-label="Reference">Analytic peak deceleration</td><td class="num" data-label="Result">within 0.5 percent</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="download" aria-labelledby="download-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">03 · Get it</p>
+          <h2 id="download-title">Orrery <em>0.1.0</em></h2>
+          <p>Release builds of the windowed application, which also renders <code>--headless</code>. It needs a GPU driver with OpenGL 4.6.</p>
+        </header>
+
+        <ul class="downloads" data-reveal>
+          <li class="download">
+            <span class="download__name">Windows installer</span>
+            <span class="badge badge--ok">Tested</span>
+            <span class="download__file">orrery-0.1.0-windows-x64.msi · 9.0 MiB</span>
+            <p class="download__desc">Per-user installer, no elevation; Start menu shortcut and uninstaller entry.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.msi">Download .msi</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.msi.sha256">SHA-256</a>
+            </span>
+          </li>
+          <li class="download">
+            <span class="download__name">Windows portable</span>
+            <span class="badge badge--ok">Tested</span>
+            <span class="download__file">orrery-0.1.0-windows-x64.zip · 10.2 MiB</span>
+            <p class="download__desc">The same installed tree as a zip; unpack and run <code>orrery_app.exe</code>.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.zip">Download .zip</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-windows-x64.zip.sha256">SHA-256</a>
+            </span>
+          </li>
+          <li class="download">
+            <span class="download__name">Linux tarball</span>
+            <span class="badge badge--warn">Untested</span>
+            <span class="download__file">orrery-0.1.0-linux-x86_64.tar.gz · 11.5 MiB</span>
+            <p class="download__desc">The installed tree (<code>bin/</code>, <code>share/</code>). Built in CI; never run with a window.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.tar.gz">Download .tar.gz</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.tar.gz.sha256">SHA-256</a>
+            </span>
+          </li>
+          <li class="download">
+            <span class="download__name">Linux AppImage</span>
+            <span class="badge badge--warn">Untested</span>
+            <span class="download__file">orrery-0.1.0-linux-x86_64.AppImage · 11.4 MiB</span>
+            <p class="download__desc">A single file for glibc 2.35 or newer. Built in CI; never run with a window.</p>
+            <span class="download__links">
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.AppImage">Download .AppImage</a>
+              <a href="https://github.com/ayberkaarda/Orrery/releases/download/v0.1.0/orrery-0.1.0-linux-x86_64.AppImage.sha256">SHA-256</a>
+            </span>
+          </li>
+        </ul>
+
+        <div class="callout" data-reveal>
+          <p><strong>The packages are not signed.</strong> On Windows, SmartScreen shows “Windows protected your PC”; choose More info, then Run anyway. Compare each file with the <code>.sha256</code> beside it. All files and release notes are on the <a href="https://github.com/ayberkaarda/Orrery/releases/tag/v0.1.0">release page</a>.</p>
+        </div>
+
+        <h3 class="subhead" id="build" data-reveal>Build from source</h3>
+        <p data-reveal>CMake 4.1 or newer, Ninja, a C++20 compiler (MSVC 2022, GCC 13 or Clang 17) and <a href="https://github.com/microsoft/vcpkg">vcpkg</a> in manifest mode, which fetches GLFW, glad, Dear ImGui, ImPlot, glm, Eigen, assimp, libcurl, miniz, oneTBB, nlohmann/json, toml++ and Catch2.</p>
+
+        <div class="code-grid" data-reveal>
+          <div class="code">
+            <div class="code__bar">
+              <span class="label">Windows · Developer PowerShell (x64)</span>
+              <button class="copy" type="button" data-copy="code-win" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3"/></svg><span class="copy__label">Copy</span><span class="visually-hidden"> Windows build commands</span></button>
+            </div>
+            <pre><code id="code-win">$env:VCPKG_ROOT = "C:\path\to\vcpkg"
+cmake --preset release
+cmake --build --preset release
+ctest --preset release</code></pre>
+          </div>
+          <div class="code">
+            <div class="code__bar">
+              <span class="label">Linux · shell</span>
+              <button class="copy" type="button" data-copy="code-linux" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3"/></svg><span class="copy__label">Copy</span><span class="visually-hidden"> Linux build commands</span></button>
+            </div>
+            <pre><code id="code-linux">export VCPKG_ROOT=/path/to/vcpkg
+cmake --preset linux-release
+cmake --build --preset linux-release
+ctest --preset linux-release</code></pre>
+          </div>
+        </div>
+
+        <div class="code code--wide" data-reveal>
+          <div class="code__bar">
+            <span class="label">Run</span>
+            <button class="copy" type="button" data-copy="code-run" hidden><svg viewBox="0 0 16 16" aria-hidden="true"><path fill="none" stroke="currentColor" stroke-width="1.4" d="M5.5 5.5h8v8h-8zM10.5 5.5v-3h-8v8h3"/></svg><span class="copy__label">Copy</span><span class="visually-hidden"> run commands</span></button>
+          </div>
+          <pre><code id="code-run">orrery_app                                   <span class="c"># the window, solar system</span>
+orrery_app --experiment figure_eight         <span class="c"># a bundled experiment by name</span>
+orrery_app --headless --experiment black_hole --out bh.png --size 1920x1080
+orrery_app --headless --experiment entry_apollo_like --out entry.png</code></pre>
+        </div>
+        <p class="code-note" data-reveal>Press F1 in the window for the shortcuts. <code>--headless</code> renders one PNG offscreen and never shows a window; without an OpenGL 4.6 driver it exits with code 3.</p>
+        <p id="copy-status" class="visually-hidden" role="status" aria-live="polite"></p>
+      </div>
+    </section>
+
+    <section class="section section--panel" id="status" aria-labelledby="status-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">04 · Status</p>
+          <h2 id="status-title">Status and <em>limitations</em></h2>
+          <p>Version 0.1.0. What has run where, and what the models leave out, stated plainly.</p>
+        </header>
+
+        <div class="status">
+          <ul class="platforms" data-reveal aria-label="Platforms">
+            <li>
+              <div class="row"><strong>Windows · MSVC 2022</strong><span class="badge badge--ok">Tested</span></div>
+              <p>Developed and tested here: the window, the GPU tests and the packaged application have run.</p>
+            </li>
+            <li>
+              <div class="row"><strong>Linux · GCC 13, Clang 17</strong><span class="badge badge--warn">CI only</span></div>
+              <p>The headless build and its tests run in CI and the windowed build compiles, but CI runners have no OpenGL: the window and GPU tests have never run on Linux, and the tarball and AppImage are untested.</p>
+            </li>
+            <li>
+              <div class="row"><strong>macOS</strong><span class="badge badge--off">Out of scope</span></div>
+              <p>No OpenGL 4.6.</p>
+            </li>
+          </ul>
+
+          <ol class="limits" data-reveal>
+            <li><strong>No solver is validated CFD.</strong> The panel method is inviscid (skin friction is a separate flat-plate estimate), Newtonian theory is meant for Mach 5 and above, and lattice Boltzmann is a low-Mach method; each warns outside its range.</li>
+            <li><strong>Black holes are Schwarzschild only</strong>, without spin; the dynamics near them use a pseudo-Newtonian potential, not general relativity.</li>
+            <li><strong>Entry is simplified:</strong> constant mass, no lift, no rotation, no ablation. The heat flux is a stagnation-point correlation for display.</li>
+            <li><strong>The J2000 solar system is ten point masses</strong> from JPL Horizons state vectors: no asteroids, oblateness or relativity.</li>
+            <li><strong>The Aero workspace runs lattice Boltzmann on the CPU</strong>; large 3D lattices are slow there. During the onset of vortex shedding the GPU and CPU solutions differ by up to 7.1e-4 (relative L2), above the 1e-4 criterion.</li>
+            <li><strong>Performance figures come from one machine</strong> (AMD Radeon RX 9060 XT).</li>
+            <li><strong>Planned items not in V1:</strong> bloom, Hill spheres and ghost trajectories, a Rayleigh and Mie atmosphere; see <a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/limitations.md">docs/limitations.md</a>. Fluids, thermal and waves (V2) and later domains are a roadmap, not code.</li>
+            <li><strong>Imported models are not validated</strong>, and the licences of downloaded models are not checked.</li>
+          </ol>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" id="docs" aria-labelledby="docs-title">
+      <div class="wrap">
+        <header class="section-head" data-reveal>
+          <p class="label">05 · Documentation</p>
+          <h2 id="docs-title">Read the <em>working</em></h2>
+          <p>Reference documents and architecture decision records, in the repository.</p>
+        </header>
+        <ul class="docs" data-reveal>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/physics.md"><span>physics.md</span><small>Formula index, sources, approximations, measured results</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/app.md"><span>app.md</span><small>Application loop, time-warp budget, workspaces, shortcuts</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/rendering.md"><span>rendering.md</span><small>Renderer, black-hole lensing, golden images</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/aero.md"><span>aero.md</span><small>Panel method, Newtonian theory, regime selection</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/lbm.md"><span>lbm.md</span><small>Lattice Boltzmann D2Q9 and D3Q19, GPU precision</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/atmosphere.md"><span>atmosphere.md</span><small>Atmospheres, the Cd(Mach) bridge, entry</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/limitations.md"><span>limitations.md</span><small>Planned items not implemented in V1</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/roadmap.md"><span>roadmap.md</span><small>V1, V2 and V3, and the coupling pattern</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/ci.md"><span>ci.md</span><small>CI jobs, caches and measured run times</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/packaging.md"><span>packaging.md</span><small>Installers, install layout, licence notices</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/adr/README.md"><span>adr/</span><small>Architecture decision records</small></a></li>
+          <li><a href="https://github.com/ayberkaarda/Orrery/blob/main/docs/README.md"><span>docs/README.md</span><small>Index of every document</small></a></li>
+        </ul>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="wrap">
+      <div>
+        <p>Orrery is released under the <a href="https://github.com/ayberkaarda/Orrery/blob/main/LICENSE">MIT License</a>.</p>
+        <p class="fine">This site uses no cookies or trackers. Type: IBM Plex (<a href="assets/fonts/LICENSE-IBM-Plex.txt">OFL</a>) and Instrument Serif (<a href="assets/fonts/LICENSE-Instrument-Serif.txt">OFL</a>). Hero drawn with three.js (<a href="assets/vendor/three/LICENSE">MIT</a>).</p>
+      </div>
+      <ul>
+        <li><a href="https://github.com/ayberkaarda/Orrery">Repository</a></li>
+        <li><a href="https://github.com/ayberkaarda/Orrery/releases">Releases</a></li>
+        <li><a href="https://github.com/ayberkaarda/Orrery/issues">Issues</a></li>
+        <li><a href="tr/" hreflang="tr" lang="tr">Türkçe</a></li>
+      </ul>
+    </div>
+  </footer>
+</body>
+</html>
