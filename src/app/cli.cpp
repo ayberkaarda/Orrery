@@ -94,24 +94,6 @@ core::Result<std::pair<int, int>, std::string> parse_size(std::string_view text)
     return std::pair<int, int>(static_cast<int>(*width), static_cast<int>(*height));
 }
 
-core::Result<CliOptions, std::string> check_capture(const CliOptions& options,
-                                                    const std::set<Option>& seen) {
-    if (!seen.contains(Option::capture)) {
-        return options;
-    }
-    if (options.mode == RunMode::headless) {
-        return core::failure(std::string("--capture is not valid with --headless (use --out)"));
-    }
-    if (seen.contains(Option::benchmark)) {
-        return core::failure(std::string("--capture is not valid with --benchmark"));
-    }
-    if (!ends_with_png(options.capture)) {
-        return core::failure("--capture: the image is written as PNG; use a .png file name, got '" +
-                             options.capture.string() + "'");
-    }
-    return options;
-}
-
 // The first combination of options that makes no sense, or nullopt.
 std::optional<std::string> combination_problem(const CliOptions& options,
                                                const std::set<Option>& seen) {
@@ -141,6 +123,18 @@ std::optional<std::string> combination_problem(const CliOptions& options,
             return std::string(
                 "--allow-download is only valid with --headless (the window asks before it "
                 "downloads)");
+        }
+    }
+    if (seen.contains(Option::capture)) {
+        if (headless) {
+            return std::string("--capture is not valid with --headless (use --out)");
+        }
+        if (seen.contains(Option::benchmark)) {
+            return std::string("--capture is not valid with --benchmark");
+        }
+        if (!ends_with_png(options.capture)) {
+            return "--capture: the image is written as PNG; use a .png file name, got '" +
+                   options.capture.string() + "'";
         }
     }
     return std::nullopt;
@@ -263,7 +257,7 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
     if (auto problem = combination_problem(options, seen)) {
         return core::failure(std::move(*problem));
     }
-    return check_capture(options, seen);
+    return options;
 }
 
 std::string usage_text() {
