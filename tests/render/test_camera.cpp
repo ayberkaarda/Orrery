@@ -154,6 +154,46 @@ TEST_CASE("Orbit places the eye on the requested sphere and looks at the focus",
     CHECK(above.y > 0.05);
 }
 
+TEST_CASE("Orbit view shift puts the target off centre at any yaw, pitch and distance",
+          "[render][camera]") {
+    // The window frames the system in the scene area left free by its
+    // panels: the target is drawn at that area's centre, not the window's.
+    const BodyId sun{7};
+    BodyFrame frame;
+    frame.position = kFarBody;
+    const BodyFrameLookup lookup = single_body(sun, frame);
+    OrbitMode orbit;
+    orbit.target = sun;
+    orbit.distance = 3.0 * kAu;
+    orbit.yaw = 1.2;
+    orbit.pitch = 0.5;
+    orbit.view_shift = glm::dvec2(0.25, -0.4); // half view heights, right and up
+    Camera camera;
+    camera.set_mode(orbit);
+    REQUIRE(camera.update(0.0, {}, lookup));
+    const double aspect = 1.6;
+    glm::dvec3 ndc = ndc_of(camera, kFarBody, aspect);
+    CHECK(ndc.x == Catch::Approx(0.25 / aspect).margin(1.0e-5));
+    CHECK(ndc.y == Catch::Approx(-0.4).margin(1.0e-5));
+    // Orbiting and zooming keep it there: the shift is screen-aligned.
+    CameraInput input;
+    input.yaw = 0.8;
+    input.pitch = -0.3;
+    input.zoom = 0.5;
+    REQUIRE(camera.update(1.0, input, lookup));
+    REQUIRE(camera.update(5.0, {}, lookup));
+    ndc = ndc_of(camera, kFarBody, aspect);
+    CHECK(ndc.x == Catch::Approx(0.25 / aspect).margin(1.0e-5));
+    CHECK(ndc.y == Catch::Approx(-0.4).margin(1.0e-5));
+    // Without a shift the target stays at the centre.
+    orbit.view_shift = glm::dvec2(0.0);
+    camera.set_mode(orbit);
+    REQUIRE(camera.update(0.0, {}, lookup));
+    ndc = ndc_of(camera, kFarBody, aspect);
+    CHECK(std::abs(ndc.x) < 1.0e-6);
+    CHECK(std::abs(ndc.y) < 1.0e-6);
+}
+
 TEST_CASE("Surface camera stands on the body and looks along its heading", "[render][camera]") {
     const BodyId earth{1};
     BodyFrame frame;

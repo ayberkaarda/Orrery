@@ -23,6 +23,7 @@ enum class Option : std::uint8_t {
     size,
     benchmark,
     trace,
+    capture,
     allow_download,
 };
 
@@ -33,7 +34,7 @@ struct OptionSpec {
     bool takes_value = false;
 };
 
-constexpr std::array<OptionSpec, 11> kOptions{{
+constexpr std::array<OptionSpec, 12> kOptions{{
     {Option::help, "--help", "-h", false},
     {Option::version, "--version", "", false},
     {Option::modules, "--modules", "", false},
@@ -44,6 +45,7 @@ constexpr std::array<OptionSpec, 11> kOptions{{
     {Option::size, "--size", "", true},
     {Option::benchmark, "--benchmark", "", true},
     {Option::trace, "--trace", "", true},
+    {Option::capture, "--capture", "", true},
     {Option::allow_download, "--allow-download", "", false},
 }};
 
@@ -111,8 +113,8 @@ std::optional<std::string> combination_problem(const CliOptions& options,
                    options.out.string() + "'";
         }
     } else {
-        if (seen.contains(Option::frame)) {
-            return std::string("--frame is only valid with --headless");
+        if (seen.contains(Option::frame) && !seen.contains(Option::capture)) {
+            return std::string("--frame is only valid with --headless or --capture");
         }
         if (seen.contains(Option::out)) {
             return std::string("--out is only valid with --headless");
@@ -122,6 +124,79 @@ std::optional<std::string> combination_problem(const CliOptions& options,
                 "--allow-download is only valid with --headless (the window asks before it "
                 "downloads)");
         }
+    }
+    if (seen.contains(Option::capture)) {
+        if (headless) {
+            return std::string("--capture is not valid with --headless (use --out)");
+        }
+        if (seen.contains(Option::benchmark)) {
+            return std::string("--capture is not valid with --benchmark");
+        }
+        if (!ends_with_png(options.capture)) {
+            return "--capture: the image is written as PNG; use a .png file name, got '" +
+                   options.capture.string() + "'";
+        }
+    }
+    return std::nullopt;
+}
+
+// Stores the value of one option; returns the problem with it, if any. Kept apart
+// from the parsing loop: clang-tidy 17 does not finish bugprone-unchecked-optional-access
+// on a function this size.
+std::optional<std::string> apply_option(const Option option, const std::string_view value,
+                                        CliOptions& options) {
+    switch (option) {
+        case Option::help:
+        case Option::version:
+            break;
+        case Option::modules:
+            options.mode = RunMode::modules;
+            break;
+        case Option::headless:
+            options.mode = RunMode::headless;
+            break;
+        case Option::experiment:
+            options.experiment = std::string(value);
+            break;
+        case Option::frame: {
+            const auto frame = parse_integer(value);
+            if (!frame || *frame < 0 || *frame > kMaxFrames) {
+                return "--frame: expected an integer in [0, " + std::to_string(kMaxFrames) +
+                       "], got '" + std::string(value) + "'";
+            }
+            options.frame = *frame;
+            break;
+        }
+        case Option::out:
+            options.out = std::filesystem::path(std::string(value));
+            break;
+        case Option::size: {
+            const auto size = parse_size(value);
+            if (!size) {
+                return size.error();
+            }
+            options.width = size.value().first;
+            options.height = size.value().second;
+            break;
+        }
+        case Option::benchmark: {
+            const auto frames = parse_integer(value);
+            if (!frames || *frames < 1 || *frames > kMaxFrames) {
+                return "--benchmark: expected a frame count in [1, " + std::to_string(kMaxFrames) +
+                       "], got '" + std::string(value) + "'";
+            }
+            options.benchmark_frames = *frames;
+            break;
+        }
+        case Option::trace:
+            options.trace = std::filesystem::path(std::string(value));
+            break;
+        case Option::capture:
+            options.capture = std::filesystem::path(std::string(value));
+            break;
+        case Option::allow_download:
+            options.allow_download = true;
+            break;
     }
     return std::nullopt;
 }
@@ -183,57 +258,8 @@ core::Result<CliOptions, std::string> parse_command_line(std::span<const std::st
             return core::failure("option " + std::string(spec->name) + " takes no value");
         }
 
-        switch (spec->option) {
-            case Option::help:
-            case Option::version:
-                break;
-            case Option::modules:
-                options.mode = RunMode::modules;
-                break;
-            case Option::headless:
-                options.mode = RunMode::headless;
-                break;
-            case Option::experiment:
-                options.experiment = std::string(value);
-                break;
-            case Option::frame: {
-                const auto frame = parse_integer(value);
-                if (!frame || *frame < 0 || *frame > kMaxFrames) {
-                    return core::failure("--frame: expected an integer in [0, " +
-                                         std::to_string(kMaxFrames) + "], got '" +
-                                         std::string(value) + "'");
-                }
-                options.frame = *frame;
-                break;
-            }
-            case Option::out:
-                options.out = std::filesystem::path(std::string(value));
-                break;
-            case Option::size: {
-                const auto size = parse_size(value);
-                if (!size) {
-                    return core::failure(size.error());
-                }
-                options.width = size.value().first;
-                options.height = size.value().second;
-                break;
-            }
-            case Option::benchmark: {
-                const auto frames = parse_integer(value);
-                if (!frames || *frames < 1 || *frames > kMaxFrames) {
-                    return core::failure("--benchmark: expected a frame count in [1, " +
-                                         std::to_string(kMaxFrames) + "], got '" +
-                                         std::string(value) + "'");
-                }
-                options.benchmark_frames = *frames;
-                break;
-            }
-            case Option::trace:
-                options.trace = std::filesystem::path(std::string(value));
-                break;
-            case Option::allow_download:
-                options.allow_download = true;
-                break;
+        if (auto problem = apply_option(spec->option, value, options)) {
+            return core::failure(std::move(*problem));
         }
     }
 
@@ -249,6 +275,8 @@ std::string usage_text() {
            "  orrery_app --headless --experiment <name-or-path> --out <file.png>\n"
            "             [--frame <N>] [--size WxH] [--benchmark <frames>]\n"
            "             [--allow-download]\n"
+           "  orrery_app [--experiment <name-or-path>] --capture <file.png> [--frame <N>]\n"
+           "             [--size WxH]\n"
            "  orrery_app --version | --help | --modules\n"
            "\n"
            "Options:\n"
@@ -258,6 +286,11 @@ std::string usage_text() {
            "      --frame <N>       advance N frames (1/60 s each at the experiment's time\n"
            "                        warp) before rendering; default 0\n"
            "  -o, --out <file.png>  output image of --headless\n"
+           "      --capture <file.png>\n"
+           "                        open the window hidden (never shown or focused), run\n"
+           "                        --frame frames at 60 per second and the shown\n"
+           "                        workspace's run, write the window's framebuffer with\n"
+           "                        its panels to the PNG and exit\n"
            "      --size WxH        image or window size in pixels (default 1280x720 headless,\n"
            "                        1600x900 window)\n"
            "      --benchmark <N>   window: render N frames without vsync, print the mean\n"

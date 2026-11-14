@@ -210,8 +210,16 @@ existing file path is used as is.
 orrery_app [--experiment <name-or-path>] [--size WxH] [--benchmark <frames>]
 orrery_app --headless --experiment <name-or-path> --out <file.png> [--frame <N>] [--size WxH]
            [--benchmark <frames>] [--allow-download]
+orrery_app [--experiment <name-or-path>] --capture <file.png> [--frame <N>] [--size WxH]
 orrery_app --version | --help | --modules
 ```
+
+`--capture <file.png>` opens the window hidden (never shown, never
+focused), runs `--frame` frames at 60 per second of wall time (the
+experiment at its warp, in real time), starts the shown workspace's run (an
+aero solve, an entry run) and waits for it to finish, lets 45 more frames
+settle, and writes the window's framebuffer, panels included, after the UI
+pass (section 14). It is not valid with `--headless` or `--benchmark`.
 
 `--frame N` (default 0, at most 1e6) advances N frames of 1/60 s at the
 experiment's warp. Values may follow the option or an `=`; repeated, unknown
@@ -275,7 +283,11 @@ Shared by the window and the headless renderer (`space_view.h`):
   disk instead: 12 deg above the disk plane, at the distance where the disk
   (30 G M / c^2) fits the view, limited by width up to about 2.35:1 and by height for wider
   views, and never closer than 1.08 disk radii. In the window the framing is
-  computed for the scene area left by the panels.
+  computed for the scene area left by the panels and drawn at that area's
+  centre (`OrbitMode::view_shift`: the camera slides in its view plane, so
+  the target stays there while the user orbits and zooms). A new scene area
+  (window resized, panels laid out) frames the view again until the user
+  moves the camera, and afterwards only centres it on the new area.
 - Trails: `trail_length` samples per body, each spanning about 85 percent of
   its orbit (`min_step_angle = 2 pi 0.85 / length`), recorded from every new
   snapshot and cleared on load and reset.
@@ -531,3 +543,92 @@ after a NACA 0012 panel-method run is a golden
 (`tests/render/golden/aero/aero_workspace_naca0012.png`, SSIM > 0.98),
 beside the Entry workspace golden of entry-workspace.md and the space
 goldens of section 6 and rendering.md.
+
+## 14. Scripted window sessions
+
+The window loop of section 8 runs unchanged under a script, with a hidden
+window, so that it is tested end to end on a machine somebody is using:
+`app::run_window(request, out, err, WindowSession{driver, hidden, gl_debug})`
+(`window_app.h`). A hidden window is created with `GLFW_VISIBLE`,
+`GLFW_FOCUSED` and `GLFW_FOCUS_ON_SHOW` off; it is never shown, never takes
+the focus, and nothing is sent to the operating system's input queue. Its
+swaps do not wait for vsync; the drivers pace their frames at 60 per second
+of wall time.
+
+Per frame the loop calls the `WindowDriver` twice:
+
+- `before_frame`, after GLFW's events were polled and with the UI's Dear
+  ImGui context current: the driver queues input with the calls the GLFW
+  backend's callbacks make (`io.AddKeyEvent`, `AddInputCharacter`,
+  `AddMousePosEvent`, `AddMouseButtonEvent`; a held key types its character
+  again on every operating-system repeat, as a keyboard does), and may
+  resize the window, give the frame an empty framebuffer (minimised: GLFW
+  cannot size a window to zero) or close it;
+- `after_frame`, after the UI was drawn and `HdrPipeline::present` copied
+  the frame to the back buffer, before the swap: `WindowFrame` carries the
+  workspace, the help overlay, the warp chip, the Space simulation's status
+  and snapshot, the Aero and Entry workspaces, the UI context, the
+  framebuffer size, the content scale, and the OpenGL errors so far
+  (`glGetError` after every frame plus KHR_debug errors of a debug context).
+  `GlContext::read_window_pixels` reads the back buffer.
+
+From there on everything is the window's own code: Dear ImGui's input
+queue, `read_key_frame` and the shortcut table, the panels and their
+buttons, the physics, aero and entry threads, the renderers and the
+present. What is not covered is the operating system delivering keys,
+characters and pointer events to GLFW's callbacks, window decorations,
+real focus changes and vsync timing.
+
+`orrery_test_window` (`tests/app/test_window_*.cpp`, builds with a window
+system only; `[gl]`, skipped without an OpenGL 4.6 context unless
+`ORRERY_REQUIRE_GL=1`) runs one session per test case, each a list of steps
+(input over consecutive frames, then frames until a condition on the
+window's state holds):
+
+- Space (`sun_earth_moon`): Space pauses and resumes; `]` and `[` step the
+  warp; a `]` held for three key repeats raises it four levels and no
+  further; a held Space toggles once; F1 and `?` open the help, Esc and F1
+  close it; Ctrl+2, Ctrl+3 and Ctrl+1 switch workspaces with their panels
+  shown; Ctrl+O brings the Experiment panel to the front; a click (the
+  pointer finds the name field by its text cursor) gives the name field the
+  keyboard, and Ctrl+S, `?`, F1 and Space then type instead of firing;
+  Ctrl+A, the name and Enter set it; Ctrl+S saves `smoke_run.json`; after a
+  warp change, a double click on its row (found by hovering) opens it;
+  paused, the window's body positions after N steps equal, bit for bit,
+  those of a fresh `Simulation` of the saved file single-stepped N times.
+- The back buffer holds the frame: many colours, the Body Inspector's
+  background where the panel is.
+- Sizes: the smallest window the system allows (120 x 1 on Windows), the
+  Aero and Entry workspaces drawn at that size, 320 x 200, 400 x 1000,
+  1600 x 900; 40 frames with an empty framebuffer draw nothing while the
+  simulation keeps stepping; the old size is drawn again. The content scale
+  is reported (1 x 1 on the reference machine).
+- Aero (`aero_naca0012_lbm`, opened as `--experiment` opens it): the
+  geometry is prepared in the background; Space starts the lattice
+  Boltzmann run, pauses and resumes it; the bar's stop button (found by
+  hovering) stops it; each within 500 ms of the key or click (worst seen
+  about 0.2 s). The panel-method section then solves with Space, Ctrl+S
+  saves it with its result, and the record opens with the same lift
+  coefficient.
+- Entry (`entry_apollo_like`): Space runs, pauses and resumes; the stop
+  button stops (state stopped); Space flies a new run to the ground; Ctrl+S
+  saves it; the saved run is compared and the comparison exported.
+- Warp budget: the bundled solar system with a 1e-5 d step, a held `]`
+  requests 1e7x; the warp is reduced, the `LIMITED` chip shows and stays
+  for five seconds without a change of the chip or more than one change of
+  the governed warp; a held `[` lowers the request to 1000x, and the full
+  warp comes back, the chip goes and stays away for three seconds.
+- Threads: after a first session (the driver's own threads start once),
+  three more sessions through all three workspaces leave no thread behind;
+  every session exits with code 0, no OpenGL error and nothing on stderr.
+- Soak (`[soak]`): 60 s of `solar_system` at its warp with the help opened
+  now and then; the process's private memory between 15 s and 60 s grows
+  by less than 16 MB.
+
+With `ORRERY_WINDOW_SESSION_SHOTS=<dir>` every step's last frame is written
+to `<dir>` for inspection. The same path takes the README screenshots:
+`orrery_app --capture <file.png>` (section 5, [screenshots.md](screenshots.md))
+runs the hidden window for `--frame` frames, starts and waits for the shown
+workspace's run (an aero solve, an entry run), then writes the back buffer
+with the panels. It uses the default configuration and an empty experiments
+folder of its own, so no user setting or saved experiment shows.

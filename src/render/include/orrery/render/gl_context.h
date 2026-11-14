@@ -5,6 +5,7 @@
 #include <string>
 
 #include "orrery/core/result.h"
+#include "orrery/render/image.h"
 
 // OpenGL 4.6 core context on a GLFW window (visible, or hidden for offscreen
 // and headless rendering). GLFW and glad stay private to orrery_render.
@@ -25,11 +26,14 @@ struct ContextOptions {
     int width = 64;
     int height = 64;
     std::string title = "Orrery";
-    // false: hidden window; rendering then goes to framebuffer objects only.
+    // false: hidden window that never takes the input focus; rendering goes
+    // to framebuffer objects, or to its default framebuffer, which is read
+    // back by read_window_pixels() and never shown.
     bool visible = false;
     // Request a debug context and route KHR_debug messages to log_message().
     bool debug = true;
-    // Swap interval for visible windows (1 = vsync).
+    // Swap interval of the window (1 = vsync); a hidden window that is never
+    // swapped is unaffected.
     int swap_interval = 1;
 };
 
@@ -40,6 +44,11 @@ struct GlInfo {
     std::string glsl_version;
     int major = 0;
     int minor = 0;
+};
+
+struct ContentScale {
+    double x = 1.0;
+    double y = 1.0;
 };
 
 class GlContext {
@@ -72,6 +81,21 @@ public:
     [[nodiscard]] bool should_close() const;
     [[nodiscard]] int framebuffer_width() const;
     [[nodiscard]] int framebuffer_height() const;
+    // Resizes the window's client area (both > 0); a hidden window stays
+    // hidden. The framebuffer follows at once or at the next poll_events().
+    void set_window_size(int width, int height);
+    // The window system's content scale (DPI over the platform default; 1
+    // on a standard-density display), {1, 1} for a moved-from context.
+    [[nodiscard]] ContentScale content_scale() const;
+
+    // Clears the context's OpenGL error flags and returns how many were set
+    // (glGetError until GL_NO_ERROR, at most 64). Requires the context to be
+    // current.
+    [[nodiscard]] std::size_t drain_gl_errors() const;
+    // Reads the back buffer of the window's default framebuffer, which holds
+    // the frame the next swap_buffers() shows: width x height pixels from the
+    // bottom left, rows top to bottom. Requires the context to be current.
+    [[nodiscard]] ImageRgba8 read_window_pixels(int width, int height) const;
 
 private:
     friend void* detail::native_window(const GlContext& context) noexcept;

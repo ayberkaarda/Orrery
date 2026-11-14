@@ -95,14 +95,19 @@ std::optional<Workspace> draw_workspace_strip(Workspace current) {
             }
             ImGui::SameLine();
         }
-        // Right-aligned caption of the current workspace.
+        // Right-aligned caption of the current workspace, when it fits
+        // beside the tabs.
         const char* text = caption(current);
         const float width = ImGui::CalcTextSize(text).x;
-        ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - width);
-        ImGui::AlignTextToFramePadding();
-        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
-        ImGui::TextUnformatted(text);
-        ImGui::PopStyleColor();
+        const float tabs_end = ImGui::GetCursorPosX();
+        const float at = ImGui::GetWindowContentRegionMax().x - width;
+        if (at >= tabs_end + ImGui::GetFontSize()) {
+            ImGui::SameLine(at);
+            ImGui::AlignTextToFramePadding();
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextUnformatted(text);
+            ImGui::PopStyleColor();
+        }
     }
     ImGui::End();
     ImGui::PopStyleColor();

@@ -34,10 +34,14 @@ std::string grouped(std::uint64_t value) {
     const std::size_t first = digits.size() % 3 == 0 ? 3 : digits.size() % 3;
     out += digits.substr(0, first);
     for (std::size_t i = first; i < digits.size(); i += 3) {
-        out += "\xE2\x80\x89"; // thin space (U+2009)
+        out += ' '; // the UI font has neither a thin nor a no-break space
         out += digits.substr(i, 3);
     }
     return out;
+}
+
+std::string change(std::size_t before, std::size_t after) {
+    return std::to_string(before) + " -> " + std::to_string(after);
 }
 
 void text(const std::string& value) {
@@ -99,17 +103,27 @@ float unit_room() {
 
 } // namespace
 
+// The control's column, or further right when the label is longer than the
+// column is wide: a control never covers its label.
+float control_column_after(const char* label) {
+    const float label_end =
+        ImGui::GetCursorPosX() + ImGui::CalcTextSize(label).x + ImGui::GetStyle().ItemSpacing.x;
+    return std::max(control_column(), label_end);
+}
+
 void row_label(const char* label) {
+    const float column = control_column_after(label);
     ImGui::AlignTextToFramePadding();
     muted(label);
-    ImGui::SameLine(control_column());
+    ImGui::SameLine(column);
     ImGui::SetNextItemWidth(-1.0F);
 }
 
 void row_label_with_unit(const char* label, const char* unit_text) {
+    const float column = control_column_after(label);
     ImGui::AlignTextToFramePadding();
     muted(label);
-    ImGui::SameLine(control_column());
+    ImGui::SameLine(column);
     (void)unit_text;
     ImGui::SetNextItemWidth(-unit_room());
 }
@@ -159,6 +173,17 @@ void chip(const std::string& label, const render::UiColor& tint, const char* too
     if (tooltip_text != nullptr) {
         tooltip(tooltip_text);
     }
+}
+
+void chip_after(const std::string& label, const render::UiColor& tint, const char* tooltip_text) {
+    // On the same line when the chip fits there, else on the next one.
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float width = ImGui::CalcTextSize(label.c_str()).x + style.FramePadding.x * 2.0F;
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    if (ImGui::GetItemRectMax().x + style.ItemSpacing.x + width <= right) {
+        ImGui::SameLine();
+    }
+    chip(label, tint, tooltip_text);
 }
 
 bool icon_button(const char* id, Glyph glyph, const char* tooltip_text, bool emphasised,

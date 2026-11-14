@@ -103,6 +103,11 @@ target_sources(orrery_test_render PRIVATE
     render/test_black_hole.cpp
     render/test_black_hole_render.cpp)
 target_link_libraries(orrery_test_render PRIVATE orrery_scene)
+# test_ui.cpp reads Dear ImGui's and ImPlot's layout state after a frame
+# (window clip rectangles, plot axes and tick labels).
+find_package(imgui CONFIG REQUIRED)
+find_package(implot CONFIG REQUIRED)
+target_link_libraries(orrery_test_render PRIVATE imgui::imgui implot::implot)
 target_compile_definitions(orrery_test_render PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
 
@@ -315,6 +320,9 @@ add_executable(orrery_test_app
 find_package(nlohmann_json CONFIG REQUIRED)
 target_link_libraries(orrery_test_app PRIVATE orrery_app_core imgui::imgui
     nlohmann_json::nlohmann_json Catch2::Catch2WithMain)
+# The Aero widgets' formatting helpers are private to orrery_app_core
+# (src/app/aero/aero_widgets.h); the font coverage test reads them.
+target_include_directories(orrery_test_app PRIVATE ${PROJECT_SOURCE_DIR}/src/app)
 target_compile_definitions(orrery_test_app PRIVATE
     ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios"
     ORRERY_RENDER_OUTPUT_DIR="${CMAKE_CURRENT_BINARY_DIR}/app_output")
@@ -336,6 +344,35 @@ if(ORRERY_SANITIZE AND NOT MSVC)
         "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
 endif()
 catch_discover_tests(orrery_test_app DISCOVERY_MODE PRE_TEST ${app_discover_props})
+
+# Scripted sessions of the real window (docs/app.md, "Scripted window
+# sessions"): run_window with a hidden window that is never shown or
+# focused, input queued on its Dear ImGui context as the GLFW backend's
+# callbacks queue it. Builds with a window system only; [gl] tests skip
+# without an OpenGL 4.6 context (ORRERY_REQUIRE_GL=1 makes that a failure).
+# RUN_SERIAL: each session paces its frames in wall-clock time and runs the
+# physics and solver threads.
+if(NOT ORRERY_HEADLESS)
+    add_executable(orrery_test_window
+        app/app_test_support.h
+        app/key_events.h
+        app/window_session.h
+        app/test_window_session.cpp
+        app/test_window_workspaces.cpp
+        app/test_window_load.cpp)
+    target_link_libraries(orrery_test_window PRIVATE orrery_app_core imgui::imgui
+        Catch2::Catch2WithMain)
+    target_compile_definitions(orrery_test_window PRIVATE
+        ORRERY_SCENARIO_DIR="${PROJECT_SOURCE_DIR}/assets/scenarios")
+    orrery_configure_target(orrery_test_window)
+    set(window_discover_props RUN_SERIAL TRUE)
+    if(ORRERY_SANITIZE AND NOT MSVC)
+        list(APPEND window_discover_props ENVIRONMENT
+            "LSAN_OPTIONS=suppressions=${CMAKE_CURRENT_SOURCE_DIR}/lsan.supp:print_suppressions=0")
+    endif()
+    catch_discover_tests(orrery_test_window DISCOVERY_MODE PRE_TEST
+        PROPERTIES ${window_discover_props})
+endif()
 
 # The executable itself: version, help, module graph, and the documented exit
 # codes of the command line (2 for usage errors, 1 for missing files).

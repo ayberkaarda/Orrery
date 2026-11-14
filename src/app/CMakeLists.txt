@@ -150,14 +150,19 @@ target_sources(orrery_app_core PRIVATE
 target_link_libraries(orrery_app_core PRIVATE imgui::imgui implot::implot
     tomlplusplus::tomlplusplus)
 
+# The interactive window, and its scripted hidden-window sessions (--capture
+# and tests/app/test_window_session.cpp), exist only in builds with a window
+# system.
+if(NOT ORRERY_HEADLESS)
+    target_sources(orrery_app_core PRIVATE
+        window_app.cpp
+        window_capture.cpp
+        include/orrery/app/window_app.h)
+endif()
+
 add_executable(orrery_app
     main.cpp
     build_info.h)
-if(NOT ORRERY_HEADLESS)
-    target_sources(orrery_app PRIVATE
-        window_app.cpp
-        window_app.h)
-endif()
 
 target_include_directories(orrery_app PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(orrery_app PRIVATE orrery_app_core)

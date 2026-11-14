@@ -323,6 +323,13 @@ core::Result<UiContext, std::string> UiContext::create(GlContext& context, const
     return ui;
 }
 
+void UiContext::make_current() const {
+    if (impl_) {
+        ImGui::SetCurrentContext(impl_->imgui);
+        ImPlot::SetCurrentContext(impl_->implot);
+    }
+}
+
 void UiContext::begin_frame(const UiFrameInput& input) {
     Impl& impl = *impl_;
     ImGui::SetCurrentContext(impl.imgui);

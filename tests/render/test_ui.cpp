@@ -6,6 +6,11 @@
 #include <string>
 #include <vector>
 
+#include <imgui.h>
+#include <imgui_internal.h>
+#include <implot.h>
+#include <implot_internal.h>
+
 #include "orrery/core/sim_snapshot.h"
 #include "orrery/render/render_settings.h"
 #include "orrery/render/ui_context.h"
@@ -266,4 +271,57 @@ TEST_CASE("Clicking a body in the inspector list selects it", "[render][ui]") {
     REQUIRE(picked.has_value());
     // The first row reached is the first body of the list.
     CHECK(*picked == snapshot->ids()[0]);
+}
+
+TEST_CASE("The drift plot keeps its time labels inside the panel and its axis honest",
+          "[render][ui]") {
+    // In the window the last time label of the System Monitor's plot was cut
+    // at the panel's edge ("0.08 c"), and a series without a time span (one
+    // point, or a single body whose drift stays 0) was drawn on a fake axis
+    // from -0.50 d to 0.50 d.
+    auto created = UiContext::create_headless();
+    REQUIRE(created.has_value());
+    UiContext ui = std::move(created).value();
+    const auto x_axis = [&](const std::vector<double>& times, const std::vector<double>& values) {
+        SystemMonitorData monitor;
+        monitor.series_time_days = times;
+        monitor.series_values = values;
+        UiFrameInput input;
+        input.width = 1280;
+        input.height = 720;
+        for (int frame = 0; frame < 3; ++frame) { // the dock layout settles
+            ui.begin_frame(input);
+            (void)ui.dockspace();
+            (void)draw_system_monitor(monitor);
+            ui.end_frame();
+        }
+        ui.make_current();
+        const ImGuiWindow* window = ImGui::FindWindowByName("System Monitor");
+        REQUIRE(window != nullptr);
+        REQUIRE(ImPlot::GetCurrentContext()->Plots.GetBufSize() == 1);
+        const ImPlotPlot* plot = ImPlot::GetCurrentContext()->Plots.GetByIndex(0);
+        const ImPlotAxis& x = plot->Axes[ImAxis_X1];
+        for (const ImPlotTick& tick : x.Ticker.Ticks) {
+            if (tick.ShowLabel) {
+                INFO("tick at " << tick.PlotPos);
+                CHECK(tick.PixelPos + 0.5F * tick.LabelSize.x <= window->InnerClipRect.Max.x);
+                CHECK(tick.PixelPos - 0.5F * tick.LabelSize.x >= window->InnerClipRect.Min.x);
+            }
+        }
+        return x.Range;
+    };
+    std::vector<double> times;
+    std::vector<double> values;
+    for (int i = 0; i <= 80; ++i) {
+        times.push_back(0.001 * i);
+        values.push_back(1.0e-15 * i);
+    }
+    const ImPlotRange span = x_axis(times, values);
+    CHECK(span.Min >= -1.0e-9);
+    // One point at t = 0: the axis starts at 0 instead of -0.5 d.
+    const ImPlotRange single = x_axis({0.0}, {0.0});
+    CHECK(single.Min >= -1.0e-9);
+    // A constant series over a tiny span (a single body at 1x warp).
+    const ImPlotRange flat = x_axis({0.0, 1.0e-5, 2.0e-5}, {0.0, 0.0, 0.0});
+    CHECK(flat.Min >= -1.0e-9);
 }

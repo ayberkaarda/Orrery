@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cctype>
 #include <charconv>
 #include <cmath>
 #include <cstddef>
@@ -195,6 +196,32 @@ std::optional<std::string> environment_variable(const char* name) {
     }
     return std::string(value);
 #endif
+}
+
+std::string display_path(const std::filesystem::path& path) {
+    std::string text = path.string();
+    const std::string home = home_dir().string();
+    if (home.empty() || text.size() < home.size()) {
+        return text;
+    }
+    // Windows paths compare without regard to case.
+    const auto same = [](char a, char b) {
+#if defined(_WIN32)
+        return std::tolower(static_cast<unsigned char>(a)) ==
+               std::tolower(static_cast<unsigned char>(b));
+#else
+        return a == b;
+#endif
+    };
+    if (!std::equal(home.begin(), home.end(), text.begin(), same)) {
+        return text;
+    }
+    const std::string rest = text.substr(home.size());
+    if (!rest.empty() && rest.front() != '/' &&
+        rest.front() != static_cast<char>(std::filesystem::path::preferred_separator)) {
+        return text; // a sibling such as "<home>2"
+    }
+    return "~" + rest;
 }
 
 std::filesystem::path config_dir() {

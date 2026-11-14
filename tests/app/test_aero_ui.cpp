@@ -2,6 +2,7 @@
 
 #include <chrono>
 #include <cstddef>
+#include <cstdint>
 #include <filesystem>
 #include <functional>
 #include <optional>
@@ -10,6 +11,10 @@
 #include <utility>
 #include <vector>
 
+#include <imgui.h>
+#include <imgui_internal.h>
+
+#include "aero/aero_widgets.h"
 #include "app_test_support.h"
 #include "orrery/app/aero_workspace.h"
 #include "orrery/app/workspace_strip.h"
@@ -313,4 +318,116 @@ TEST_CASE("Aero experiments opened in the workspace keep their record", "[app][u
     CHECK(h.workspace.experiment().geometry.naca == "2412");
     CHECK(h.workspace.experiment().conditions.angle_of_attack_deg == 5.0);
     CHECK_FALSE(h.workspace.view_state().geometry->trailing_edge.empty());
+}
+
+TEST_CASE("Numbers and changes in the Aero panels use glyphs the UI font has", "[app][ui][aero]") {
+    // A character the font lacks is drawn as '?': lattice step counts read
+    // "32?000" in the window when the digits were grouped with U+2009.
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    render::UiFrameInput input;
+    input.width = 640;
+    input.height = 480;
+    ui.begin_frame(input);
+    ImFont* font = ImGui::GetFont();
+    const auto missing = [font](const std::string& text) {
+        std::string absent;
+        const char* at = text.c_str();
+        const char* const end = at + text.size();
+        while (at < end) {
+            unsigned int c = 0;
+            at += ImTextCharFromUtf8(&c, at, end);
+            if (!font->IsGlyphInFont(static_cast<ImWchar>(c))) {
+                absent += "U+" + std::to_string(c) + " ";
+            }
+        }
+        return absent;
+    };
+    for (const std::uint64_t value : {7ULL, 32000ULL, 1234567ULL, 18446744073709551615ULL}) {
+        INFO(app::widgets::grouped(value));
+        CHECK(missing(app::widgets::grouped(value)).empty());
+    }
+    CHECK(app::widgets::grouped(32000) != "32000");
+    CHECK(missing(app::widgets::change(12, 0)).empty());
+    ui.end_frame();
+}
+
+TEST_CASE("A panel row's control never covers its label", "[app][ui][aero]") {
+    // The Aero Results panel's "Steps per frame" and "Run to convergence"
+    // were cut by their controls, which start at a column sized for
+    // "Temperature".
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    render::UiFrameInput input;
+    input.width = 1600;
+    input.height = 900;
+    ui.begin_frame(input);
+    ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+    ImGui::SetNextWindowSize(ImVec2(360.0F, 300.0F));
+    ImGui::Begin("Rows");
+    for (const char* label : {"Speed", "Temperature", "Steps per frame", "Run to convergence"}) {
+        const float left = ImGui::GetCursorScreenPos().x;
+        ImGui::PushID(label);
+        app::widgets::row_label(label);
+        bool ticked = false;
+        (void)ImGui::Checkbox("##control", &ticked);
+        ImGui::PopID();
+        INFO(label);
+        CHECK(ImGui::GetItemRectMin().x >= left + ImGui::CalcTextSize(label).x);
+    }
+    ImGui::End();
+    ui.end_frame();
+}
+
+TEST_CASE("The workspace strip drops its caption rather than cover a tab", "[app][ui]") {
+    // At 320 px, the narrowest window the configuration allows, the
+    // right-aligned "Orbital dynamics" was drawn over the Entry tab.
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    for (const int width : {320, 1600}) {
+        render::UiFrameInput input;
+        input.width = width;
+        input.height = 600;
+        ui.begin_frame(input);
+        (void)app::draw_workspace_strip(app::Workspace::space);
+        const ImGuiWindow* strip = ImGui::FindWindowByName("##workspaces");
+        REQUIRE(strip != nullptr);
+        const float reach = strip->DC.CursorMaxPos.x;
+        ui.end_frame();
+        INFO("width " << width << ", items reach " << reach);
+        if (width == 320) {
+            // Only the tabs: Space, Aero, Entry.
+            CHECK(reach < 0.75F * static_cast<float>(width));
+        } else {
+            CHECK(reach > 0.9F * static_cast<float>(width)); // the caption, right-aligned
+        }
+    }
+}
+
+TEST_CASE("Status chips wrap to the next line rather than leave the panel", "[app][ui][aero]") {
+    // In the window the Aero Results heading "Lattice Boltzmann (2D)
+    // Finished NOT CONVERGED" ran past the panel's right edge, cutting the
+    // last chip.
+    auto created = render::UiContext::create_headless();
+    REQUIRE(created.has_value());
+    render::UiContext ui = std::move(created).value();
+    render::UiFrameInput input;
+    input.width = 1600;
+    input.height = 900;
+    ui.begin_frame(input);
+    ImGui::SetNextWindowPos(ImVec2(0.0F, 0.0F));
+    ImGui::SetNextWindowSize(ImVec2(340.0F, 200.0F));
+    ImGui::Begin("Chips");
+    const float right = ImGui::GetWindowPos().x + ImGui::GetWindowContentRegionMax().x;
+    app::widgets::text("Lattice Boltzmann (2D)");
+    for (const char* label : {"Finished", "NOT CONVERGED"}) {
+        app::widgets::chip_after(label, app::widgets::theme().warning, nullptr);
+        INFO(label);
+        CHECK(ImGui::GetItemRectMax().x <= right + 0.5F);
+    }
+    ImGui::End();
+    ui.end_frame();
 }

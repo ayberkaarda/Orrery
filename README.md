@@ -112,14 +112,15 @@ the three-body figure eight, Sgr A* with the star S2, and a lone black hole.
 
 ## Screenshots
 
-Rendered by the application itself in headless mode (offscreen, no window);
+Taken by the application itself: the window with its docked panels, opened
+hidden and never shown (the Entry image comes from the headless path);
 [docs/screenshots.md](docs/screenshots.md) gives the commands that
 regenerate them.
 
 | | |
 |---|---|
 | ![Inner solar system from J2000 with orbit trails around the Sun](docs/images/space-solar-system.png) | ![Black hole with a thin accretion disk bent by Schwarzschild lensing](docs/images/space-black-hole.png) |
-| J2000 solar system after 579 days, with orbit trails | Schwarzschild lensing of a thin disk: shadow, lensed far side, Doppler-bright approaching side |
+| J2000 solar system after about 590 days, with orbit trails | Schwarzschild lensing of a thin disk: shadow, lensed far side, Doppler-bright approaching side |
 | ![Three equal stars on the figure-eight three-body orbit](docs/images/space-figure-eight.png) | ![Apollo-type capsule coloured by pressure coefficient at Mach 20](docs/images/aero-apollo-newtonian.png) |
 | Figure-eight three-body choreography (Yoshida 4th order) | Apollo-type capsule at Mach 20 and 20 degrees, modified Newtonian Cp |
 | ![NACA 0012 section with Cp on the surface and the speed field around it](docs/images/aero-naca0012-lbm.png) | ![Stalled NACA 0012 section shedding a vortex street](docs/images/aero-naca0012-stall-wake.png) |

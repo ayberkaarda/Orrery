@@ -8,6 +8,7 @@
 
 #include <glm/ext/matrix_float4x4.hpp>
 #include <glm/ext/quaternion_double.hpp>
+#include <glm/ext/vector_double2.hpp>
 #include <glm/ext/vector_double3.hpp>
 #include <glm/ext/vector_float3.hpp>
 
@@ -62,6 +63,11 @@ struct OrbitMode {
     double distance = 10.0; // [m]
     double yaw = 0.0;       // azimuth from world +X towards +Y [rad]
     double pitch = 0.3;     // elevation above the world XY plane [rad]
+    // Where the target (or focus) appears in the image, in half view heights
+    // right and up of the centre. The camera moves in its view plane, so the
+    // shift holds at every yaw, pitch and distance: the window draws the
+    // system at the centre of the area its panels leave free.
+    glm::dvec2 view_shift{0.0};
 };
 
 // Chase: follows a body from an offset expressed in its travel frame

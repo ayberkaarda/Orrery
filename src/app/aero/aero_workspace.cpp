@@ -19,6 +19,7 @@
 
 #include "aero_widgets.h"
 #include "orrery/app/aero_scene.h"
+#include "orrery/app/config.h"
 #include "orrery/geom/naca.h"
 #include "orrery/geom/primitives.h"
 #include "orrery/sim/aero_comparison.h"
@@ -1008,7 +1009,7 @@ void AeroWorkspace::Impl::draw_geometry_report() {
         if (g.repair) {
             const sim::RepairSummary& r = *g.repair;
             const auto change = [](std::size_t before, std::size_t after) {
-                return std::to_string(before) + " \xE2\x86\x92 " + std::to_string(after);
+                return w::change(before, after);
             };
             w::property("Boundary edges", change(r.before.boundary_edges, r.after.boundary_edges));
             w::property("Non-manifold",
@@ -1192,23 +1193,21 @@ void AeroWorkspace::Impl::draw_run_status(const sim::AeroProgress& p, bool live,
     if (live || state == sim::AeroRunState::setting_up || state == sim::AeroRunState::failed) {
         w::text(std::string(sim::solver_display_name(p.status.solver)) +
                 (p.status.two_dimensional ? " (2D)" : " (3D)"));
-        ImGui::SameLine();
         render::UiColor tint = w::theme().accent;
         if (state == sim::AeroRunState::failed) {
             tint = w::theme().warning;
         } else if (state == sim::AeroRunState::finished) {
             tint = w::theme().accent_secondary;
         }
-        w::chip(state_label(state), tint, nullptr);
+        w::chip_after(state_label(state), tint, nullptr);
         if (live && state == sim::AeroRunState::finished) {
-            ImGui::SameLine();
             if (p.result->converged) {
-                w::chip("CONVERGED", w::theme().accent_secondary,
-                        "The solver's convergence test passed.");
+                w::chip_after("CONVERGED", w::theme().accent_secondary,
+                              "The solver's convergence test passed.");
             } else {
-                w::chip("NOT CONVERGED", w::theme().warning,
-                        "The run finished without passing the convergence test; see the "
-                        "warnings below.");
+                w::chip_after("NOT CONVERGED", w::theme().warning,
+                              "The run finished without passing the convergence test; see the "
+                              "warnings below.");
             }
         }
     } else if (record != nullptr) {
@@ -1523,7 +1522,7 @@ void AeroWorkspace::Impl::draw_experiments_panel() {
         listing_dirty = true;
     }
     ImGui::SameLine();
-    w::muted(options.experiment_dir.string());
+    w::muted(display_path(options.experiment_dir));
     if (!notice.empty()) {
         if (notice_is_error) {
             w::error(notice);
